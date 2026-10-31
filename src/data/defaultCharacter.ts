@@ -4,6 +4,120 @@
  */
 
 import { PF1Character, SkillItem } from '../types/character';
+import newAdventurerTemplate from '../../New_Adventurer_pf1e_sheet.json';
+
+const isOneOf = <T extends readonly string[]>(value: string, options: T): value is T[number] =>
+  options.some((option) => option === value);
+
+const characterSizes = [
+  'Fine', 'Diminutive', 'Tiny', 'Small', 'Medium', 'Large', 'Huge', 'Gargantuan', 'Colossal',
+] as const;
+const babProgressions = ['full', 'threeQuarter', 'half'] as const;
+const hpCalcMethods = ['average', 'max', 'rolled'] as const;
+const abilityNames = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'] as const;
+const storageTabs = ['worn', 'stored', 'companion'] as const;
+const weaponCategories = ['Melee', 'Ranged'] as const;
+const armorTypes = ['Light', 'Medium', 'Heavy', 'Shield', 'Other'] as const;
+const inventoryCategories = [
+  'Weapons', 'Armor', 'Magic Items', 'Potions/Scrolls', 'Gear', 'Valuables',
+  'Bag/Sheathe', 'Garment', 'Consumable', 'General',
+] as const;
+const inventoryStorageTypes = ['worn', 'stored', 'companion'] as const;
+
+const size = newAdventurerTemplate.size;
+const calcMethod = newAdventurerTemplate.hpBreakdown.calcMethod;
+const spellKeyAbility = newAdventurerTemplate.spellKeyAbility;
+const activeStorageTab = newAdventurerTemplate.activeStorageTab;
+
+if (!isOneOf(size, characterSizes)) throw new Error(`Invalid starter character size: ${size}`);
+if (!isOneOf(calcMethod, hpCalcMethods)) throw new Error(`Invalid starter HP calculation method: ${calcMethod}`);
+if (!isOneOf(spellKeyAbility, abilityNames)) throw new Error(`Invalid starter spell ability: ${spellKeyAbility}`);
+if (!isOneOf(activeStorageTab, storageTabs)) {
+  throw new Error(`Invalid starter storage tab: ${activeStorageTab}`);
+}
+
+const classes = newAdventurerTemplate.classes.map((classEntry) => {
+  const { babProgression } = classEntry;
+  if (!isOneOf(babProgression, babProgressions)) {
+    throw new Error(`Invalid starter BAB progression: ${babProgression}`);
+  }
+  return { ...classEntry, babProgression };
+});
+
+const abilities: PF1Character['abilities'] = {
+  STR: { ...newAdventurerTemplate.abilities.STR, name: 'STR' },
+  DEX: { ...newAdventurerTemplate.abilities.DEX, name: 'DEX' },
+  CON: { ...newAdventurerTemplate.abilities.CON, name: 'CON' },
+  INT: { ...newAdventurerTemplate.abilities.INT, name: 'INT' },
+  WIS: { ...newAdventurerTemplate.abilities.WIS, name: 'WIS' },
+  CHA: { ...newAdventurerTemplate.abilities.CHA, name: 'CHA' },
+};
+const saves: PF1Character['saves'] = {
+  fortitude: { ...newAdventurerTemplate.saves.fortitude, name: 'Fortitude' },
+  reflex: { ...newAdventurerTemplate.saves.reflex, name: 'Reflex' },
+  will: { ...newAdventurerTemplate.saves.will, name: 'Will' },
+};
+const weapons: PF1Character['weapons'] = newAdventurerTemplate.weapons.map((weapon) => {
+  const { category } = weapon;
+  if (!isOneOf(category, weaponCategories)) {
+    throw new Error(`Invalid starter weapon category: ${category}`);
+  }
+  return { ...weapon, category };
+});
+const armor: PF1Character['armor'] = newAdventurerTemplate.armor.map((item) => {
+  const { type } = item;
+  if (!isOneOf(type, armorTypes)) throw new Error(`Invalid starter armor type: ${type}`);
+  return { ...item, type };
+});
+const inventory: PF1Character['inventory'] = newAdventurerTemplate.inventory.map((item) => {
+  const { category, storageType } = item;
+  if (category !== undefined && !isOneOf(category, inventoryCategories)) {
+    throw new Error(`Invalid starter inventory category: ${category}`);
+  }
+  if (storageType !== undefined && !isOneOf(storageType, inventoryStorageTypes)) {
+    throw new Error(`Invalid starter inventory storage type: ${storageType}`);
+  }
+  return { ...item, category, storageType };
+});
+const skills: SkillItem[] = newAdventurerTemplate.skills.map((skill) => {
+  const { keyAbility } = skill;
+  if (!isOneOf(keyAbility, abilityNames)) {
+    throw new Error(`Invalid starter skill ability: ${keyAbility}`);
+  }
+  return { ...skill, keyAbility };
+});
+
+if (
+  newAdventurerTemplate.deathSaves.length !== 3 ||
+  !newAdventurerTemplate.deathSaves.every((save) => typeof save === 'boolean')
+) {
+  throw new Error('Starter character must define exactly three boolean death saves');
+}
+const deathSaves: PF1Character['deathSaves'] = [
+  newAdventurerTemplate.deathSaves[0],
+  newAdventurerTemplate.deathSaves[1],
+  newAdventurerTemplate.deathSaves[2],
+];
+
+export const NEW_ADVENTURER_CHARACTER: PF1Character = {
+  ...newAdventurerTemplate,
+  size,
+  abilities,
+  saves,
+  deathSaves,
+  weapons,
+  armor,
+  inventory,
+  skills,
+  classes,
+  hpBreakdown: { ...newAdventurerTemplate.hpBreakdown, calcMethod },
+  spellKeyAbility,
+  activeStorageTab,
+};
+
+export function createNewAdventurerCharacter(): PF1Character {
+  return structuredClone(NEW_ADVENTURER_CHARACTER);
+}
 
 export const INITIAL_SKILLS: SkillItem[] = [
   { id: 'sk-1', name: 'Acrobatics', keyAbility: 'DEX', isClassSkill: true, ranks: 5, miscMod: 0, hasArmorCheckPenalty: true, isTrainedOnly: false },

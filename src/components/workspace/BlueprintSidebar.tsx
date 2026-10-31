@@ -108,7 +108,7 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
   ];
 
   return (
-    <aside className="w-80 shrink-0 bg-slate-900/95 border-r border-cyan-500/30 text-slate-200 flex flex-col h-full shadow-2xl overflow-y-auto select-none print:hidden">
+    <aside className="w-72 shrink-0 bg-slate-900/95 border-r border-cyan-500/30 text-slate-200 flex flex-col h-full shadow-2xl overflow-y-auto select-none print:hidden">
       {/* Top Section: Layout, Color & Font */}
       <div className="p-4 border-b border-cyan-500/20 bg-slate-950/70">
         <div className="flex items-center justify-between mb-3">

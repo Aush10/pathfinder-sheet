@@ -34,7 +34,11 @@ import {
 } from 'lucide-react';
 
 import { PF1Character, WorkspaceLayout, AbilityName } from './types/character';
-import { DEFAULT_CHARACTER, createBlankCharacter } from './data/defaultCharacter';
+import {
+  DEFAULT_CHARACTER,
+  createBlankCharacter,
+  createNewAdventurerCharacter,
+} from './data/defaultCharacter';
 import { computeDerivedCharacterStats } from './engine/pf1eMath';
 import { DiceRollOutcome } from './engine/formula';
 
@@ -128,7 +132,7 @@ export default function App() {
     } catch {
       // Fallback
     }
-    return DEFAULT_CHARACTER;
+    return createNewAdventurerCharacter();
   });
 
   // Initialize workspace layout
@@ -346,6 +350,10 @@ export default function App() {
     setCharacter(blank);
   };
 
+  const handleConfirmNewAdventurerSheet = () => {
+    setCharacter(createNewAdventurerCharacter());
+  };
+
   // Reset to default iconic Valerius
   const handleConfirmDefaultSheet = () => {
     setCharacter(DEFAULT_CHARACTER);
@@ -548,11 +556,11 @@ export default function App() {
   };
 
   return (
-    <div className={`min-h-screen flex flex-col font-sans ${layout.theme === 'blueprint' || layout.theme === 'mythweavers' ? 'dark' : ''}`}>
+    <div className={`h-screen w-full overflow-hidden flex flex-col font-sans ${layout.theme === 'blueprint' || layout.theme === 'mythweavers' ? 'dark' : ''}`}>
       {/* Top Bar Contract (1 row, 3 clean functional zones) */}
-      <header className="h-14 bg-slate-950 border-b border-slate-800 text-slate-100 px-4 md:px-6 flex items-center justify-between gap-6 shrink-0 z-20 print:hidden select-none">
+      <header className="min-h-14 py-1.5 bg-slate-950 border-b border-slate-800 text-slate-100 px-3 md:px-5 flex flex-wrap items-center justify-between gap-2 xl:gap-4 shrink-0 z-20 print:hidden select-none">
         {/* Zone 1: Wordmark & Core Identity */}
-        <div className="flex items-center gap-2.5 shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
             className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-cyan-400 border border-slate-800 transition-colors"
@@ -765,8 +773,8 @@ export default function App() {
         )}
 
         {/* Center / Main Canvas Viewport */}
-        <main className={`flex-1 overflow-y-auto p-4 md:p-8 transition-colors duration-200 ${getCanvasBgClass()}`}>
-          <div className="max-w-6xl mx-auto space-y-6">
+        <main className={`flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-3 md:p-5 transition-colors duration-200 ${getCanvasBgClass()}`}>
+          <div className="w-full max-w-none space-y-6">
             {/* Quick condition debuff notification if active */}
             {isConditionsOpen && (
               <div className="mb-4">
@@ -1015,6 +1023,7 @@ export default function App() {
       <NewSheetModal
         isOpen={isNewSheetOpen}
         onClose={() => setIsNewSheetOpen(false)}
+        onConfirmNewAdventurer={handleConfirmNewAdventurerSheet}
         onConfirmBlank={handleConfirmBlankSheet}
         onConfirmDefault={handleConfirmDefaultSheet}
         onExportBackup={handleExportJSON}
@@ -1040,4 +1049,3 @@ export default function App() {
     </div>
   );
 }
-
