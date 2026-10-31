@@ -450,14 +450,14 @@
   "armor": [
     {
       "id": "ar-1793487022524-1",
-      "name": "Chain Shirt",
+      "name": "Shirt",
       "type": "Light",
-      "acBonus": 4,
-      "maxDex": 4,
-      "checkPenalty": -2,
-      "spellFailure": 20,
+      "acBonus": 0,
+      "maxDex": 20,
+      "checkPenalty": 0,
+      "spellFailure": 0,
       "speed30": 30,
-      "weight": 25,
+      "weight": 5,
       "isEquipped": true
     }
   ],
