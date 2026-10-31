@@ -32,6 +32,7 @@ import {
   CustomBuffEffect,
 } from '../../types/character';
 import { DerivedCombatStats } from '../../engine/pf1eMath';
+import { ImageFileBrowserModal } from '../tools/ImageFileBrowserModal';
 
 interface StorageInventoryModuleProps {
   character: PF1Character;
@@ -84,6 +85,9 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
   // New Bag modal
   const [isAddBagOpen, setIsAddBagOpen] = useState(false);
   const [newBagName, setNewBagName] = useState('');
+
+  // Item Image File Browser
+  const [isItemImageBrowserOpen, setIsItemImageBrowserOpen] = useState(false);
 
   // Styling helpers
   const isParchment = theme === 'parchment';
@@ -251,6 +255,12 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
       int: 0,
       wis: 0,
       cha: 0,
+      str_mod: 0,
+      dex_mod: 0,
+      con_mod: 0,
+      int_mod: 0,
+      wis_mod: 0,
+      cha_mod: 0,
       ...(item.buffValues || { [targetStat]: targetVal }),
     };
 
@@ -355,6 +365,12 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
         int: 0,
         wis: 0,
         cha: 0,
+        str_mod: 0,
+        dex_mod: 0,
+        con_mod: 0,
+        int_mod: 0,
+        wis_mod: 0,
+        cha_mod: 0,
         ...(item.buffValues || { [targetStat]: targetVal }),
       };
 
@@ -1230,29 +1246,31 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
                 </div>
 
                 {/* Circular/Square Item Picture Frame (Matches wireframe circle) */}
-                <div className="w-16 h-16 rounded-xl border border-black/30 dark:border-white/30 bg-black/40 overflow-hidden flex items-center justify-center shrink-0 relative group">
+                <div
+                  onClick={() => setIsItemImageBrowserOpen(true)}
+                  className="w-16 h-16 rounded-xl border border-black/30 dark:border-white/30 bg-black/40 overflow-hidden flex items-center justify-center shrink-0 relative group cursor-pointer hover:border-amber-400 transition-colors"
+                  title="Click to browse local files or pick fantasy item art"
+                >
                   {selectedItem.imageUrl ? (
                     <img
                       src={selectedItem.imageUrl}
                       alt={selectedItem.name}
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                       onError={(e) => {
                         (e.target as HTMLImageElement).src =
                           'https://images.unsplash.com/photo-1590736969955-71cc94801759?auto=format&fit=crop&w=200&q=80';
                       }}
                     />
                   ) : (
-                    <Sparkles className="w-6 h-6 text-amber-400 opacity-60" />
+                    <div className="flex flex-col items-center justify-center text-amber-400/70 p-1 text-center">
+                      <Sparkles className="w-5 h-5 mb-0.5" />
+                      <span className="text-[8px] font-mono leading-none">Add Pic</span>
+                    </div>
                   )}
-                  <button
-                    onClick={() => {
-                      const url = prompt('Enter image URL for this item:', selectedItem.imageUrl || '');
-                      if (url !== null) handleUpdateItem(selectedItem.id, { imageUrl: url });
-                    }}
-                    className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 flex items-center justify-center text-[10px] text-amber-300 font-bold transition-opacity"
-                  >
-                    Set Pic
-                  </button>
+                  <div className="absolute inset-0 bg-black/75 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-[9px] text-amber-300 font-bold transition-opacity text-center p-1 font-mono">
+                    <span>Browse</span>
+                    <span>Image</span>
+                  </div>
                 </div>
               </div>
 
@@ -1657,6 +1675,25 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Item Image File Browser Modal */}
+      {selectedItem && (
+        <ImageFileBrowserModal
+          isOpen={isItemImageBrowserOpen}
+          onClose={() => setIsItemImageBrowserOpen(false)}
+          targetType="item"
+          itemName={selectedItem.name}
+          title={`Choose Image for ${selectedItem.name}`}
+          subtitle="Browse local image files from disk, select from fantasy weapons/armor/gear presets, or paste a URL."
+          currentImageUrl={selectedItem.imageUrl}
+          onSelectImage={(url) => {
+            handleUpdateItem(selectedItem.id, { imageUrl: url });
+          }}
+          characterExistingImages={character.inventory
+            ?.map((i) => i.imageUrl || '')
+            .filter((url) => Boolean(url))}
+        />
       )}
     </div>
   );

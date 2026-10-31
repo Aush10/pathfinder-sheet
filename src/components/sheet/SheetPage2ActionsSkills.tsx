@@ -59,6 +59,7 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
   fontClass,
   onUpdateCharacter,
   onRollFormula,
+  visibleModules = {},
 }) => {
   // Skill search & sorting state (Matches Wireframe Image 1: "add option to organize by name, relevant ability score (sdciwc), class/nonclass, bonus +/-, bonus -/+, custom order")
   const [skillSearch, setSkillSearch] = useState('');
@@ -457,6 +458,7 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
         {/* ========================================================================= */}
         {/* LEFT COLUMN (lg:col-span-5): 35 PF1e Skills Matrix with Reorganization */}
         {/* ========================================================================= */}
+        {visibleModules.skills !== false && (
         <div className="lg:col-span-5 space-y-4">
           <div className={`rounded-xl border p-4 ${cardBg}`}>
             {/* Skills Header & Sort / Organization Controls */}
@@ -641,11 +643,12 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
             </div>
           </div>
         </div>
+        )}
 
         {/* ========================================================================= */}
-        {/* RIGHT COLUMN (lg:col-span-7): Resources, Actions Directory & Inspector    */}
+        {/* RIGHT COLUMN: Resources, Actions Directory & Inspector                     */}
         {/* ========================================================================= */}
-        <div className="lg:col-span-7 space-y-6">
+        <div className={`${visibleModules.skills !== false ? 'lg:col-span-7' : 'lg:col-span-12'} space-y-6`}>
           {/* SECTION 1: Resource Trackers & Pools (Matches Wireframe Image 1 Top) */}
           <div className={`rounded-xl border p-4 ${cardBg}`}>
             <div className="flex items-center justify-between pb-3 mb-3 border-b border-black/10 dark:border-white/10">
@@ -917,6 +920,7 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
           </div>
 
           {/* SECTION 4: Feats and Special Qualities (Matches Wireframe Image 1 Bottom) */}
+          {visibleModules.feats !== false && (
           <div className={`rounded-xl border p-4 ${cardBg} space-y-3`}>
             <div className="flex items-center justify-between pb-2 border-b border-black/10 dark:border-white/10">
               <div className="flex items-center gap-2">
@@ -962,6 +966,7 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
               ))}
             </div>
           </div>
+          )}
         </div>
       </div>
 

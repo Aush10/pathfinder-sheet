@@ -49,9 +49,15 @@ export type BuffStatTarget =
   | 'con'
   | 'int'
   | 'wis'
-  | 'cha';
+  | 'cha'
+  | 'str_mod'
+  | 'dex_mod'
+  | 'con_mod'
+  | 'int_mod'
+  | 'wis_mod'
+  | 'cha_mod';
 
-export type BuffBoxData = Record<BuffBonusType, Record<BuffStatTarget, number>>;
+export type BuffBoxData = Record<BuffBonusType, Partial<Record<BuffStatTarget, number>>>;
 
 export interface CustomBuffEffect {
   id: string;
@@ -59,7 +65,7 @@ export interface CustomBuffEffect {
   category: 'activatable' | 'permanent' | 'debuff';
   bonusType: BuffBonusType;
   isActive: boolean;
-  values: Record<BuffStatTarget, number>;
+  values: Partial<Record<BuffStatTarget, number>>;
   duration?: string;
   notes?: string;
   itemId?: string; // Optional link to inventory item
@@ -99,6 +105,7 @@ export interface WeaponAttack {
   weight: number;
   specialProperties?: string;
   isEquipped: boolean;
+  imageUrl?: string;
 }
 
 export interface ArmorItem {
@@ -113,6 +120,7 @@ export interface ArmorItem {
   weight: number;
   isEquipped: boolean;
   notes?: string;
+  imageUrl?: string;
 }
 
 export interface SkillItem {
@@ -593,6 +601,8 @@ export interface PF1Character {
     gp: number;
     pp: number;
   };
+  includeCoinWeight?: boolean;
+  coinWeightRate?: number;
   languages: string[];
 
   // Magic

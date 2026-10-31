@@ -60,6 +60,12 @@ export const BUFF_STAT_TARGETS: Array<{ key: BuffStatTarget; label: string }> = 
   { key: 'int', label: 'INT' },
   { key: 'wis', label: 'WIS' },
   { key: 'cha', label: 'CHA' },
+  { key: 'str_mod', label: 'STR Mod' },
+  { key: 'dex_mod', label: 'DEX Mod' },
+  { key: 'con_mod', label: 'CON Mod' },
+  { key: 'int_mod', label: 'INT Mod' },
+  { key: 'wis_mod', label: 'WIS Mod' },
+  { key: 'cha_mod', label: 'CHA Mod' },
 ];
 
 export function createEmptyBuffBox(): BuffBoxData {
@@ -79,6 +85,12 @@ export function createEmptyBuffBox(): BuffBoxData {
       int: 0,
       wis: 0,
       cha: 0,
+      str_mod: 0,
+      dex_mod: 0,
+      con_mod: 0,
+      int_mod: 0,
+      wis_mod: 0,
+      cha_mod: 0,
     };
   }
   return box;
@@ -196,6 +208,8 @@ interface BuffBoxModuleProps {
   customBuffs?: CustomBuffEffect[];
   onUpdateBuffBox: (newBox: BuffBoxData) => void;
   onUpdateCustomBuffs?: (newBuffs: CustomBuffEffect[]) => void;
+  abilities?: import('../../types/character').PF1Character['abilities'];
+  onUpdateCharacter?: (updater: (prev: import('../../types/character').PF1Character) => import('../../types/character').PF1Character) => void;
   theme?: string;
   fontClass?: string;
   isToolModal?: boolean;
@@ -207,6 +221,8 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
   customBuffs = [],
   onUpdateBuffBox,
   onUpdateCustomBuffs,
+  abilities,
+  onUpdateCharacter,
   theme = 'parchment',
   fontClass = '',
   isToolModal = false,
@@ -234,6 +250,12 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
     int: 0,
     wis: 0,
     cha: 0,
+    str_mod: 0,
+    dex_mod: 0,
+    con_mod: 0,
+    int_mod: 0,
+    wis_mod: 0,
+    cha_mod: 0,
   });
   const [newNotes, setNewNotes] = useState('');
   const [editingBuffId, setEditingBuffId] = useState<string | null>(null);
@@ -331,6 +353,12 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
       int: 0,
       wis: 0,
       cha: 0,
+      str_mod: 0,
+      dex_mod: 0,
+      con_mod: 0,
+      int_mod: 0,
+      wis_mod: 0,
+      cha_mod: 0,
     });
   };
 
@@ -339,7 +367,29 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
     setNewName(b.name);
     setNewCategory(b.category);
     setNewBonusType(b.bonusType);
-    setNewValues({ ...b.values });
+    const initialValues: Record<BuffStatTarget, number> = {
+      hp: 0,
+      mattack: 0,
+      rattack: 0,
+      fort: 0,
+      ref: 0,
+      will: 0,
+      ac: 0,
+      str: 0,
+      dex: 0,
+      con: 0,
+      int: 0,
+      wis: 0,
+      cha: 0,
+      str_mod: 0,
+      dex_mod: 0,
+      con_mod: 0,
+      int_mod: 0,
+      wis_mod: 0,
+      cha_mod: 0,
+      ...(b.values || {}),
+    };
+    setNewValues(initialValues);
     setNewNotes(b.notes || '');
     if (viewMode === 'rollup' || viewMode === 'icon') {
       setViewMode('expanded');
@@ -365,6 +415,12 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
       int: 0,
       wis: 0,
       cha: 0,
+      str_mod: 0,
+      dex_mod: 0,
+      con_mod: 0,
+      int_mod: 0,
+      wis_mod: 0,
+      cha_mod: 0,
     };
     for (const key of Object.keys(tpl.values) as BuffStatTarget[]) {
       filledValues[key] = tpl.values[key] || 0;
@@ -774,6 +830,72 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
             </div>
           </div>
 
+          {/* 2B. ABILITY SCORES MOD ADJ (Direct Modifier Adjustments for All 6 Ability Scores) */}
+          <div className="p-3 rounded-lg border border-cyan-500/40 bg-slate-950/80 space-y-2">
+            <div className="flex items-center justify-between pb-1 border-b border-cyan-800/40">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-cyan-400" />
+                <span className="text-xs font-mono font-bold text-cyan-300 uppercase tracking-wide">
+                  Ability Scores Mod ADJ (Direct Modifier Buffs)
+                </span>
+              </div>
+              <span className="text-[10px] font-mono text-slate-400">
+                Direct modifier adjustments apply directly to attack rolls, checks, and saves without changing total score.
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 pt-1 font-mono text-xs">
+              {(['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'] as const).map((ab) => {
+                const statKey = `${ab.toLowerCase()}_mod` as BuffStatTarget;
+                const buffModSum = totals[statKey] || 0;
+                const directMod = abilities?.[ab]?.directMod || 0;
+                const totalModAdj = directMod + buffModSum;
+
+                return (
+                  <div
+                    key={ab}
+                    className="p-2 rounded-lg bg-black/40 border border-cyan-900/50 flex flex-col items-center justify-between space-y-1"
+                  >
+                    <span className="text-xs font-bold text-cyan-300">{ab} Mod ADJ</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-slate-400">Direct:</span>
+                      <input
+                        type="number"
+                        value={directMod}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value, 10) || 0;
+                          if (onUpdateCharacter) {
+                            onUpdateCharacter((prev) => ({
+                              ...prev,
+                              abilities: {
+                                ...prev.abilities,
+                                [ab]: {
+                                  ...prev.abilities[ab],
+                                  directMod: val,
+                                },
+                              },
+                            }));
+                          }
+                        }}
+                        disabled={!onUpdateCharacter}
+                        className={`w-11 text-center py-0.5 rounded border text-xs font-bold tabular-nums ${inputStyle} ${
+                          directMod !== 0 ? 'text-amber-300 border-amber-500/50' : 'text-slate-300'
+                        }`}
+                        title={`Direct ${ab} modifier adjustment`}
+                      />
+                    </div>
+                    <div className="text-[10px] flex items-center justify-between w-full pt-1 border-t border-slate-800 text-slate-400">
+                      <span>Buffs: {buffModSum >= 0 ? `+${buffModSum}` : buffModSum}</span>
+                      <strong className={`font-bold ${totalModAdj > 0 ? 'text-emerald-400' : totalModAdj < 0 ? 'text-rose-400' : 'text-slate-300'}`}>
+                        Net: {totalModAdj >= 0 ? `+${totalModAdj}` : totalModAdj}
+                      </strong>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           {/* 3. LIST OF SAVED BUFFS & DEBUFFS WITH ACTIVATION CHECKBOXES */}
           <div className="space-y-2">
             <div className="flex items-center justify-between flex-wrap gap-2">
@@ -811,8 +933,8 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[360px] overflow-y-auto pr-1">
                 {filteredBuffs.map((buff) => {
-                  const nonZeroVals = BUFF_STAT_TARGETS.filter((t) => buff.values[t.key] !== 0);
-                  const isDebuff = buff.category === 'debuff' || nonZeroVals.some((t) => buff.values[t.key] < 0);
+                  const nonZeroVals = BUFF_STAT_TARGETS.filter((t) => (buff.values[t.key] || 0) !== 0);
+                  const isDebuff = buff.category === 'debuff' || nonZeroVals.some((t) => (buff.values[t.key] || 0) < 0);
 
                   return (
                     <div
@@ -886,7 +1008,7 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
                               <span className="text-[10px] text-slate-500 italic">No modifiers</span>
                             ) : (
                               nonZeroVals.map((t) => {
-                                const val = buff.values[t.key];
+                                const val = buff.values[t.key] || 0;
                                 return (
                                   <span
                                     key={t.key}

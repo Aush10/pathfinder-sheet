@@ -32,6 +32,7 @@ import {
 } from '../../types/character';
 import { DerivedCombatStats } from '../../engine/pf1eMath';
 import { StorageInventoryModule } from './StorageInventoryModule';
+import { ImageFileBrowserModal } from '../tools/ImageFileBrowserModal';
 
 interface SheetPage3BioStorageProps {
   character: PF1Character;
@@ -68,6 +69,7 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
   // Image URL state
   const [isImageUrlOpen, setIsImageUrlOpen] = useState(false);
   const [newImageUrl, setNewImageUrl] = useState('');
+  const [isPortraitBrowserOpen, setIsPortraitBrowserOpen] = useState(false);
 
   // Future systems showcase toggle
   const [showFutureRoadmap, setShowFutureRoadmap] = useState(true);
@@ -397,11 +399,11 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
 
             {/* Quick Link Overlay button */}
             <button
-              onClick={() => setIsImageUrlOpen(true)}
+              onClick={() => setIsPortraitBrowserOpen(true)}
               className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-amber-300 text-[10px] font-bold transition-opacity"
             >
               <Edit2 className="w-4 h-4 mb-0.5" />
-              <span>Link Image</span>
+              <span>Browse Image</span>
             </button>
           </div>
 
@@ -415,10 +417,10 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
               <ChevronLeft className="w-3.5 h-3.5" />
             </button>
             <button
-              onClick={() => setIsImageUrlOpen(true)}
+              onClick={() => setIsPortraitBrowserOpen(true)}
               className="text-[10px] text-amber-400 hover:underline truncate"
             >
-              + Add Image
+              + File Browser
             </button>
             <button
               onClick={handleNextPortrait}
@@ -855,6 +857,26 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
           </div>
         </div>
       )}
+
+      {/* Character Portrait File Browser Modal */}
+      <ImageFileBrowserModal
+        isOpen={isPortraitBrowserOpen}
+        onClose={() => setIsPortraitBrowserOpen(false)}
+        targetType="portrait"
+        title="Character Portrait File Browser"
+        subtitle="Upload portrait files from your computer, choose from fantasy adventurer art, or paste a web URL."
+        currentImageUrl={currentPortrait}
+        onSelectImage={(url) => {
+          if (!url) return;
+          const currentList = bioData.portraits || [];
+          const updatedPortraits = [...currentList.filter((p) => p !== url), url];
+          updateBio({
+            portraits: updatedPortraits,
+            currentPortraitIndex: updatedPortraits.length - 1,
+          });
+        }}
+        characterExistingImages={bioData.portraits || []}
+      />
     </div>
   );
 };

@@ -11,6 +11,10 @@ import {
   Minus,
   HelpCircle,
   Hand,
+  FilePlus,
+  User,
+  Image as ImageIcon,
+  Camera,
 } from 'lucide-react';
 import {
   PF1Character,
@@ -33,6 +37,12 @@ interface SheetPage1CoreProps {
   onRollFormula: (formula: string, label?: string) => void;
   visibleModules: Record<string, boolean>;
   onOpenCMBt?: () => void;
+  onOpenNewSheet?: () => void;
+  onOpenImageBrowser?: (config?: {
+    targetType: 'profile' | 'portrait' | 'item';
+    itemName?: string;
+    currentUrl?: string;
+  }) => void;
 }
 
 export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
@@ -44,6 +54,8 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
   onRollFormula,
   visibleModules,
   onOpenCMBt,
+  onOpenNewSheet,
+  onOpenImageBrowser,
 }) => {
   const abilitiesList: AbilityName[] = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
   const [damageInput, setDamageInput] = useState<number>(5);
@@ -247,17 +259,81 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
     <div className={`space-y-4 ${fontClass} transition-colors duration-200`}>
       {/* 1. Header Information Block */}
       <div className={`border rounded-lg p-4 ${cardBg}`}>
+        {/* Header Bar with New Sheet and Picture Browser */}
+        <div className="flex items-center justify-between pb-2 mb-3 border-b border-black/10 dark:border-white/10">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-mono font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+              Identity &amp; Lineage
+            </span>
+            <span className="text-[10px] opacity-60 font-mono hidden sm:inline">Core Attributes &amp; Character Info</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {onOpenImageBrowser && (
+              <button
+                onClick={() =>
+                  onOpenImageBrowser({
+                    targetType: 'profile',
+                    currentUrl: character.profileData?.avatarUrl || character.characterBio?.portraits?.[0],
+                  })
+                }
+                className="text-[11px] font-mono px-2 py-0.5 rounded border border-cyan-500/40 bg-cyan-950/40 text-cyan-300 hover:bg-cyan-900/60 flex items-center gap-1 transition-colors"
+                title="Open image file browser to set character portrait"
+              >
+                <ImageIcon className="w-3 h-3 text-cyan-400" />
+                <span>Profile Pic</span>
+              </button>
+            )}
+
+            {onOpenNewSheet && (
+              <button
+                onClick={onOpenNewSheet}
+                className="text-[11px] font-mono px-2 py-0.5 rounded border border-rose-500/40 bg-rose-950/40 text-rose-300 hover:bg-rose-900/60 flex items-center gap-1 transition-colors"
+                title="Start a fresh blank sheet or reset character"
+              >
+                <FilePlus className="w-3 h-3 text-rose-400" />
+                <span>New Sheet / Clear</span>
+              </button>
+            )}
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
           <div className="col-span-2">
             <label className="block text-[11px] font-semibold uppercase tracking-wider opacity-75">
               Character Name
             </label>
-            <input
-              type="text"
-              value={character.name}
-              onChange={(e) => setField('name', e.target.value)}
-              className={`w-full font-bold text-base px-2 py-1 rounded border ${inputStyle}`}
-            />
+            <div className="flex items-center gap-2 mt-0.5">
+              <div
+                onClick={() =>
+                  onOpenImageBrowser?.({
+                    targetType: 'profile',
+                    currentUrl: character.profileData?.avatarUrl || character.characterBio?.portraits?.[0],
+                  })
+                }
+                className="w-8 h-8 rounded-lg overflow-hidden border border-black/20 dark:border-white/20 bg-black/40 flex items-center justify-center shrink-0 cursor-pointer relative group"
+                title="Click to browse profile picture"
+              >
+                {character.profileData?.avatarUrl || character.characterBio?.portraits?.[0] ? (
+                  <img
+                    src={character.profileData?.avatarUrl || character.characterBio?.portraits?.[0]}
+                    alt={character.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <User className="w-4 h-4 text-amber-500/70" />
+                )}
+                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-amber-300 transition-opacity">
+                  <Camera className="w-3 h-3" />
+                </div>
+              </div>
+              <input
+                type="text"
+                value={character.name}
+                onChange={(e) => setField('name', e.target.value)}
+                className={`flex-1 font-bold text-base px-2 py-1 rounded border ${inputStyle}`}
+              />
+            </div>
           </div>
 
           <div>

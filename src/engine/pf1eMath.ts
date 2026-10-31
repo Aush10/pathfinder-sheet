@@ -38,7 +38,7 @@ export function calculateTotalPointBuy(character: PF1Character): number {
   let total = 0;
   const abilities: AbilityName[] = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
   for (const ab of abilities) {
-    const base = character.abilities[ab]?.base ?? 10;
+    const base = character?.abilities?.[ab]?.base ?? 10;
     total += getPointBuyCost(base);
   }
   return total;
@@ -297,6 +297,12 @@ export function computeBuffBoxTotals(
     int: 0,
     wis: 0,
     cha: 0,
+    str_mod: 0,
+    dex_mod: 0,
+    con_mod: 0,
+    int_mod: 0,
+    wis_mod: 0,
+    cha_mod: 0,
   };
 
   const targets: import('../types/character').BuffStatTarget[] = [
@@ -313,6 +319,12 @@ export function computeBuffBoxTotals(
     'int',
     'wis',
     'cha',
+    'str_mod',
+    'dex_mod',
+    'con_mod',
+    'int_mod',
+    'wis_mod',
+    'cha_mod',
   ];
 
   // 1. Sum values from the base typed matrix (buffBox)
@@ -347,14 +359,14 @@ export function computeDerivedCharacterStats(character: PF1Character): DerivedCo
 
   // Ability totals: Base (6-18) + RaceMod + LevelAsiMod + BuffBox + EnhMod + MiscMod + TempMod - ConditionPenalty
   const getScore = (name: AbilityName, penalty: number = 0) => {
-    const ab = character.abilities[name];
+    const ab = character?.abilities?.[name];
     if (!ab) return 10;
     const statKey = name.toLowerCase() as import('../types/character').BuffStatTarget;
     const buffStat = buffTotals[statKey] || 0;
     const levelAsi = ab.levelAsiMod || 0;
     return Math.max(
       1,
-      ab.base + ab.raceMod + levelAsi + buffStat + ab.enhMod + ab.miscMod + ab.tempMod - penalty
+      (ab.base ?? 10) + (ab.raceMod ?? 0) + levelAsi + buffStat + (ab.enhMod ?? 0) + (ab.miscMod ?? 0) + (ab.tempMod ?? 0) - penalty
     );
   };
 
@@ -373,13 +385,13 @@ export function computeDerivedCharacterStats(character: PF1Character): DerivedCo
   const baseWisMod = Math.floor((wisTotal - 10) / 2);
   const baseChaMod = Math.floor((chaTotal - 10) / 2);
 
-  // Direct Mod Adj (User specification: direct mod bonuses not calculated with total score)
-  const strDirectMod = character.abilities.STR?.directMod || 0;
-  const dexDirectMod = character.abilities.DEX?.directMod || 0;
-  const conDirectMod = character.abilities.CON?.directMod || 0;
-  const intDirectMod = character.abilities.INT?.directMod || 0;
-  const wisDirectMod = character.abilities.WIS?.directMod || 0;
-  const chaDirectMod = character.abilities.CHA?.directMod || 0;
+  // Direct Mod Adj (User specification: direct mod bonuses not calculated with total score + Buff Box Mod ADJ)
+  const strDirectMod = (character?.abilities?.STR?.directMod || 0) + (buffTotals['str_mod'] || 0);
+  const dexDirectMod = (character?.abilities?.DEX?.directMod || 0) + (buffTotals['dex_mod'] || 0);
+  const conDirectMod = (character?.abilities?.CON?.directMod || 0) + (buffTotals['con_mod'] || 0);
+  const intDirectMod = (character?.abilities?.INT?.directMod || 0) + (buffTotals['int_mod'] || 0);
+  const wisDirectMod = (character?.abilities?.WIS?.directMod || 0) + (buffTotals['wis_mod'] || 0);
+  const chaDirectMod = (character?.abilities?.CHA?.directMod || 0) + (buffTotals['cha_mod'] || 0);
 
   // Final Effective Mod (used in attacks, checks, saves, spells, skills)
   const strMod = baseStrMod + strDirectMod;
@@ -395,36 +407,36 @@ export function computeDerivedCharacterStats(character: PF1Character): DerivedCo
   let maxDexAllowance = 99;
   let armorCheckPenaltyTotal = 0;
 
-  for (const item of character.armor) {
+  for (const item of (character?.armor || [])) {
     if (item.isEquipped) {
       if (item.type === 'Shield') {
-        shieldBonusTotal += item.acBonus;
+        shieldBonusTotal += item.acBonus || 0;
       } else {
-        armorBonusTotal += item.acBonus;
+        armorBonusTotal += item.acBonus || 0;
       }
       if (item.maxDex !== undefined && item.maxDex < maxDexAllowance) {
         maxDexAllowance = item.maxDex;
       }
-      armorCheckPenaltyTotal += item.checkPenalty;
+      armorCheckPenaltyTotal += item.checkPenalty || 0;
     }
   }
 
   const effectiveDexModForAC = cond.losesDexToAC ? 0 : Math.min(dexMod, maxDexAllowance);
 
   // Size Modifiers
-  const sizeInfo = SIZE_MODIFIERS[character.size] || SIZE_MODIFIERS.Medium;
+  const sizeInfo = SIZE_MODIFIERS[character?.size || 'Medium'] || SIZE_MODIFIERS.Medium;
   const sizeMod = sizeInfo.acAndAttack;
 
   // Dodge bonus (haste adds +1 dodge)
-  const dodgeBonus = character.dodgeMod + (character.conditions.haste ? 1 : 0);
+  const dodgeBonus = (character?.dodgeMod || 0) + (character?.conditions?.haste ? 1 : 0);
 
   // User Specification 1:
   // "AC: ac is ac bonus + Dex asb + 10 + miscellaneous other bonuses"
   // "Flat footed is the same without the dex bonus and touch is the same without the armor bonus"
-  const totalArmorBonus = armorBonusTotal + shieldBonusTotal + character.naturalArmorMod;
+  const totalArmorBonus = armorBonusTotal + shieldBonusTotal + (character?.naturalArmorMod || 0);
   // Dodge bonuses are kept for Touch AC but denied when Flat-Footed (matches user prompt: armor 5, dex +2, misc +2 (dodge) -> AC 19, Touch 14, FF 15)
-  const totalAcMiscBonus = character.deflectionMod + dodgeBonus + character.acMiscMod + buffTotals.ac - cond.acPenalty + sizeMod;
-  const flatFootedMiscBonus = character.deflectionMod + character.acMiscMod + buffTotals.ac - cond.acPenalty + sizeMod;
+  const totalAcMiscBonus = (character?.deflectionMod || 0) + dodgeBonus + (character?.acMiscMod || 0) + buffTotals.ac - cond.acPenalty + sizeMod;
+  const flatFootedMiscBonus = (character?.deflectionMod || 0) + (character?.acMiscMod || 0) + buffTotals.ac - cond.acPenalty + sizeMod;
 
   const acTotal = 10 + totalArmorBonus + effectiveDexModForAC + totalAcMiscBonus;
   const touchAC = 10 + effectiveDexModForAC + totalAcMiscBonus;
@@ -487,22 +499,24 @@ export function computeDerivedCharacterStats(character: PF1Character): DerivedCo
   // "CMB is STR+BAB+SIZE+Misc bonus (assume SIZE is the call for macros and the bonus is +0)"
   // "CMD is STR or DEX+BAB+10+SIZE+misc"
   const sizeBonusForMacro = 0; // SIZE bonus default +0
-  const cmbMisc = character.cmbMiscMod || 0;
-  const cmdMisc = character.cmdMiscMod ?? character.acMiscMod;
-  const cmbTotal = strMod + character.baseAttackBonus + sizeBonusForMacro + cmbMisc + buffTotals.mattack - cond.attackPenalty;
+  const cmbMisc = character?.cmbMiscMod || 0;
+  const cmdMisc = character?.cmdMiscMod ?? (character?.acMiscMod || 0);
+  const bab = character?.baseAttackBonus || 0;
+  const cmbTotal = strMod + bab + sizeBonusForMacro + cmbMisc + buffTotals.mattack - cond.attackPenalty;
 
-  const cmdChoice = character.cmdAbilityChoice || 'STR';
+  const cmdChoice = character?.cmdAbilityChoice || 'STR';
   const cmdAbilityMod = cmdChoice === 'DEX' ? dexMod : cmdChoice === 'BOTH' ? (strMod + dexMod) : strMod;
-  const cmdTotal = 10 + character.baseAttackBonus + cmdAbilityMod + sizeBonusForMacro + cmdMisc + buffTotals.ac - cond.acPenalty;
-  const cmdStrTotal = 10 + character.baseAttackBonus + strMod + sizeBonusForMacro + cmdMisc + buffTotals.ac - cond.acPenalty;
-  const cmdDexTotal = 10 + character.baseAttackBonus + dexMod + sizeBonusForMacro + cmdMisc + buffTotals.ac - cond.acPenalty;
-  const cmdFlatFooted = 10 + character.baseAttackBonus + strMod + sizeBonusForMacro + cmdMisc + buffTotals.ac - cond.acPenalty;
+  const cmdTotal = 10 + bab + cmdAbilityMod + sizeBonusForMacro + cmdMisc + buffTotals.ac - cond.acPenalty;
+  const cmdStrTotal = 10 + bab + strMod + sizeBonusForMacro + cmdMisc + buffTotals.ac - cond.acPenalty;
+  const cmdDexTotal = 10 + bab + dexMod + sizeBonusForMacro + cmdMisc + buffTotals.ac - cond.acPenalty;
+  const cmdFlatFooted = 10 + bab + strMod + sizeBonusForMacro + cmdMisc + buffTotals.ac - cond.acPenalty;
 
   // HP Breakdown Calculation:
   // [Total/Current HP] [THP] (#HD d Size + ConBonus(con_asb * level) + Additional Bonuses "Source")
-  const calcMethod = character.hpBreakdown?.calcMethod || 'average';
-  const hdCount = character.hpBreakdown?.hitDiceCount || character.level;
-  const dieSize = character.hpBreakdown?.hitDiceSize || 10;
+  const calcMethod = character?.hpBreakdown?.calcMethod || 'average';
+  const charLevel = character?.level || 1;
+  const hdCount = character?.hpBreakdown?.hitDiceCount || charLevel;
+  const dieSize = character?.hpBreakdown?.hitDiceSize || 10;
 
   let baseHitDiceHP = 0;
   if (calcMethod === 'average') {
@@ -513,11 +527,11 @@ export function computeDerivedCharacterStats(character: PF1Character): DerivedCo
     baseHitDiceHP = hdCount * dieSize;
   } else {
     // 'rolled' or manual custom roll
-    baseHitDiceHP = character.hpBreakdown?.hitDiceRolledBase || (dieSize + (hdCount - 1) * Math.floor(dieSize / 2));
+    baseHitDiceHP = character?.hpBreakdown?.hitDiceRolledBase || (dieSize + (hdCount - 1) * Math.floor(dieSize / 2));
   }
 
-  const conHpBonus = conMod * character.level;
-  const additionalBonusesSum = (character.hpBreakdown?.additionalBonuses || []).reduce(
+  const conHpBonus = conMod * charLevel;
+  const additionalBonusesSum = (character?.hpBreakdown?.additionalBonuses || []).reduce(
     (acc, b) => acc + (b.amount || 0),
     0
   );
@@ -527,14 +541,14 @@ export function computeDerivedCharacterStats(character: PF1Character): DerivedCo
   const formulaNotation = `${calculatedTotalMaxHP} HP (${hdCount}d${dieSize}${totalHpBonus >= 0 ? `+${totalHpBonus}` : totalHpBonus}) ${calcMethod}`;
 
   // Skill Points calculation (Multistalt, Extra/Lvl, Bonus, and Manual Override)
-  const spConfig = character.skillPointsConfig;
+  const spConfig = character?.skillPointsConfig;
   const effectiveIntMod = spConfig?.intOverride !== undefined ? spConfig.intOverride : intMod;
   const extraPerLvl = spConfig?.extraPerLevel ?? 0;
   const bonusFlat = spConfig?.bonusFlat ?? 0;
-  const favoredBonus = character.favoredClassSkillRanks ?? 0;
+  const favoredBonus = character?.favoredClassSkillRanks ?? 0;
 
   let totalFromClasses = 0;
-  if (character.classes && character.classes.length > 0) {
+  if (character?.classes && character.classes.length > 0) {
     character.classes.forEach((cls) => {
       const spBase =
         spConfig?.classSpOverrides?.[cls.id] ??
@@ -545,23 +559,23 @@ export function computeDerivedCharacterStats(character: PF1Character): DerivedCo
       totalFromClasses += Math.max(1, spBase + effectiveIntMod) * lvl;
     });
   } else {
-    const basePerLevel = character.classSkillPointsPerLevel ?? 2;
-    totalFromClasses = Math.max(1, basePerLevel + effectiveIntMod) * character.level;
+    const basePerLevel = character?.classSkillPointsPerLevel ?? 2;
+    totalFromClasses = Math.max(1, basePerLevel + effectiveIntMod) * charLevel;
   }
 
-  const calculatedMaxAfforded = totalFromClasses + extraPerLvl * character.level + bonusFlat + favoredBonus;
+  const calculatedMaxAfforded = totalFromClasses + extraPerLvl * charLevel + bonusFlat + favoredBonus;
   const maxAfforded =
     spConfig?.isManualOverride && spConfig?.manualOverride !== undefined
       ? spConfig.manualOverride
       : calculatedMaxAfforded;
 
-  const totalSpent = (character.skills || []).reduce((acc, s) => acc + (s.ranks || 0), 0);
+  const totalSpent = (character?.skills || []).reduce((acc, s) => acc + (s.ranks || 0), 0);
   const remainingSkillPoints = maxAfforded - totalSpent;
   const isOverspent = remainingSkillPoints < 0;
 
   // Iterative Attacks (+BAB, +BAB-5, +BAB-10, +BAB-15)
   const iteratives: number[] = [];
-  let babRemain = character.baseAttackBonus;
+  let babRemain = bab;
   while (babRemain > 0) {
     iteratives.push(babRemain);
     babRemain -= 5;
@@ -596,13 +610,17 @@ export function computeDerivedCharacterStats(character: PF1Character): DerivedCo
   for (const ar of character.armor || []) {
     currentWeight += ar.weight || 0;
   }
-  // 50 coins = 1 lb
+  // Coins Weight (Optional feature: default 0.02 lbs each / 50 coins = 1 lb, adjustable)
   const totalCoins =
     (character.currency?.cp || 0) +
     (character.currency?.sp || 0) +
     (character.currency?.gp || 0) +
     (character.currency?.pp || 0);
-  currentWeight += Math.floor(totalCoins / 50);
+  const includeCoinWeight = character.includeCoinWeight ?? false;
+  const coinWeightRate = character.coinWeightRate ?? 0.02;
+  if (includeCoinWeight) {
+    currentWeight += Number((totalCoins * coinWeightRate).toFixed(2));
+  }
 
   let loadStatus: 'Light' | 'Medium' | 'Heavy' | 'Overburdened' = 'Light';
   if (currentWeight > heavyMax) loadStatus = 'Overburdened';

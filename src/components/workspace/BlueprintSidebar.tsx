@@ -22,6 +22,10 @@ import {
   Package,
   Swords,
   Hand,
+  FilePlus,
+  Image as ImageIcon,
+  FolderOpen,
+  FileCode,
 } from 'lucide-react';
 import { ThemeMode, SheetFont, WorkspaceLayout, PF1Character } from '../../types/character';
 
@@ -40,6 +44,9 @@ interface BlueprintSidebarProps {
   onOpenLoadout: () => void;
   onOpenAddClass: () => void;
   onOpenCMBt: () => void;
+  onOpenNewSheet?: () => void;
+  onOpenImageBrowser?: () => void;
+  onExportStandaloneHTML?: () => void;
   onExportJSON: () => void;
   onImportJSON: () => void;
   onExportCSV: () => void;
@@ -61,6 +68,9 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
   onOpenLoadout,
   onOpenAddClass,
   onOpenCMBt,
+  onOpenNewSheet,
+  onOpenImageBrowser,
+  onExportStandaloneHTML,
   onExportJSON,
   onImportJSON,
   onExportCSV,
@@ -390,6 +400,21 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
               <div className="text-[10px] font-mono text-amber-400/80">Rules, Flowchart & Sliders</div>
             </div>
           </button>
+
+          {/* Image & File Browser Tool */}
+          {onOpenImageBrowser && (
+            <button
+              onClick={onOpenImageBrowser}
+              className="p-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-cyan-500/40 hover:border-cyan-400 text-left transition-colors flex items-center gap-2 col-span-2 shadow-sm"
+              title="File Browser for character portraits, item images & fantasy presets"
+            >
+              <FolderOpen className="w-4 h-4 text-cyan-400 shrink-0" />
+              <div className="min-w-0">
+                <div className="text-xs font-bold text-cyan-300 truncate">Image & File Browser</div>
+                <div className="text-[10px] font-mono text-cyan-400/80">Portraits, Items & Presets</div>
+              </div>
+            </button>
+          )}
         </div>
 
         {/* Big Boys Under Buff Box: Loadout and Add Class */}
@@ -420,8 +445,55 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
             </button>
           </div>
 
-          {/* Quick Access CSV Export & Print */}
+          {/* New Sheet / Clear All Button */}
+          {onOpenNewSheet && (
+            <button
+              onClick={onOpenNewSheet}
+              className="w-full py-2 px-3 rounded-lg bg-rose-950/60 hover:bg-rose-900/80 border border-rose-500/50 hover:border-rose-400 text-rose-200 font-mono text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-sm group"
+              title="Clear all character data or start a pristine new sheet"
+            >
+              <FilePlus className="w-4 h-4 text-rose-400 group-hover:scale-110 transition-transform" />
+              <span>Start New Sheet / Clear All</span>
+            </button>
+          )}
+
+          {/* Quick Access JSON & CSV Export / Import */}
           <div className="grid grid-cols-2 gap-1.5 text-[10px] font-mono pt-1">
+            {onExportStandaloneHTML && (
+              <button
+                onClick={onExportStandaloneHTML}
+                className="py-1.5 px-2 rounded-lg bg-emerald-950/70 hover:bg-emerald-900 border border-emerald-500/50 hover:border-emerald-400 text-emerald-300 font-bold flex items-center justify-center gap-1.5 transition-colors col-span-2 shadow-xs group"
+                title="Download single-file standalone HTML that can be double clicked and sent to friends"
+              >
+                <FileCode className="w-3.5 h-3.5 text-emerald-400 group-hover:scale-110 transition-transform" />
+                <span>Export Standalone HTML (.html)</span>
+              </button>
+            )}
+            <a
+              href="/pathfinder_sheet_latest.zip"
+              download="pathfinder_sheet_latest.zip"
+              className="py-1.5 px-2 rounded-lg bg-cyan-950/70 hover:bg-cyan-900 border border-cyan-500/50 hover:border-cyan-400 text-cyan-300 font-bold flex items-center justify-center gap-1.5 transition-colors col-span-2 shadow-xs group text-center"
+              title="Download entire project source code zip to sync directly into your local folder or GitHub"
+            >
+              <Download className="w-3.5 h-3.5 text-cyan-400 group-hover:scale-110 transition-transform" />
+              <span>Download Full Source Code (.zip)</span>
+            </a>
+            <button
+              onClick={onExportJSON}
+              className="py-1 px-1.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-800 text-cyan-400 hover:text-cyan-300 flex items-center justify-center gap-1 transition-colors"
+              title="Download entire character sheet as JSON"
+            >
+              <Download className="w-3 h-3" />
+              <span>Export JSON</span>
+            </button>
+            <button
+              onClick={onImportJSON}
+              className="py-1 px-1.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-800 text-cyan-400 hover:text-cyan-300 flex items-center justify-center gap-1 transition-colors"
+              title="Import character sheet from JSON file"
+            >
+              <Upload className="w-3 h-3" />
+              <span>Import JSON</span>
+            </button>
             <button
               onClick={onExportCSV}
               className="py-1 px-1.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-800 text-emerald-400 hover:text-emerald-300 flex items-center justify-center gap-1 transition-colors"

@@ -7,8 +7,10 @@ import {
   Plus,
   Link as LinkIcon,
   Sparkles,
+  FolderOpen,
 } from 'lucide-react';
 import { PF1Character, ProfileCustomField } from '../../types/character';
+import { ImageFileBrowserModal } from '../tools/ImageFileBrowserModal';
 
 interface ProfileModuleProps {
   character: PF1Character;
@@ -25,6 +27,7 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({
 }) => {
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [tempUrl, setTempUrl] = useState('');
+  const [isFileBrowserOpen, setIsFileBrowserOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isParchment = theme === 'parchment';
@@ -177,18 +180,26 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({
                   <img
                     src={profileData.avatarUrl}
                     alt={character.name}
-                    className="w-full h-full object-cover object-top"
+                    className="w-full h-full object-cover object-top cursor-pointer"
+                    onClick={() => setIsFileBrowserOpen(true)}
                   />
                   <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-2 transition-opacity p-2">
                     <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="px-2.5 py-1 rounded bg-cyan-600 hover:bg-cyan-500 text-slate-950 text-xs font-mono font-bold"
+                      onClick={() => setIsFileBrowserOpen(true)}
+                      className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-mono font-bold shadow-md flex items-center gap-1.5"
                     >
-                      Change Picture
+                      <ImageIcon className="w-3.5 h-3.5" />
+                      <span>File Browser</span>
+                    </button>
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-mono"
+                    >
+                      Quick Upload
                     </button>
                     <button
                       onClick={handleRemoveAvatar}
-                      className="px-2.5 py-1 rounded bg-rose-600/80 hover:bg-rose-500 text-white text-xs font-mono"
+                      className="px-2.5 py-1 rounded bg-rose-600/80 hover:bg-rose-500 text-white text-[11px] font-mono"
                     >
                       Remove
                     </button>
@@ -196,14 +207,18 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({
                 </>
               ) : (
                 <div
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => setIsFileBrowserOpen(true)}
                   className="cursor-pointer text-center p-3 flex flex-col items-center gap-1.5"
                 >
-                  <div className="p-2.5 rounded-full bg-slate-900 border border-slate-700 text-cyan-400">
+                  <div className="p-3 rounded-full bg-slate-900 border border-slate-700 text-cyan-400 group-hover:scale-110 transition-transform">
                     <ImageIcon className="w-6 h-6" />
                   </div>
-                  <span className="text-xs font-semibold text-slate-300">Click or Drop Picture</span>
-                  <span className="text-[10px] text-slate-500">Supports PNG, JPG, WebP</span>
+                  <span className="text-xs font-bold text-slate-200 group-hover:text-cyan-300">
+                    Open File Browser
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    Upload from disk or choose fantasy portrait
+                  </span>
                 </div>
               )}
             </div>
@@ -216,18 +231,26 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({
               className="hidden"
             />
 
-            {/* Picture URL option */}
-            <div className="w-full mt-2 text-center">
+            {/* Quick Actions Bar */}
+            <div className="w-full mt-2.5 flex items-center justify-center gap-2">
+              <button
+                onClick={() => setIsFileBrowserOpen(true)}
+                className="px-2.5 py-1 rounded-lg bg-cyan-950/70 hover:bg-cyan-900 border border-cyan-500/40 text-cyan-300 text-[11px] font-mono font-semibold flex items-center gap-1 transition-colors"
+                title="Browse local disk or fantasy gallery"
+              >
+                <FolderOpen className="w-3 h-3 text-cyan-400" />
+                <span>Browse Files</span>
+              </button>
               {!showUrlInput ? (
                 <button
                   onClick={() => setShowUrlInput(true)}
-                  className="text-[11px] text-cyan-400 hover:underline font-mono inline-flex items-center gap-1"
+                  className="text-[11px] text-slate-400 hover:text-slate-200 hover:underline font-mono inline-flex items-center gap-1"
                 >
                   <LinkIcon className="w-3 h-3" />
-                  <span>Or enter image URL</span>
+                  <span>URL</span>
                 </button>
               ) : (
-                <div className="flex items-center gap-1 mt-1">
+                <div className="flex items-center gap-1">
                   <input
                     type="url"
                     value={tempUrl}
@@ -404,6 +427,26 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Unified Image File Browser Modal for Profile Avatar */}
+      <ImageFileBrowserModal
+        isOpen={isFileBrowserOpen}
+        onClose={() => setIsFileBrowserOpen(false)}
+        targetType="profile"
+        title="Choose Character Profile Picture"
+        subtitle="Select from local disk, curated fantasy adventurer portraits, or enter an image link."
+        currentImageUrl={profileData.avatarUrl}
+        onSelectImage={(url) => {
+          onUpdateCharacter((prev) => ({
+            ...prev,
+            profileData: {
+              ...(prev.profileData || profileData),
+              avatarUrl: url,
+            },
+          }));
+        }}
+        characterExistingImages={character.characterBio?.portraits || []}
+      />
     </div>
   );
 };
