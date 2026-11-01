@@ -106,6 +106,7 @@ export interface WeaponAttack {
   specialProperties?: string;
   isEquipped: boolean;
   imageUrl?: string;
+  icon?: string;
 }
 
 export interface ArmorItem {
@@ -203,6 +204,7 @@ export interface ResourceTracker {
   macroKey?: string; // e.g. "SMITE", "RAGE", "KI"
   category?: 'Class Resource' | 'Spell Slot' | 'Resource Pool' | 'Special';
   notes?: string;
+  icon?: string;
 }
 
 export interface CharacterActionItem {
@@ -229,6 +231,7 @@ export interface FeatItem {
   prerequisites?: string;
   summary: string;
   description?: string;
+  icon?: string;
 }
 
 export interface DowntimeCapital {
@@ -274,8 +277,16 @@ export interface CompanionNPC {
   ac?: string;
 }
 
+export interface ScratchpadPage {
+  id: string;
+  title: string;
+  content: string;
+}
+
 export interface CharacterBioData {
   scratchpad: string;
+  scratchpadPages?: ScratchpadPage[];
+  currentScratchpadPageIndex?: number;
   portraits: string[];
   currentPortraitIndex: number;
   bioSections: { id: string; title: string; content: string }[];
@@ -305,6 +316,7 @@ export interface SpellItem {
   preparedCount: number;
   isCast: boolean;
   description: string;
+  icon?: string;
 }
 
 export interface CustomFormulaObject {
@@ -340,10 +352,12 @@ export interface ConditionState {
 
 export type ThemeMode = 'parchment' | 'blueprint' | 'mythweavers' | 'print';
 export type SheetFont = 'times' | 'cinzel' | 'sans' | 'mono';
+export type GlyphStyleMode = '01-flat-enamel' | '02-beveled-token' | '03-arcane-stamp' | 'none';
 
 export interface WorkspaceLayout {
   theme: ThemeMode;
   font: SheetFont;
+  glyphStyle?: GlyphStyleMode;
   activeSheet: 1 | 2 | 3 | 4;
   showAllSheets: boolean;
   visibleModules: {
@@ -489,6 +503,8 @@ export interface CharacterProfileData {
 export interface RollupNotesData {
   content: string;
   isRolledUp: boolean;
+  pages?: ScratchpadPage[];
+  currentPageIndex?: number;
 }
 
 export interface CharacterClassEntry {

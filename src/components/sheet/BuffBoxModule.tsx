@@ -431,6 +431,7 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
   const isParchment = theme === 'parchment';
   const isBlueprint = theme === 'blueprint';
   const isMythWeavers = theme === 'mythweavers';
+  const isLightTheme = isParchment || theme === 'print';
 
   const cardBg = isParchment
     ? 'bg-amber-50/80 border-amber-800/30 text-stone-900 shadow-sm'
@@ -459,15 +460,15 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
   // Compact Icon Mode |<^>|
   if (viewMode === 'icon') {
     return (
-      <div className="inline-flex items-center">
+      <div className="inline-flex items-center shrink-0 whitespace-nowrap">
         <button
           onClick={() => setViewMode('rollup')}
-          className="px-2.5 py-1 rounded-md font-mono text-xs font-bold bg-amber-600 hover:bg-amber-500 text-slate-950 shadow-md border border-amber-400 flex items-center gap-1.5 transition-all"
+          className="px-2.5 py-1 rounded-md font-mono text-xs font-bold bg-amber-600 hover:bg-amber-500 text-slate-950 shadow-md border border-amber-400 flex items-center gap-1.5 transition-all whitespace-nowrap shrink-0"
           title="Expand Buff Box (|<^>|)"
         >
-          <span>|&lt;^&gt;|</span>
-          <span>Buff Box</span>
-          <span className="ml-1 px-1.5 py-0.2 rounded-full bg-slate-950 text-amber-300 text-[10px]">
+          <span className="whitespace-nowrap shrink-0">|&lt;^&gt;|</span>
+          <span className="whitespace-nowrap shrink-0">Buff Box</span>
+          <span className="ml-1 px-1.5 py-0.2 rounded-full bg-slate-950 text-amber-300 text-[10px] whitespace-nowrap shrink-0">
             {activeCount} active
           </span>
         </button>
@@ -478,22 +479,30 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
   return (
     <div className={`border rounded-lg overflow-hidden ${cardBg} ${fontClass} transition-all duration-200`}>
       {/* Header Bar */}
-      <div className={`px-3 py-2 border-b flex items-center justify-between ${headerBg}`}>
-        <div className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-amber-500" />
-          <span className="font-bold text-xs uppercase tracking-wider">
-            Buff Box: Status Effects & Bonus Matrix
+      <div className={`px-3 py-2 border-b flex items-center justify-between gap-2 ${headerBg}`}>
+        <div className="flex items-center gap-2 min-w-0">
+          <Sparkles className={`w-4 h-4 shrink-0 ${isLightTheme ? 'text-amber-700' : 'text-amber-500'}`} />
+          <span className="font-bold text-xs uppercase tracking-wider truncate">
+            Buff Box: Status Effects &amp; Bonus Matrix
           </span>
-          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/30">
+          <span className={`text-[10px] font-mono px-2 py-0.5 rounded border whitespace-nowrap shrink-0 ${
+            isLightTheme
+              ? 'bg-sky-100 text-sky-900 border-sky-700/40 font-bold'
+              : 'bg-cyan-950 text-cyan-300 border-cyan-500/30'
+          }`}>
             {activeCount} Active / {customBuffs.length} Total
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* Roll left into small compact icon |<^>| */}
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Roll left into small compact icon |<^>| - Never wraps */}
           <button
             onClick={() => setViewMode('icon')}
-            className="px-2 py-0.5 text-xs font-mono font-bold rounded border border-amber-500/40 bg-black/5 dark:bg-white/5 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400"
+            className={`px-2 py-0.5 text-xs font-mono font-bold rounded border whitespace-nowrap shrink-0 ${
+              isLightTheme
+                ? 'border-amber-700/50 bg-amber-100 hover:bg-amber-200 text-amber-950'
+                : 'border-amber-500/40 bg-black/5 dark:bg-white/5 hover:bg-amber-500/20 text-amber-400'
+            }`}
             title="Roll into compact icon |<^>|"
           >
             |&lt;^&gt;|
@@ -502,16 +511,16 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
           {/* Toggle rollup vs expanded */}
           <button
             onClick={() => setViewMode(viewMode === 'expanded' ? 'rollup' : 'expanded')}
-            className="px-2.5 py-0.5 text-xs font-mono font-semibold rounded border border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/10 flex items-center gap-1 transition-colors"
+            className="px-2.5 py-0.5 text-xs font-mono font-semibold rounded border border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/10 flex items-center gap-1 transition-colors whitespace-nowrap shrink-0"
           >
             {viewMode === 'expanded' ? (
               <>
-                <ChevronUp className="w-3.5 h-3.5" />
+                <ChevronUp className="w-3.5 h-3.5 shrink-0" />
                 <span>Roll Up</span>
               </>
             ) : (
               <>
-                <ChevronDown className="w-3.5 h-3.5" />
+                <ChevronDown className="w-3.5 h-3.5 shrink-0" />
                 <span>Expand Matrix</span>
               </>
             )}

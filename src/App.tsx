@@ -38,6 +38,7 @@ import {
   DEFAULT_CHARACTER,
   createBlankCharacter,
   createNewAdventurerCharacter,
+  createDefaultSheetCharacter,
 } from './data/defaultCharacter';
 import { computeDerivedCharacterStats } from './engine/pf1eMath';
 import { DiceRollOutcome } from './engine/formula';
@@ -63,76 +64,97 @@ import { CMBTool } from './components/tools/CMBTool';
 import { NewSheetModal } from './components/tools/NewSheetModal';
 import { ImageFileBrowserModal } from './components/tools/ImageFileBrowserModal';
 
-const LOCAL_STORAGE_KEY = 'pf1e_character_data_v1';
+const LOCAL_STORAGE_KEY = 'pf1e_character_data_v3_default';
 const LOCAL_STORAGE_LAYOUT_KEY = 'pf1e_workspace_layout_v1';
 
 export default function App() {
-  // Initialize character state from injected window object, localStorage, or default
+  // Initialize character state from injected window object, localStorage, or default_sheet.json
   const [character, setCharacter] = useState<PF1Character>(() => {
+    const baseDefault = createDefaultSheetCharacter();
     try {
       if (typeof window !== 'undefined' && (window as any).__INITIAL_CHARACTER__) {
         const injected = (window as any).__INITIAL_CHARACTER__;
         return {
-          ...DEFAULT_CHARACTER,
+          ...baseDefault,
           ...injected,
-          gender: injected.gender || DEFAULT_CHARACTER.gender || 'Male',
-          abilities: { ...DEFAULT_CHARACTER.abilities, ...(injected.abilities || {}) },
-          buffBox: injected.buffBox || DEFAULT_CHARACTER.buffBox,
-          currency: { ...DEFAULT_CHARACTER.currency, ...(injected.currency || {}) },
+          gender: injected.gender || baseDefault.gender || 'Male',
+          abilities: { ...baseDefault.abilities, ...(injected.abilities || {}) },
+          buffBox: injected.buffBox || baseDefault.buffBox,
+          currency: { ...baseDefault.currency, ...(injected.currency || {}) },
           hpBreakdown: {
-            ...DEFAULT_CHARACTER.hpBreakdown,
+            ...baseDefault.hpBreakdown,
             calcMethod: injected.hpBreakdown?.calcMethod || 'max',
             ...(injected.hpBreakdown || {}),
           },
-          characterBio: { ...DEFAULT_CHARACTER.characterBio, ...(injected.characterBio || {}) },
-          conditions: { ...DEFAULT_CHARACTER.conditions, ...(injected.conditions || {}) },
+          characterBio: { ...baseDefault.characterBio, ...(injected.characterBio || {}) },
+          conditions: { ...baseDefault.conditions, ...(injected.conditions || {}) },
           saves: {
-            fortitude: { ...DEFAULT_CHARACTER.saves.fortitude, ...(injected.saves?.fortitude || {}) },
-            reflex: { ...DEFAULT_CHARACTER.saves.reflex, ...(injected.saves?.reflex || {}) },
-            will: { ...DEFAULT_CHARACTER.saves.will, ...(injected.saves?.will || {}) },
+            fortitude: { ...baseDefault.saves.fortitude, ...(injected.saves?.fortitude || {}) },
+            reflex: { ...baseDefault.saves.reflex, ...(injected.saves?.reflex || {}) },
+            will: { ...baseDefault.saves.will, ...(injected.saves?.will || {}) },
           },
-          inventory: Array.isArray(injected.inventory) ? injected.inventory : DEFAULT_CHARACTER.inventory,
-          weapons: Array.isArray(injected.weapons) ? injected.weapons : DEFAULT_CHARACTER.weapons,
-          armor: Array.isArray(injected.armor) ? injected.armor : DEFAULT_CHARACTER.armor,
-          skills: Array.isArray(injected.skills) ? injected.skills : DEFAULT_CHARACTER.skills,
-          classes: Array.isArray(injected.classes) ? injected.classes : DEFAULT_CHARACTER.classes,
+          inventory: Array.isArray(injected.inventory) ? injected.inventory : baseDefault.inventory,
+          weapons: Array.isArray(injected.weapons) ? injected.weapons : baseDefault.weapons,
+          armor: Array.isArray(injected.armor) ? injected.armor : baseDefault.armor,
+          skills: Array.isArray(injected.skills) ? injected.skills : baseDefault.skills,
+          classes: Array.isArray(injected.classes) ? injected.classes : baseDefault.classes,
         };
       }
       const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed && typeof parsed === 'object') {
+          const syncedAvatar =
+            parsed.profileData?.avatarUrl ||
+            parsed.characterBio?.portraits?.[parsed.characterBio?.currentPortraitIndex || 0] ||
+            baseDefault.profileData?.avatarUrl ||
+            '';
+          const syncedPortraits =
+            parsed.characterBio?.portraits && parsed.characterBio.portraits.length > 0
+              ? parsed.characterBio.portraits
+              : syncedAvatar
+              ? [syncedAvatar]
+              : [];
           return {
-            ...DEFAULT_CHARACTER,
+            ...baseDefault,
             ...parsed,
-            gender: parsed.gender || DEFAULT_CHARACTER.gender || 'Male',
-            abilities: { ...DEFAULT_CHARACTER.abilities, ...(parsed.abilities || {}) },
-            buffBox: parsed.buffBox || DEFAULT_CHARACTER.buffBox,
-            currency: { ...DEFAULT_CHARACTER.currency, ...(parsed.currency || {}) },
+            gender: parsed.gender || baseDefault.gender || 'Male',
+            abilities: { ...baseDefault.abilities, ...(parsed.abilities || {}) },
+            buffBox: parsed.buffBox || baseDefault.buffBox,
+            currency: { ...baseDefault.currency, ...(parsed.currency || {}) },
             hpBreakdown: {
-              ...DEFAULT_CHARACTER.hpBreakdown,
+              ...baseDefault.hpBreakdown,
               calcMethod: parsed.hpBreakdown?.calcMethod || 'max',
               ...(parsed.hpBreakdown || {}),
             },
-            characterBio: { ...DEFAULT_CHARACTER.characterBio, ...(parsed.characterBio || {}) },
-            conditions: { ...DEFAULT_CHARACTER.conditions, ...(parsed.conditions || {}) },
-            saves: {
-              fortitude: { ...DEFAULT_CHARACTER.saves.fortitude, ...(parsed.saves?.fortitude || {}) },
-              reflex: { ...DEFAULT_CHARACTER.saves.reflex, ...(parsed.saves?.reflex || {}) },
-              will: { ...DEFAULT_CHARACTER.saves.will, ...(parsed.saves?.will || {}) },
+            profileData: {
+              ...(baseDefault.profileData || { customFields: [] }),
+              ...(parsed.profileData || {}),
+              avatarUrl: syncedAvatar,
             },
-            inventory: Array.isArray(parsed.inventory) ? parsed.inventory : DEFAULT_CHARACTER.inventory,
-            weapons: Array.isArray(parsed.weapons) ? parsed.weapons : DEFAULT_CHARACTER.weapons,
-            armor: Array.isArray(parsed.armor) ? parsed.armor : DEFAULT_CHARACTER.armor,
-            skills: Array.isArray(parsed.skills) ? parsed.skills : DEFAULT_CHARACTER.skills,
-            classes: Array.isArray(parsed.classes) ? parsed.classes : DEFAULT_CHARACTER.classes,
+            characterBio: {
+              ...baseDefault.characterBio,
+              ...(parsed.characterBio || {}),
+              portraits: syncedPortraits,
+            },
+            conditions: { ...baseDefault.conditions, ...(parsed.conditions || {}) },
+            saves: {
+              fortitude: { ...baseDefault.saves.fortitude, ...(parsed.saves?.fortitude || {}) },
+              reflex: { ...baseDefault.saves.reflex, ...(parsed.saves?.reflex || {}) },
+              will: { ...baseDefault.saves.will, ...(parsed.saves?.will || {}) },
+            },
+            inventory: Array.isArray(parsed.inventory) ? parsed.inventory : baseDefault.inventory,
+            weapons: Array.isArray(parsed.weapons) ? parsed.weapons : baseDefault.weapons,
+            armor: Array.isArray(parsed.armor) ? parsed.armor : baseDefault.armor,
+            skills: Array.isArray(parsed.skills) ? parsed.skills : baseDefault.skills,
+            classes: Array.isArray(parsed.classes) ? parsed.classes : baseDefault.classes,
           };
         }
       }
     } catch {
       // Fallback
     }
-    return createNewAdventurerCharacter();
+    return baseDefault;
   });
 
   // Initialize workspace layout
@@ -148,6 +170,7 @@ export default function App() {
           return {
             theme: parsed.theme || 'parchment',
             font: parsed.font || 'times',
+            glyphStyle: parsed.glyphStyle || '01-flat-enamel',
             activeSheet: parsed.activeSheet >= 1 && parsed.activeSheet <= 4 ? parsed.activeSheet : 1,
             showAllSheets: Boolean(parsed.showAllSheets),
             visibleModules: {
@@ -183,6 +206,7 @@ export default function App() {
     return {
       theme: 'parchment', // Defaults to Parchment Tan per user instruction
       font: 'times', // Defaults to Times New Roman 12 per user instruction
+      glyphStyle: '01-flat-enamel',
       activeSheet: 1,
       showAllSheets: false,
       visibleModules: {
@@ -313,20 +337,16 @@ export default function App() {
 
   // Callback when an image is chosen in Image File Browser
   const handleSelectImageFromBrowser = (url: string) => {
-    if (imageBrowserConfig.targetType === 'profile') {
-      setCharacter((prev) => ({
-        ...prev,
-        profileData: {
-          ...(prev.profileData || { customFields: [] }),
-          avatarUrl: url,
-        },
-      }));
-    } else if (imageBrowserConfig.targetType === 'portrait') {
+    if (imageBrowserConfig.targetType === 'profile' || imageBrowserConfig.targetType === 'portrait') {
       setCharacter((prev) => {
         const currentList = prev.characterBio?.portraits || [];
         const updated = url ? [...currentList.filter((p) => p !== url), url] : currentList;
         return {
           ...prev,
+          profileData: {
+            ...(prev.profileData || { customFields: [] }),
+            avatarUrl: url,
+          },
           characterBio: {
             ...(prev.characterBio || { scratchpad: '', bioSections: [] }),
             portraits: updated,
@@ -354,9 +374,9 @@ export default function App() {
     setCharacter(createNewAdventurerCharacter());
   };
 
-  // Reset to default iconic Valerius
+  // Reset to default sheet (default_sheet.json)
   const handleConfirmDefaultSheet = () => {
-    setCharacter(DEFAULT_CHARACTER);
+    setCharacter(createDefaultSheetCharacter());
   };
 
   // Apply point buy and Level ASI updates
@@ -482,7 +502,31 @@ export default function App() {
         try {
           const parsed = JSON.parse(event.target?.result as string);
           if (parsed.name && parsed.abilities) {
-            setCharacter(parsed);
+            const baseDefault = createDefaultSheetCharacter();
+            const syncedAvatar =
+              parsed.profileData?.avatarUrl ||
+              parsed.characterBio?.portraits?.[parsed.characterBio?.currentPortraitIndex || 0] ||
+              '';
+            const syncedPortraits =
+              parsed.characterBio?.portraits && parsed.characterBio.portraits.length > 0
+                ? parsed.characterBio.portraits
+                : syncedAvatar
+                ? [syncedAvatar]
+                : [];
+            setCharacter({
+              ...baseDefault,
+              ...parsed,
+              profileData: {
+                ...(baseDefault.profileData || { customFields: [] }),
+                ...(parsed.profileData || {}),
+                avatarUrl: syncedAvatar,
+              },
+              characterBio: {
+                ...baseDefault.characterBio,
+                ...(parsed.characterBio || {}),
+                portraits: syncedPortraits,
+              },
+            });
           } else {
             alert('Invalid character sheet format.');
           }
@@ -572,20 +616,20 @@ export default function App() {
             Pathfinder 1e <span className="font-sans font-light text-slate-400 text-xs hidden sm:inline">| Modular Workspace</span>
           </span>
 
-          {/* Profile Picture thumbnail / button */}
+          {/* Profile Picture thumbnail / button (smaller) */}
           <button
             onClick={() =>
               handleOpenImageBrowser({
                 targetType: 'profile',
                 title: 'Character Profile Picture Browser',
-                subtitle: 'Choose an avatar from local files, fantasy portraits, or enter an image URL.',
+                subtitle: 'Choose an avatar from local files, generic portraits, or enter an image URL.',
                 currentUrl: character.profileData?.avatarUrl || character.characterBio?.portraits?.[0],
               })
             }
-            className="flex items-center gap-1.5 p-1 pr-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-cyan-500/50 text-slate-300 transition-all group"
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-cyan-500/50 text-slate-300 transition-all group"
             title="Click to browse character profile picture"
           >
-            <div className="w-6 h-6 rounded-full overflow-hidden border border-cyan-500/50 bg-black/60 shrink-0 flex items-center justify-center">
+            <div className="w-4 h-4 rounded-full overflow-hidden border border-cyan-500/50 bg-black/60 shrink-0 flex items-center justify-center">
               {character.profileData?.avatarUrl || character.characterBio?.portraits?.[0] ? (
                 <img
                   src={character.profileData?.avatarUrl || character.characterBio?.portraits?.[0]}
@@ -593,21 +637,21 @@ export default function App() {
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <User className="w-3.5 h-3.5 text-cyan-400" />
+                <User className="w-2.5 h-2.5 text-cyan-400" />
               )}
             </div>
-            <span className="text-xs font-mono hidden md:inline-block group-hover:text-cyan-300 font-semibold truncate max-w-[130px]">
+            <span className="text-[10px] font-mono hidden md:inline-block group-hover:text-cyan-300 font-semibold truncate max-w-[110px]">
               {character.name || 'Unnamed'} (Lvl {character.level})
             </span>
           </button>
 
-          {/* Clear All / New Sheet Button */}
+          {/* Clear All / New Sheet Button (smaller) */}
           <button
             onClick={() => setIsNewSheetOpen(true)}
-            className="px-2.5 py-1 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/40 hover:border-rose-400 text-rose-300 text-xs font-mono font-bold flex items-center gap-1.5 transition-colors shadow-xs"
+            className="px-1.5 py-0.5 rounded bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/40 hover:border-rose-400 text-rose-300 text-[10px] font-mono font-bold flex items-center gap-1 transition-colors shadow-xs"
             title="Clear all / Start a fresh new character sheet"
           >
-            <FilePlus className="w-3.5 h-3.5 text-rose-400" />
+            <FilePlus className="w-3 h-3 text-rose-400" />
             <span className="hidden sm:inline">New Sheet</span>
           </button>
         </div>
@@ -715,16 +759,18 @@ export default function App() {
             </span>
           </button>
 
-          {/* Standalone HTML Export Button */}
-          <button
-            onClick={handleExportStandaloneHTML}
-            disabled={isExportingHTML}
-            className="px-2.5 py-1.5 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-500/50 hover:border-emerald-400 text-emerald-300 text-xs font-mono font-bold flex items-center gap-1.5 transition-colors shadow-xs"
-            title="Export complete standalone single-file HTML sheet to share with friends or host anywhere"
-          >
-            <FileCode className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="hidden xl:inline">{isExportingHTML ? 'Packaging...' : 'Export HTML'}</span>
-          </button>
+          {/* Standalone HTML Export Button (hidden for now) */}
+          {false && (
+            <button
+              onClick={handleExportStandaloneHTML}
+              disabled={isExportingHTML}
+              className="px-2.5 py-1.5 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-500/50 hover:border-emerald-400 text-emerald-300 text-xs font-mono font-bold flex items-center gap-1.5 transition-colors shadow-xs"
+              title="Export complete standalone single-file HTML sheet to share with friends or host anywhere"
+            >
+              <FileCode className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="hidden xl:inline">{isExportingHTML ? 'Packaging...' : 'Export HTML'}</span>
+            </button>
+          )}
 
           <button
             onClick={() => window.print()}
@@ -803,6 +849,7 @@ export default function App() {
                     derived={derived}
                     theme={layout.theme}
                     fontClass={getFontClass()}
+                    glyphStyle={layout.glyphStyle || '01-flat-enamel'}
                     onUpdateCharacter={setCharacter}
                     onRollFormula={handleRollFormula}
                     visibleModules={layout.visibleModules}
@@ -822,6 +869,7 @@ export default function App() {
                     derived={derived}
                     theme={layout.theme}
                     fontClass={getFontClass()}
+                    glyphStyle={layout.glyphStyle || '01-flat-enamel'}
                     onUpdateCharacter={setCharacter}
                     onRollFormula={handleRollFormula}
                     visibleModules={layout.visibleModules}
@@ -838,6 +886,7 @@ export default function App() {
                     derived={derived}
                     theme={layout.theme}
                     fontClass={getFontClass()}
+                    glyphStyle={layout.glyphStyle || '01-flat-enamel'}
                     onUpdateCharacter={setCharacter}
                     onRollFormula={handleRollFormula}
                     visibleModules={layout.visibleModules}
@@ -853,6 +902,7 @@ export default function App() {
                     derived={derived}
                     theme={layout.theme}
                     fontClass={getFontClass()}
+                    glyphStyle={layout.glyphStyle || '01-flat-enamel'}
                     onUpdateCharacter={setCharacter}
                     onRollFormula={handleRollFormula}
                     visibleModules={layout.visibleModules}
@@ -868,6 +918,7 @@ export default function App() {
                     derived={derived}
                     theme={layout.theme}
                     fontClass={getFontClass()}
+                    glyphStyle={layout.glyphStyle || '01-flat-enamel'}
                     onUpdateCharacter={setCharacter}
                     onRollFormula={handleRollFormula}
                     visibleModules={layout.visibleModules}
@@ -880,6 +931,7 @@ export default function App() {
                     derived={derived}
                     theme={layout.theme}
                     fontClass={getFontClass()}
+                    glyphStyle={layout.glyphStyle || '01-flat-enamel'}
                     onUpdateCharacter={setCharacter}
                     onRollFormula={handleRollFormula}
                     visibleModules={layout.visibleModules}
@@ -1045,6 +1097,7 @@ export default function App() {
           ...(character.characterBio?.portraits || []),
           ...(character.inventory || []).map((i) => i.imageUrl || ''),
         ].filter(Boolean)}
+        glyphStyle={layout.glyphStyle || '01-flat-enamel'}
       />
     </div>
   );

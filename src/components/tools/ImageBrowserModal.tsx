@@ -32,100 +32,25 @@ interface ImagePreset {
   url: string;
 }
 
+import {
+  GLYPH_DEFINITIONS,
+  GENERIC_PORTRAITS,
+  getGlyphUrl,
+} from '../../data/glyphs';
+
 const PRESET_IMAGES: ImagePreset[] = [
-  // Applet silhouette asset
-  {
-    id: 'p-silhouette',
-    name: 'Body Silhouette (Dual)',
-    category: 'character',
-    url: '/assets/aistudio/image_1f44ffe4.png',
-  },
-  // Character portraits (Curated high-res fantasy tokens)
-  {
-    id: 'p-valerius',
-    name: 'Dragon Knight (Valerius)',
-    category: 'character',
-    url: 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=400&q=80',
-  },
-  {
-    id: 'p-mage',
-    name: 'Arcane Wizard / Mage',
-    category: 'character',
-    url: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=400&q=80',
-  },
-  {
-    id: 'p-rogue',
-    name: 'Shadow Rogue / Scout',
-    category: 'character',
-    url: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&w=400&q=80',
-  },
-  {
-    id: 'p-cleric',
-    name: 'Holy Cleric / Paladin',
-    category: 'character',
-    url: 'https://images.unsplash.com/photo-1563089145-599997674d42?auto=format&fit=crop&w=400&q=80',
-  },
-  {
-    id: 'p-barbarian',
-    name: 'Raging Berserker',
-    category: 'character',
-    url: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=400&q=80',
-  },
-  // Equipment & Item Icons
-  {
-    id: 'p-ring-lazy',
-    name: 'Ring of Lazy Draw',
-    category: 'magic',
-    url: 'https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=400&q=80',
-  },
-  {
-    id: 'p-flame-axe',
-    name: '+1 Flaming Greataxe',
-    category: 'weapon',
-    url: 'https://images.unsplash.com/photo-1589254065878-42c9da997008?auto=format&fit=crop&w=400&q=80',
-  },
-  {
-    id: 'p-shield',
-    name: 'Mithral Heavy Shield',
-    category: 'armor',
-    url: 'https://images.unsplash.com/photo-1590736969955-71cc94801759?auto=format&fit=crop&w=400&q=80',
-  },
-  {
-    id: 'p-full-plate',
-    name: 'Full Plate Armor',
-    category: 'armor',
-    url: 'https://images.unsplash.com/photo-1544717302-de2939b7ef71?auto=format&fit=crop&w=400&q=80',
-  },
-  {
-    id: 'p-haversack',
-    name: 'Handy Haversack / Bag',
-    category: 'magic',
-    url: 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?auto=format&fit=crop&w=400&q=80',
-  },
-  {
-    id: 'p-potion-cure',
-    name: 'Healing Elixir / Potion',
-    category: 'magic',
-    url: 'https://images.unsplash.com/photo-1514733670139-4d87a1941d55?auto=format&fit=crop&w=400&q=80',
-  },
-  {
-    id: 'p-wand',
-    name: 'Wand of Mage Armor',
-    category: 'magic',
-    url: 'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=400&q=80',
-  },
-  {
-    id: 'p-bow',
-    name: 'Composite Longbow',
-    category: 'weapon',
-    url: 'https://images.unsplash.com/photo-1516962215378-7fa2e137ae93?auto=format&fit=crop&w=400&q=80',
-  },
-  {
-    id: 'p-gems',
-    name: 'Gemstones & Treasure',
-    category: 'magic',
-    url: 'https://images.unsplash.com/photo-1599707367072-cd6ada2bc375?auto=format&fit=crop&w=400&q=80',
-  },
+  ...GENERIC_PORTRAITS.map((p) => ({
+    id: p.id,
+    name: p.name,
+    category: 'character' as const,
+    url: p.url,
+  })),
+  ...GLYPH_DEFINITIONS.map((g) => ({
+    id: g.id,
+    name: g.name,
+    category: 'token' as const,
+    url: getGlyphUrl(g.id, '01-flat-enamel') || `/character-sheet-icons/01-flat-enamel/${g.filename}`,
+  })),
 ];
 
 export const ImageBrowserModal: React.FC<ImageBrowserModalProps> = ({

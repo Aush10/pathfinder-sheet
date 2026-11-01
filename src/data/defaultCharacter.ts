@@ -5,6 +5,7 @@
 
 import { PF1Character, SkillItem } from '../types/character';
 import newAdventurerTemplate from '../../New_Adventurer_pf1e_sheet.json';
+import defaultSheetTemplate from '../../default_sheet.json';
 
 const isOneOf = <T extends readonly string[]>(value: string, options: T): value is T[number] =>
   options.some((option) => option === value);
@@ -117,6 +118,58 @@ export const NEW_ADVENTURER_CHARACTER: PF1Character = {
 
 export function createNewAdventurerCharacter(): PF1Character {
   return structuredClone(NEW_ADVENTURER_CHARACTER);
+}
+
+export function createDefaultSheetCharacter(): PF1Character {
+  const raw = structuredClone(defaultSheetTemplate) as unknown as PF1Character;
+  const avatar =
+    raw.profileData?.avatarUrl ||
+    raw.characterBio?.portraits?.[raw.characterBio?.currentPortraitIndex || 0] ||
+    '/character-sheet-icons/04-generic-portraits/generic-knight.png';
+  const existingPortraits = raw.characterBio?.portraits?.length
+    ? raw.characterBio.portraits
+    : [avatar];
+
+  return {
+    ...DEFAULT_CHARACTER,
+    ...raw,
+    profileData: {
+      avatarUrl: avatar,
+      customFields: raw.profileData?.customFields || DEFAULT_CHARACTER.profileData?.customFields || [],
+    },
+    characterBio: {
+      scratchpad:
+        raw.characterBio?.scratchpad ||
+        raw.rollupNotes?.content ||
+        DEFAULT_CHARACTER.characterBio?.scratchpad ||
+        '',
+      scratchpadPages: raw.characterBio?.scratchpadPages || [
+        {
+          id: 'page-1',
+          title: 'Page 1',
+          content:
+            raw.characterBio?.scratchpad ||
+            raw.rollupNotes?.content ||
+            DEFAULT_CHARACTER.characterBio?.scratchpad ||
+            '',
+        },
+      ],
+      currentScratchpadPageIndex: 0,
+      portraits: existingPortraits,
+      currentPortraitIndex: raw.characterBio?.currentPortraitIndex || 0,
+      bioSections:
+        raw.characterBio?.bioSections ||
+        raw.profileData?.customFields?.map((f) => ({
+          id: f.id,
+          title: f.title,
+          content: f.content,
+        })) ||
+        DEFAULT_CHARACTER.characterBio?.bioSections ||
+        [],
+      skin: raw.characterBio?.skin || DEFAULT_CHARACTER.characterBio?.skin || 'Sun-bronzed',
+    },
+    activeStorageTab: raw.activeStorageTab || 'worn',
+  };
 }
 
 export const INITIAL_SKILLS: SkillItem[] = [

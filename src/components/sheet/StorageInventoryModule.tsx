@@ -33,12 +33,15 @@ import {
 } from '../../types/character';
 import { DerivedCombatStats } from '../../engine/pf1eMath';
 import { ImageFileBrowserModal } from '../tools/ImageFileBrowserModal';
+import { GlyphStyle, resolveIconOrGlyphUrl, isGlyphId } from '../../data/glyphs';
+import { GlyphPicker } from '../tools/GlyphPicker';
 
 interface StorageInventoryModuleProps {
   character: PF1Character;
   derived: DerivedCombatStats;
   theme: string;
   fontClass: string;
+  glyphStyle?: GlyphStyle;
   onUpdateCharacter: (updater: (prev: PF1Character) => PF1Character) => void;
   onRollFormula?: (formula: string, label?: string) => void;
 }
@@ -65,6 +68,7 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
   derived,
   theme,
   fontClass,
+  glyphStyle = '01-flat-enamel',
   onUpdateCharacter,
   onRollFormula,
 }) => {
@@ -93,6 +97,7 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
   const isParchment = theme === 'parchment';
   const isBlueprint = theme === 'blueprint';
   const isMythWeavers = theme === 'mythweavers';
+  const isLightTheme = isParchment || theme === 'print';
 
   // Gender check for body slot silhouette: default male (left image), female if female selected (right image)
   const isFemale = (character.gender || '').toLowerCase().includes('fem');
@@ -112,6 +117,10 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
     : isMythWeavers
     ? 'bg-[#0d0e10] border-[#383d47] text-amber-100 focus:border-amber-500'
     : 'bg-white border-neutral-400 text-black';
+
+  const accentTitleText = isLightTheme ? 'text-stone-900' : 'text-amber-300';
+  const accentLabelText = isLightTheme ? 'text-amber-900' : 'text-amber-400';
+  const accentCyanText = isLightTheme ? 'text-sky-900 font-bold' : 'text-cyan-300';
 
   const setField = <K extends keyof PF1Character>(key: K, value: PF1Character[K]) => {
     onUpdateCharacter((prev) => ({ ...prev, [key]: value }));
@@ -560,13 +569,13 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
   };
 
   return (
-    <div className={`rounded-2xl border p-4 sm:p-5 ${cardBg} ${fontClass} space-y-5 shadow-xl`}>
+    <div className={`rounded-2xl border p-4 sm:p-5 ${cardBg} ${fontClass} space-y-5 shadow-xl overflow-hidden max-w-full`}>
       {/* Module Title & Active Filter Bar */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-black/10 dark:border-white/10">
         <div className="flex items-center gap-2.5">
-          <Package className="w-5 h-5 text-amber-400" />
+          <Package className={`w-5 h-5 ${accentLabelText}`} />
           <div>
-            <h3 className="font-serif font-bold text-base tracking-wide text-amber-300">
+            <h3 className={`font-serif font-bold text-base tracking-wide ${accentTitleText}`}>
               Storage &amp; Equipment Matrix
             </h3>
             <span className="text-xs opacity-70">
@@ -584,13 +593,21 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
                 setSelectedCategory('all');
                 setSelectedBag('all');
               }}
-              className="px-2 py-0.5 rounded bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white border border-rose-500/40 text-[10px] flex items-center gap-1 transition-colors"
+              className={`px-2 py-0.5 rounded border text-[10px] flex items-center gap-1 transition-colors ${
+                isLightTheme
+                  ? 'bg-rose-100 hover:bg-rose-600 text-rose-900 hover:text-white border-rose-400'
+                  : 'bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white border-rose-500/40'
+              }`}
             >
               <X className="w-3 h-3" />
               <span>Reset Filters</span>
             </button>
           )}
-          <span className="px-2 py-0.5 rounded bg-black/40 text-amber-300 border border-amber-500/30">
+          <span className={`px-2 py-0.5 rounded border font-bold ${
+            isLightTheme
+              ? 'bg-amber-100 text-stone-900 border-amber-700/40'
+              : 'bg-black/40 text-amber-300 border-amber-500/30'
+          }`}>
             {filteredInventory.length} / {inventory.length} Items
           </span>
         </div>
@@ -604,38 +621,46 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
         {/* ========================================================================= */}
         {/* LEFT COMPONENT: Interactive Silhouette Figure + Bag Buttons (md:col-span-4)*/}
         {/* ========================================================================= */}
-        <div className="md:col-span-4 flex flex-col items-center p-3 rounded-xl bg-black/10 dark:bg-black/30 border border-black/10 dark:border-white/10 space-y-3">
-          <div className="w-full flex items-center justify-between text-[11px] font-mono opacity-80 border-b border-black/10 dark:border-white/10 pb-1">
+        <div className="md:col-span-4 flex flex-col items-center p-3 rounded-xl bg-black/5 dark:bg-black/30 border border-black/10 dark:border-white/10 space-y-3">
+          <div className="w-full flex items-center justify-between text-[11px] font-mono opacity-90 border-b border-black/10 dark:border-white/10 pb-1">
             <div className="flex items-center gap-1.5">
-              <span className="font-bold text-amber-300">Body Slot Selector</span>
+              <span className={`font-bold ${accentTitleText}`}>Body Slot Selector</span>
               <button
                 onClick={() => setField('gender', isFemale ? 'Male' : 'Female')}
-                className="text-[9px] px-1.5 py-0.2 rounded bg-black/40 text-cyan-300 hover:text-cyan-200 border border-cyan-700/40"
+                className={`text-[9px] px-1.5 py-0.2 rounded border ${
+                  isLightTheme
+                    ? 'bg-sky-100 text-sky-900 hover:bg-sky-200 border-sky-700/40 font-bold'
+                    : 'bg-black/40 text-cyan-300 hover:text-cyan-200 border-cyan-700/40'
+                }`}
                 title="Toggle Silhouette Gender (Male left, Female right)"
               >
                 {isFemale ? '♀ Female' : '♂ Male'}
               </button>
             </div>
-            <span className="text-[10px] text-cyan-300">
+            <span className={`text-[10px] ${accentCyanText}`}>
               {selectedBodySlots.includes('all') ? 'All Slots' : `${selectedBodySlots.length} Selected`}
             </span>
           </div>
 
-          {/* Interactive Silhouette using asset /public/assets/aistudio/image_1f44ffe4.png */}
+          {/* Interactive Silhouette using asset /assets/aistudio/image_1f44ffe4.png */}
           {/* Default: Left figure (Male). If female: Right figure (Female) */}
-          <div className="relative w-44 h-72 rounded-xl overflow-hidden bg-slate-950/40 border border-black/20 dark:border-white/10 flex items-center justify-center select-none shadow-inner">
+          <div className={`relative w-44 h-72 rounded-xl overflow-hidden border select-none shadow-inner ${
+            isLightTheme
+              ? 'bg-amber-900/10 border-amber-900/25'
+              : 'bg-slate-950/40 border-white/10'
+          }`}>
             <img
-              src="/public/assets/aistudio/image_1f44ffe4.png"
+              src="/assets/aistudio/image_1f44ffe4.png"
               alt={isFemale ? 'Female Body Silhouette' : 'Male Body Silhouette'}
-              className={`absolute h-[112%] max-w-none select-none pointer-events-none transition-all duration-300 ${
-                isParchment
-                  ? 'mix-blend-multiply opacity-80'
+              className={`absolute h-[108%] max-w-none select-none pointer-events-none transition-all duration-300 ${
+                isLightTheme
+                  ? 'mix-blend-multiply opacity-85'
                   : 'invert brightness-90 contrast-200 mix-blend-screen'
               }`}
               style={{
-                width: '215%',
-                left: isFemale ? '-112%' : '0%',
-                top: '-3%',
+                width: '200%',
+                left: isFemale ? '-100%' : '0%',
+                top: '-2%',
               }}
             />
 
@@ -769,6 +794,8 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
               className={`px-1.5 py-0.5 rounded transition-colors ${
                 selectedBodySlots.includes('all')
                   ? 'bg-amber-500 text-slate-950 font-bold'
+                  : isLightTheme
+                  ? 'bg-black/10 text-stone-800 hover:bg-black/20'
                   : 'bg-black/20 text-slate-400 hover:text-white'
               }`}
             >
@@ -796,6 +823,8 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
                   className={`px-1.5 py-0.5 rounded transition-colors ${
                     active
                       ? 'bg-amber-400 text-slate-950 font-bold ring-1 ring-amber-300'
+                      : isLightTheme
+                      ? 'bg-black/10 text-stone-800 hover:bg-black/20'
                       : 'bg-black/20 text-slate-400 hover:text-white'
                   }`}
                 >
@@ -813,6 +842,8 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
                 className={`flex-1 py-1 px-2 rounded text-center transition-colors text-xs ${
                   selectedBag === 'all'
                     ? 'bg-amber-500 text-slate-950 font-bold'
+                    : isLightTheme
+                    ? 'bg-black/10 hover:bg-black/20 text-stone-800 font-semibold'
                     : 'bg-black/20 hover:bg-black/30 text-slate-300'
                 }`}
               >
@@ -821,7 +852,11 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
 
               <button
                 onClick={() => setIsAddBagOpen(true)}
-                className="p-1 rounded bg-black/20 hover:bg-black/30 text-amber-300"
+                className={`p-1 rounded ${
+                  isLightTheme
+                    ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-700/30'
+                    : 'bg-black/20 hover:bg-black/30 text-amber-300'
+                }`}
                 title="Add new container / bag"
               >
                 <FolderPlus className="w-3.5 h-3.5" />
@@ -849,9 +884,13 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
 
             {/* DROPPED CONTAINER CONTROLS & DELETE OPTION */}
             {selectedBag !== 'all' && (
-              <div className="p-2 rounded-lg bg-black/20 dark:bg-black/40 border border-slate-700/50 space-y-2 text-xs">
+              <div className={`p-2 rounded-lg border space-y-2 text-xs ${
+                isLightTheme
+                  ? 'bg-amber-100/60 border-amber-800/30 text-stone-900'
+                  : 'bg-black/20 dark:bg-black/40 border-slate-700/50'
+              }`}>
                 <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-1.5 cursor-pointer font-bold text-amber-300">
+                  <label className={`flex items-center gap-1.5 cursor-pointer font-bold ${accentTitleText}`}>
                     <input
                       type="checkbox"
                       checked={selectedBagMetrics.isDropped}
@@ -867,12 +906,16 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
 
                 {selectedBagMetrics.isDropped ? (
                   <div className="space-y-1.5 pt-1">
-                    <div className="text-[10px] text-amber-300/90 bg-amber-500/10 px-2 py-1 rounded border border-amber-500/20">
+                    <div className={`text-[10px] px-2 py-1 rounded border ${
+                      isLightTheme
+                        ? 'text-amber-950 bg-amber-200/70 border-amber-700/40 font-semibold'
+                        : 'text-amber-300/90 bg-amber-500/10 border-amber-500/20'
+                    }`}>
                       ⚠️ Bag dropped: {selectedBagMetrics.weight} lbs subtracted from carried load.
                     </div>
                     <button
                       onClick={() => handleDeleteBagAndContents(selectedBag)}
-                      className="w-full py-1 px-2 rounded bg-rose-600/30 hover:bg-rose-600 text-rose-200 hover:text-white border border-rose-500/50 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors"
+                      className="w-full py-1 px-2 rounded bg-rose-600 hover:bg-rose-500 text-white border border-rose-500 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors"
                       title="Permanently delete bag and its contents"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -880,7 +923,9 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
                     </button>
                   </div>
                 ) : (
-                  <div className="text-[10px] text-emerald-400/90 flex items-center gap-1">
+                  <div className={`text-[10px] flex items-center gap-1 font-semibold ${
+                    isLightTheme ? 'text-emerald-800' : 'text-emerald-400/90'
+                  }`}>
                     <span>✓ Held by default (included in carried load)</span>
                   </div>
                 )}
@@ -892,7 +937,7 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
         {/* ========================================================================= */}
         {/* RIGHT COMPONENT: Rainbow Category Strip + Item Rows List (md:col-span-8)  */}
         {/* ========================================================================= */}
-        <div className="md:col-span-8 flex gap-2.5 items-stretch">
+        <div className="md:col-span-8 flex gap-2.5 items-stretch min-w-0">
           {/* Rainbow / Color-coded Category Jump Bar (Matches wireframe colored scrollbar) */}
           <div className="w-7 shrink-0 flex flex-col rounded-lg overflow-hidden border border-black/20 dark:border-white/20 select-none shadow-sm">
             {CATEGORIES.map((cat) => {
@@ -915,15 +960,19 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
           </div>
 
           {/* Main Item List Card */}
-          <div className="flex-1 flex flex-col rounded-xl bg-black/10 dark:bg-black/25 border border-black/10 dark:border-white/10 p-3 space-y-3 min-w-0">
+          <div className="flex-1 flex flex-col rounded-xl bg-black/5 dark:bg-black/25 border border-black/10 dark:border-white/10 p-3 space-y-3 min-w-0 overflow-hidden">
             {/* Top Bar: Items count & "new item" button */}
             <div className="flex items-center justify-between pb-2 border-b border-black/10 dark:border-white/10">
               <div className="flex items-center gap-2">
-                <span className="font-serif font-bold text-xs uppercase tracking-wider text-amber-300">
+                <span className={`font-serif font-bold text-xs uppercase tracking-wider ${accentTitleText}`}>
                   Inventory Items
                 </span>
                 {selectedCategory !== 'all' && (
-                  <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-black/40 text-amber-300 border border-amber-500/30">
+                  <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded border font-bold ${
+                    isLightTheme
+                      ? 'bg-amber-100 text-stone-900 border-amber-700/40'
+                      : 'bg-black/40 text-amber-300 border-amber-500/30'
+                  }`}>
                     {selectedCategory}
                   </span>
                 )}
@@ -934,43 +983,59 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
                 className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold font-mono text-xs flex items-center gap-1 shadow-sm transition-transform active:scale-95"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>+ New Item</span>
+                <span>New Item</span>
               </button>
             </div>
 
             {/* Items Table List */}
-            <div className="space-y-1.5 max-h-[300px] overflow-y-auto pr-1 font-mono text-xs">
+            <div className="space-y-1.5 max-h-[300px] overflow-y-auto overflow-x-hidden pr-1 font-mono text-xs">
               {filteredInventory.map((item) => {
                 const isSelected = item.id === selectedItemId;
                 // Category color pip
                 const catObj = CATEGORIES.find(
                   (c) => c.id.toLowerCase() === (item.category || '').toLowerCase()
                 ) || CATEGORIES[4];
+                const resolvedItemImg = resolveIconOrGlyphUrl(item.imageUrl, glyphStyle);
 
                 return (
                   <div
                     key={item.id}
                     onClick={() => setSelectedItemId(item.id)}
-                    className={`group p-2 rounded-lg border transition-all cursor-pointer flex items-center justify-between gap-2 ${
+                    className={`group p-2 rounded-lg border transition-all cursor-pointer flex items-center justify-between gap-2 overflow-hidden min-w-0 ${
                       isSelected
                         ? 'border-amber-500/80 bg-amber-500/15 shadow-sm'
-                        : 'border-black/5 dark:border-white/5 bg-black/5 dark:bg-white/5 hover:border-amber-500/40'
+                        : 'border-black/10 dark:border-white/5 bg-black/5 dark:bg-white/5 hover:border-amber-500/40'
                     }`}
                   >
-                    {/* Left: Category color bar + Item Name + Dropdown chevron */}
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                    {/* Left: Category color bar + Optional Item Thumbnail + Item Name */}
+                    <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
                       <div
                         className="w-1.5 h-7 rounded-full shrink-0"
                         style={{ backgroundColor: catObj.color }}
                         title={item.category || 'Gear'}
                       />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-bold text-xs truncate text-amber-200">
+                      {resolvedItemImg && (
+                        <div className="w-6 h-6 rounded overflow-hidden shrink-0 border border-black/20 dark:border-white/20 bg-black/20 flex items-center justify-center">
+                          <img
+                            src={resolvedItemImg}
+                            alt=""
+                            className={`w-full h-full ${isGlyphId(item.imageUrl) ? 'object-contain p-0.5' : 'object-cover'}`}
+                          />
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1 overflow-hidden">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className={`font-bold text-xs truncate ${
+                            isLightTheme ? 'text-stone-900' : 'text-amber-200'
+                          }`}>
                             {item.name}
                           </span>
                           {item.isEquipped && (
-                            <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-700/40">
+                            <span className={`text-[9px] px-1 py-0.2 rounded border shrink-0 font-bold ${
+                              isLightTheme
+                                ? 'bg-emerald-100 text-emerald-900 border-emerald-700/40'
+                                : 'bg-emerald-950 text-emerald-300 border-emerald-700/40'
+                            }`}>
                               Equipped
                             </span>
                           )}
@@ -980,9 +1045,11 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
                                 e.stopPropagation();
                                 handleToggleItemBuff(item);
                               }}
-                              className={`text-[9px] px-1.5 py-0.2 rounded font-bold flex items-center gap-1 border transition-all ${
+                              className={`text-[9px] px-1.5 py-0.2 rounded font-bold flex items-center gap-1 border transition-all shrink-0 ${
                                 item.buffActive
                                   ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-xs'
+                                  : isLightTheme
+                                  ? 'bg-stone-200 text-stone-700 border-stone-400 hover:bg-stone-300'
                                   : 'bg-black/30 text-slate-400 border-slate-700 hover:text-white'
                               }`}
                               title="Toggle Item Buff On/Off (syncs with Buff Box)"
@@ -992,7 +1059,7 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
                             </button>
                           )}
                         </div>
-                        <div className="text-[10px] opacity-60 flex items-center gap-1.5 truncate">
+                        <div className="text-[10px] opacity-65 flex items-center gap-1.5 truncate">
                           <span>{item.location || 'Backpack'}</span>
                           {item.bodySlot && item.bodySlot !== 'none' && (
                             <span>• Slot: {item.bodySlot}</span>
@@ -1024,7 +1091,11 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
                         <option value="charges">Charges</option>
                       </select>
 
-                      <div className="min-w-[70px] text-right font-bold text-amber-300 text-xs px-1.5 py-0.5 rounded bg-black/30 border border-black/10 dark:border-white/10 truncate">
+                      <div className={`min-w-[70px] text-right font-bold text-xs px-1.5 py-0.5 rounded border truncate ${
+                        isLightTheme
+                          ? 'bg-amber-100/80 text-stone-900 border-amber-800/30'
+                          : 'bg-black/30 text-amber-300 border-black/10 dark:border-white/10'
+                      }`}>
                         {renderQuickInfoValue(item)}
                       </div>
                     </div>
@@ -1035,7 +1106,11 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
                         e.stopPropagation();
                         handleDeleteItem(item.id);
                       }}
-                      className="text-rose-400 hover:text-rose-300 hover:bg-rose-500/20 p-1 rounded transition-colors shrink-0"
+                      className={`p-1 rounded transition-colors shrink-0 ${
+                        isLightTheme
+                          ? 'text-rose-700 hover:text-rose-900 hover:bg-rose-200'
+                          : 'text-rose-400 hover:text-rose-300 hover:bg-rose-500/20'
+                      }`}
                       title="Delete item (x)"
                     >
                       <X className="w-3.5 h-3.5" />
@@ -1062,85 +1137,123 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
         {/* ========================================================================= */}
         {/* BOTTOM LEFT: 4-Quadrant Coinage + Load/Lift Capacities (md:col-span-5)    */}
         {/* ========================================================================= */}
-        <div className="md:col-span-5 space-y-3">
+        <div className="md:col-span-5 space-y-3 min-w-0">
           {/* 4-Quadrant Coinage Box (Plat, Gold, Silver, Copper) */}
-          <div className="p-3 rounded-xl bg-black/15 dark:bg-black/35 border border-black/10 dark:border-white/10 space-y-2">
+          <div className="p-3 rounded-xl bg-black/5 dark:bg-black/35 border border-black/10 dark:border-white/10 space-y-2">
             <div className="flex items-center justify-between font-mono text-xs">
-              <span className="font-bold text-amber-400 flex items-center gap-1">
+              <span className={`font-bold ${accentLabelText} flex items-center gap-1`}>
                 <Coins className="w-3.5 h-3.5" />
                 <span>Coinage &amp; Wealth</span>
               </span>
-              <span className="text-[11px] opacity-75">
-                Total: <strong className="text-amber-300">{totalValueInGp.toLocaleString()} gp</strong>
+              <span className="text-[11px] opacity-85">
+                Total: <strong className={accentTitleText}>{totalValueInGp.toLocaleString()} gp</strong>
               </span>
             </div>
 
             {/* 4-Quadrant Grid */}
             <div className="grid grid-cols-2 gap-2 font-mono text-xs">
               {/* Platinum (Top Left) */}
-              <div className="p-2 rounded-lg bg-indigo-950/40 border border-indigo-700/40 flex items-center justify-between">
-                <span className="text-indigo-300 font-bold">Plat (pp)</span>
+              <div className={`p-2 rounded-lg border flex items-center justify-between ${
+                isLightTheme
+                  ? 'bg-indigo-100/70 border-indigo-400 text-indigo-950'
+                  : 'bg-indigo-950/40 border-indigo-700/40 text-indigo-300'
+              }`}>
+                <span className="font-bold">Plat (pp)</span>
                 <input
                   type="number"
                   min="0"
                   value={currency.pp || 0}
                   onChange={(e) => updateCurrency('pp', parseInt(e.target.value, 10) || 0)}
-                  className="w-16 text-right px-1.5 py-0.5 rounded bg-black/50 text-indigo-200 border border-indigo-800 font-bold focus:outline-none"
+                  className={`w-16 text-right px-1.5 py-0.5 rounded border font-bold focus:outline-none ${
+                    isLightTheme
+                      ? 'bg-white text-indigo-950 border-indigo-400'
+                      : 'bg-black/50 text-indigo-200 border-indigo-800'
+                  }`}
                 />
               </div>
 
               {/* Gold (Top Right) */}
-              <div className="p-2 rounded-lg bg-amber-950/40 border border-amber-600/50 flex items-center justify-between">
-                <span className="text-amber-300 font-bold">Gold (gp)</span>
+              <div className={`p-2 rounded-lg border flex items-center justify-between ${
+                isLightTheme
+                  ? 'bg-amber-100/80 border-amber-500 text-amber-950'
+                  : 'bg-amber-950/40 border-amber-600/50 text-amber-300'
+              }`}>
+                <span className="font-bold">Gold (gp)</span>
                 <input
                   type="number"
                   min="0"
                   value={currency.gp || 0}
                   onChange={(e) => updateCurrency('gp', parseInt(e.target.value, 10) || 0)}
-                  className="w-20 text-right px-1.5 py-0.5 rounded bg-black/50 text-amber-200 border border-amber-600 font-bold focus:outline-none"
+                  className={`w-20 text-right px-1.5 py-0.5 rounded border font-bold focus:outline-none ${
+                    isLightTheme
+                      ? 'bg-white text-amber-950 border-amber-500'
+                      : 'bg-black/50 text-amber-200 border-amber-600'
+                  }`}
                 />
               </div>
 
               {/* Silver (Bottom Left) */}
-              <div className="p-2 rounded-lg bg-slate-900/60 border border-slate-700/50 flex items-center justify-between">
-                <span className="text-slate-300 font-bold">Silver (sp)</span>
+              <div className={`p-2 rounded-lg border flex items-center justify-between ${
+                isLightTheme
+                  ? 'bg-slate-200/80 border-slate-400 text-slate-900'
+                  : 'bg-slate-900/60 border-slate-700/50 text-slate-300'
+              }`}>
+                <span className="font-bold">Silver (sp)</span>
                 <input
                   type="number"
                   min="0"
                   value={currency.sp || 0}
                   onChange={(e) => updateCurrency('sp', parseInt(e.target.value, 10) || 0)}
-                  className="w-16 text-right px-1.5 py-0.5 rounded bg-black/50 text-slate-200 border border-slate-700 font-bold focus:outline-none"
+                  className={`w-16 text-right px-1.5 py-0.5 rounded border font-bold focus:outline-none ${
+                    isLightTheme
+                      ? 'bg-white text-slate-900 border-slate-400'
+                      : 'bg-black/50 text-slate-200 border-slate-700'
+                  }`}
                 />
               </div>
 
               {/* Copper (Bottom Right) */}
-              <div className="p-2 rounded-lg bg-amber-900/30 border border-orange-800/40 flex items-center justify-between">
-                <span className="text-orange-300 font-bold">Copper (cp)</span>
+              <div className={`p-2 rounded-lg border flex items-center justify-between ${
+                isLightTheme
+                  ? 'bg-orange-100/80 border-orange-400 text-orange-950'
+                  : 'bg-amber-900/30 border-orange-800/40 text-orange-300'
+              }`}>
+                <span className="font-bold">Copper (cp)</span>
                 <input
                   type="number"
                   min="0"
                   value={currency.cp || 0}
                   onChange={(e) => updateCurrency('cp', parseInt(e.target.value, 10) || 0)}
-                  className="w-16 text-right px-1.5 py-0.5 rounded bg-black/50 text-orange-200 border border-orange-800 font-bold focus:outline-none"
+                  className={`w-16 text-right px-1.5 py-0.5 rounded border font-bold focus:outline-none ${
+                    isLightTheme
+                      ? 'bg-white text-orange-950 border-orange-400'
+                      : 'bg-black/50 text-orange-200 border-orange-800'
+                  }`}
                 />
               </div>
             </div>
           </div>
 
           {/* Carrying Capacity & Load Stats Table (load, min load, max load, loh, push/drag) */}
-          <div className="p-3 rounded-xl bg-black/15 dark:bg-black/35 border border-black/10 dark:border-white/10 space-y-2 font-mono text-xs">
+          <div className="p-3 rounded-xl bg-black/5 dark:bg-black/35 border border-black/10 dark:border-white/10 space-y-2 font-mono text-xs">
             <div className="flex items-center justify-between border-b border-black/10 dark:border-white/10 pb-1">
-              <div className="flex items-center gap-1.5 text-amber-300 font-bold">
-                <Scale className="w-3.5 h-3.5 text-amber-400" />
+              <div className={`flex items-center gap-1.5 font-bold ${accentTitleText}`}>
+                <Scale className={`w-3.5 h-3.5 ${accentLabelText}`} />
                 <span>Carrying Capacity (STR {strScore})</span>
               </div>
               <span
-                className={`text-[10px] px-2 py-0.2 rounded font-bold ${
+                className={`text-[10px] px-2 py-0.2 rounded font-bold border ${
                   currentTotalLoad <= loads.light
-                    ? 'bg-emerald-950 text-emerald-300 border border-emerald-700'
+                    ? isLightTheme
+                      ? 'bg-emerald-100 text-emerald-900 border-emerald-700/40'
+                      : 'bg-emerald-950 text-emerald-300 border-emerald-700'
                     : currentTotalLoad <= loads.med
-                    ? 'bg-amber-950 text-amber-300 border border-amber-700'
-                    : 'bg-rose-950 text-rose-300 border border-rose-700'
+                    ? isLightTheme
+                      ? 'bg-amber-100 text-amber-900 border-amber-700/40'
+                      : 'bg-amber-950 text-amber-300 border-amber-700'
+                    : isLightTheme
+                    ? 'bg-rose-100 text-rose-900 border-rose-700/40'
+                    : 'bg-rose-950 text-rose-300 border-rose-700'
                 }`}
               >
                 {currentTotalLoad <= loads.light
@@ -1156,7 +1269,7 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
             <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
               <div className="flex justify-between border-b border-black/5 dark:border-white/5 py-0.5">
                 <span className="opacity-70">load (current):</span>
-                <strong className="text-amber-300">{currentTotalLoad} lbs</strong>
+                <strong className={accentTitleText}>{currentTotalLoad} lbs</strong>
               </div>
               <div className="flex justify-between border-b border-black/5 dark:border-white/5 py-0.5">
                 <span className="opacity-70">min load (light):</span>
@@ -1172,7 +1285,7 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
               </div>
               <div className="col-span-2 flex justify-between pt-0.5">
                 <span className="opacity-70">push / drag (5x max):</span>
-                <strong className="text-cyan-300">{pushOrDrag} lbs</strong>
+                <strong className={accentCyanText}>{pushOrDrag} lbs</strong>
               </div>
             </div>
           </div>
@@ -1181,26 +1294,28 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
         {/* ========================================================================= */}
         {/* BOTTOM RIGHT: Active Item Inspector & Full Info Editor (md:col-span-7)     */}
         {/* ========================================================================= */}
-        <div className="md:col-span-7 p-3.5 rounded-xl bg-black/15 dark:bg-black/35 border border-black/10 dark:border-white/10 space-y-3">
+        <div className="md:col-span-7 p-3.5 rounded-xl bg-black/5 dark:bg-black/35 border border-black/10 dark:border-white/10 space-y-3 min-w-0 overflow-hidden">
           {selectedItem ? (
-            <div className="space-y-3">
+            <div className="space-y-3 min-w-0 overflow-hidden">
               {/* Header: Title, Category Badge, Picture Frame & Full Info Diamond Toggle */}
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 space-y-1">
-                  <div className="flex items-center gap-2">
+              <div className="flex items-start justify-between gap-3 min-w-0">
+                <div className="flex-1 space-y-1 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0">
                     <input
                       type="text"
                       value={selectedItem.name}
                       onChange={(e) => handleUpdateItem(selectedItem.id, { name: e.target.value })}
-                      className={`font-serif font-bold text-base text-amber-300 px-2 py-0.5 rounded border ${inputStyle} flex-1`}
+                      className={`font-serif font-bold text-base ${accentTitleText} px-2 py-0.5 rounded border ${inputStyle} flex-1 min-w-0`}
                       placeholder="Item name"
                     />
                     {/* Red Diamond Full Info Mode Toggle (Matches Wireframe Red Diamond) */}
                     <button
                       onClick={() => setIsFullInfoMode(!isFullInfoMode)}
-                      className={`p-1.5 rounded-lg border transition-all ${
+                      className={`p-1.5 rounded-lg border transition-all shrink-0 ${
                         isFullInfoMode
                           ? 'bg-rose-500 text-white border-rose-300 shadow-sm scale-105'
+                          : isLightTheme
+                          ? 'bg-rose-100 text-rose-700 border-rose-400 hover:bg-rose-200'
                           : 'bg-rose-950/60 text-rose-400 border-rose-700/50 hover:bg-rose-900/60'
                       }`}
                       title="Full Info Input Mode: customize weight, hp, hardness, slot, effect"
@@ -1209,7 +1324,7 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
                     </button>
                   </div>
 
-                  <div className="flex items-center gap-2 text-xs font-mono">
+                  <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
                     <select
                       value={selectedItem.category || 'Gear'}
                       onChange={(e) =>
@@ -1238,50 +1353,73 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
                     </label>
 
                     {selectedItem.bodySlot && selectedItem.bodySlot !== 'none' && (
-                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-800">
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded border font-bold ${
+                        isLightTheme
+                          ? 'bg-sky-100 text-sky-900 border-sky-700/40'
+                          : 'bg-cyan-950 text-cyan-300 border-cyan-800'
+                      }`}>
                         {selectedItem.bodySlot}
                       </span>
                     )}
                   </div>
                 </div>
 
-                {/* Circular/Square Item Picture Frame (Matches wireframe circle) */}
-                <div
-                  onClick={() => setIsItemImageBrowserOpen(true)}
-                  className="w-16 h-16 rounded-xl border border-black/30 dark:border-white/30 bg-black/40 overflow-hidden flex items-center justify-center shrink-0 relative group cursor-pointer hover:border-amber-400 transition-colors"
-                  title="Click to browse local files or pick fantasy item art"
-                >
-                  {selectedItem.imageUrl ? (
-                    <img
-                      src={selectedItem.imageUrl}
-                      alt={selectedItem.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src =
-                          'https://images.unsplash.com/photo-1590736969955-71cc94801759?auto=format&fit=crop&w=200&q=80';
-                      }}
-                    />
-                  ) : (
-                    <div className="flex flex-col items-center justify-center text-amber-400/70 p-1 text-center">
-                      <Sparkles className="w-5 h-5 mb-0.5" />
-                      <span className="text-[8px] font-mono leading-none">Add Pic</span>
+                {/* Circular/Square Item Picture Frame (Strictly constrained to w-16 h-16 overflow-hidden) */}
+                {(() => {
+                  const resolvedImg = resolveIconOrGlyphUrl(selectedItem.imageUrl, glyphStyle);
+                  return (
+                    <div
+                      onClick={() => setIsItemImageBrowserOpen(true)}
+                      className={`w-16 h-16 max-w-16 max-h-16 rounded-xl border overflow-hidden flex items-center justify-center shrink-0 relative group cursor-pointer hover:border-amber-400 transition-colors ${
+                        isLightTheme
+                          ? 'border-amber-900/30 bg-amber-900/10'
+                          : 'border-white/30 bg-black/40'
+                      }`}
+                      title="Click to browse local files or pick item glyph/art"
+                    >
+                      {resolvedImg ? (
+                        <img
+                          src={resolvedImg}
+                          alt={selectedItem.name}
+                          className={`w-full h-full ${
+                            isGlyphId(selectedItem.imageUrl) ? 'object-contain p-1.5' : 'object-cover'
+                          } group-hover:scale-105 transition-transform`}
+                        />
+                      ) : (
+                        <div className={`flex flex-col items-center justify-center p-1 text-center ${
+                          isLightTheme ? 'text-amber-900/80' : 'text-amber-400/70'
+                        }`}>
+                          <Sparkles className="w-5 h-5 mb-0.5" />
+                          <span className="text-[8px] font-mono leading-none">Add Pic</span>
+                        </div>
+                      )}
+                      <div className="absolute inset-0 bg-black/75 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-[9px] text-amber-300 font-bold transition-opacity text-center p-1 font-mono">
+                        <span>Browse</span>
+                        <span>Image</span>
+                      </div>
                     </div>
-                  )}
-                  <div className="absolute inset-0 bg-black/75 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-[9px] text-amber-300 font-bold transition-opacity text-center p-1 font-mono">
-                    <span>Browse</span>
-                    <span>Image</span>
-                  </div>
-                </div>
+                  );
+                })()}
+              </div>
+
+              {/* Optional Quick Glyph Assignment for Item */}
+              <div className="pt-0.5">
+                <GlyphPicker
+                  value={selectedItem.imageUrl}
+                  onChange={(val) => handleUpdateItem(selectedItem.id, { imageUrl: val })}
+                  glyphStyle={glyphStyle}
+                  label="Assign Item Glyph Icon (Optional)"
+                />
               </div>
 
               {/* Macro Sensitive Box (Matches wireframe: "Ring of lazy draw / makes me lazy / +2>>laziness") */}
               <div className="space-y-1">
                 <div className="flex items-center justify-between text-[11px] font-mono">
-                  <span className="font-bold text-amber-400">Macro Sensitive Area / Effect</span>
+                  <span className={`font-bold ${accentLabelText}`}>Macro Sensitive Area / Effect</span>
                   {selectedItem.macroBox && onRollFormula && (
                     <button
                       onClick={() => onRollFormula(selectedItem.macroBox!, selectedItem.name)}
-                      className="text-[10px] text-cyan-300 hover:text-cyan-200 flex items-center gap-1 font-bold"
+                      className={`text-[10px] flex items-center gap-1 font-bold ${accentCyanText}`}
                       title="Test roll formula"
                     >
                       <Dices className="w-3 h-3" />
@@ -1312,13 +1450,17 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
               </div>
 
               {/* Item Buff & Status Effect Manager (Synced with Buff Box) */}
-              <div className="p-2.5 rounded-lg bg-black/20 dark:bg-black/40 border border-amber-500/30 space-y-2 font-mono text-xs">
+              <div className={`p-2.5 rounded-lg border space-y-2 font-mono text-xs ${
+                isLightTheme
+                  ? 'bg-amber-100/50 border-amber-700/40'
+                  : 'bg-black/20 dark:bg-black/40 border-amber-500/30'
+              }`}>
                 <div className="flex items-center justify-between pb-1 border-b border-amber-500/20">
-                  <div className="flex items-center gap-1.5 font-bold text-amber-300">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  <div className={`flex items-center gap-1.5 font-bold ${accentTitleText}`}>
+                    <Sparkles className={`w-3.5 h-3.5 ${accentLabelText}`} />
                     <span>Item Buff &amp; Status Effect</span>
                   </div>
-                  <label className="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-amber-300">
+                  <label className={`flex items-center gap-1.5 cursor-pointer text-xs font-bold ${accentTitleText}`}>
                     <input
                       type="checkbox"
                       checked={!!selectedItem.buffActive}
@@ -1404,7 +1546,7 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
                           buffTargetValue: parseInt(e.target.value, 10) || 0,
                         })
                       }
-                      className={`w-full px-2 py-0.5 rounded border text-xs font-bold text-amber-300 ${inputStyle}`}
+                      className={`w-full px-2 py-0.5 rounded border text-xs font-bold ${accentTitleText} ${inputStyle}`}
                     />
                   </div>
                 </div>
@@ -1430,22 +1572,30 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
                           buffActive: true,
                         })
                       }
-                      className="px-1.5 py-0.5 rounded bg-black/30 hover:bg-amber-500/20 text-slate-300 hover:text-amber-200 border border-slate-700 hover:border-amber-500/40 transition-colors"
+                      className={`px-1.5 py-0.5 rounded border transition-colors ${
+                        isLightTheme
+                          ? 'bg-white hover:bg-amber-200 text-stone-800 border-amber-700/30'
+                          : 'bg-black/30 hover:bg-amber-500/20 text-slate-300 hover:text-amber-200 border-slate-700 hover:border-amber-500/40'
+                      }`}
                     >
                       {preset.label}
                     </button>
                   ))}
                 </div>
 
-                <p className="text-[10px] text-amber-300/70 pt-0.5">
+                <p className={`text-[10px] pt-0.5 ${isLightTheme ? 'text-amber-950/80' : 'text-amber-300/70'}`}>
                   ⚡ Synced with Buff Box: Toggling this item buff turns it on/off in the Buff Box and recalculates all sheet totals.
                 </p>
               </div>
 
               {/* FULL INFO INPUT MODE (Toggled via the Red Diamond gem button in wireframe) */}
               {isFullInfoMode && (
-                <div className="p-3 rounded-lg bg-black/25 dark:bg-black/45 border border-rose-500/40 space-y-3 font-mono text-xs animate-fadeIn">
-                  <div className="flex items-center justify-between pb-1 border-b border-rose-500/30 text-rose-300 font-bold">
+                <div className={`p-3 rounded-lg border border-rose-500/40 space-y-3 font-mono text-xs animate-fadeIn ${
+                  isLightTheme ? 'bg-rose-50/80 text-stone-900' : 'bg-black/25 dark:bg-black/45'
+                }`}>
+                  <div className={`flex items-center justify-between pb-1 border-b border-rose-500/30 font-bold ${
+                    isLightTheme ? 'text-rose-900' : 'text-rose-300'
+                  }`}>
                     <span className="flex items-center gap-1.5">
                       <Gem className="w-3.5 h-3.5 fill-current" />
                       <span>Full Info Item Customizer</span>
@@ -1685,8 +1835,9 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
           targetType="item"
           itemName={selectedItem.name}
           title={`Choose Image for ${selectedItem.name}`}
-          subtitle="Browse local image files from disk, select from fantasy weapons/armor/gear presets, or paste a URL."
+          subtitle="Browse local image files from disk, select from interchangeable glyphs/portraits, or paste a URL."
           currentImageUrl={selectedItem.imageUrl}
+          glyphStyle={glyphStyle}
           onSelectImage={(url) => {
             handleUpdateItem(selectedItem.id, { imageUrl: url });
           }}

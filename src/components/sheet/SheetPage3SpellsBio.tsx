@@ -16,12 +16,15 @@ import { DerivedCombatStats } from '../../engine/pf1eMath';
 import { ConditionDebuffBar } from '../tools/ConditionDebuffBar';
 import { ProfileModule } from './ProfileModule';
 import { NotesModule } from './NotesModule';
+import { GlyphStyle, resolveIconOrGlyphUrl } from '../../data/glyphs';
+import { GlyphPicker } from '../tools/GlyphPicker';
 
 interface SheetPage3SpellsBioProps {
   character: PF1Character;
   derived: DerivedCombatStats;
   theme: string;
   fontClass: string;
+  glyphStyle?: GlyphStyle;
   onUpdateCharacter: (updater: (prev: PF1Character) => PF1Character) => void;
   visibleModules: Record<string, boolean>;
 }
@@ -31,6 +34,7 @@ export const SheetPage3SpellsBio: React.FC<SheetPage3SpellsBioProps> = ({
   derived,
   theme,
   fontClass,
+  glyphStyle = '01-flat-enamel',
   onUpdateCharacter,
   visibleModules,
 }) => {
@@ -337,7 +341,7 @@ Languages ${character.languages.join(', ')}`;
                     className="px-2.5 py-1 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded flex items-center gap-1 transition-colors"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>Add Spell</span>
+                    <span>New Spell</span>
                   </button>
                 </div>
               </div>
@@ -345,10 +349,12 @@ Languages ${character.languages.join(', ')}`;
               <div className="p-3 space-y-2.5 max-h-[500px] overflow-y-auto">
                 {filteredSpells.length === 0 ? (
                   <div className="p-6 text-center text-xs opacity-60">
-                    No spells at this level. Click "Add Spell" to log one.
+                    No spells at this level. Click &quot;+ New Spell&quot; to log one.
                   </div>
                 ) : (
-                  filteredSpells.map((sp) => (
+                  filteredSpells.map((sp) => {
+                    const resolvedSpellGlyph = resolveIconOrGlyphUrl(sp.icon, glyphStyle);
+                    return (
                     <div
                       key={sp.id}
                       className={`p-2.5 rounded-lg border transition-all ${
@@ -364,12 +370,19 @@ Languages ${character.languages.join(', ')}`;
                             className={`px-2 py-0.5 rounded text-xs font-mono font-bold transition-colors ${
                               sp.isCast
                                 ? 'bg-black/10 dark:bg-white/10 text-slate-500'
-                                : 'bg-purple-600/20 text-purple-400 border border-purple-500/30 hover:bg-purple-600 hover:text-white'
+                                : 'bg-purple-600/20 text-purple-600 dark:text-purple-400 border border-purple-500/30 hover:bg-purple-600 hover:text-white'
                             }`}
                             title="Click to toggle Cast / Spent"
                           >
                             {sp.isCast ? 'Cast' : 'Cast?'}
                           </button>
+                          {resolvedSpellGlyph && (
+                            <img
+                              src={resolvedSpellGlyph}
+                              alt=""
+                              className="w-5 h-5 object-contain shrink-0"
+                            />
+                          )}
                           <input
                             type="text"
                             value={sp.name}
@@ -379,6 +392,12 @@ Languages ${character.languages.join(', ')}`;
                         </div>
 
                         <div className="flex items-center gap-2 text-xs font-mono">
+                          <GlyphPicker
+                            value={sp.icon}
+                            onChange={(val) => updateSpell(sp.id, { icon: val })}
+                            glyphStyle={glyphStyle}
+                            compact
+                          />
                           <span className="px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/10 text-[10px]">
                             Lvl {sp.level}
                           </span>
@@ -406,7 +425,8 @@ Languages ${character.languages.join(', ')}`;
                         className={`w-full text-[11px] px-2 py-1 rounded border opacity-90 ${inputStyle}`}
                       />
                     </div>
-                  ))
+                  );
+                  })
                 )}
               </div>
             </div>

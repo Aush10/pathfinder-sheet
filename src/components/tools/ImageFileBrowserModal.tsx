@@ -17,6 +17,12 @@ import {
   RefreshCw,
   Search,
 } from 'lucide-react';
+import {
+  GLYPH_DEFINITIONS,
+  GENERIC_PORTRAITS,
+  GlyphStyle,
+  getGlyphUrl,
+} from '../../data/glyphs';
 
 export interface ImageFileBrowserProps {
   isOpen: boolean;
@@ -28,209 +34,10 @@ export interface ImageFileBrowserProps {
   currentImageUrl?: string;
   onSelectImage: (imageUrl: string) => void;
   characterExistingImages?: string[];
+  glyphStyle?: GlyphStyle;
 }
 
 const STORAGE_LIBRARY_KEY = 'pf1e_image_library_v1';
-
-// Curated fantasy portraits & items for Pathfinder 1e
-const FANTASY_PRESETS = {
-  portraits: [
-    {
-      id: 'p-1',
-      name: 'Valerius (Dragon Crusader)',
-      category: 'Warrior',
-      url: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=600&q=80',
-    },
-    {
-      id: 'p-2',
-      name: 'Dragonfire Pyromancer',
-      category: 'Mage',
-      url: 'https://images.unsplash.com/photo-1563089145-599997674d42?auto=format&fit=crop&w=600&q=80',
-    },
-    {
-      id: 'p-3',
-      name: 'Elven Silver Ranger',
-      category: 'Ranger',
-      url: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&w=600&q=80',
-    },
-    {
-      id: 'p-4',
-      name: 'Dwarven Iron Defender',
-      category: 'Warrior',
-      url: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=600&q=80',
-    },
-    {
-      id: 'p-5',
-      name: 'Shadow Scout Rogue',
-      category: 'Rogue',
-      url: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=600&q=80',
-    },
-    {
-      id: 'p-6',
-      name: 'Cleric of the Dawn Sun',
-      category: 'Cleric',
-      url: 'https://images.unsplash.com/photo-1514539079130-25950c84af65?auto=format&fit=crop&w=600&q=80',
-    },
-    {
-      id: 'p-7',
-      name: 'Tiefling Blood Sorcerer',
-      category: 'Mage',
-      url: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=600&q=80',
-    },
-    {
-      id: 'p-8',
-      name: 'Druid of the Deep Wild',
-      category: 'Druid',
-      url: 'https://images.unsplash.com/photo-1518709766631-a6a7f45921c3?auto=format&fit=crop&w=600&q=80',
-    },
-    {
-      id: 'p-9',
-      name: 'Armored Knight Marshal',
-      category: 'Paladin',
-      url: 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=600&q=80',
-    },
-    {
-      id: 'p-10',
-      name: 'Arcane Astrologer',
-      category: 'Wizard',
-      url: 'https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&w=600&q=80',
-    },
-  ],
-  weapons: [
-    {
-      id: 'w-1',
-      name: '+1 Flaming Greataxe',
-      category: 'Axe',
-      url: 'https://images.unsplash.com/photo-1590736969955-71cc94801759?auto=format&fit=crop&w=400&q=80',
-    },
-    {
-      id: 'w-2',
-      name: 'Masterwork Steel Longsword',
-      category: 'Sword',
-      url: 'https://images.unsplash.com/photo-1589256469067-ea99122bbdc4?auto=format&fit=crop&w=400&q=80',
-    },
-    {
-      id: 'w-3',
-      name: 'Composite Longbow',
-      category: 'Bow',
-      url: 'https://images.unsplash.com/photo-1511367461989-f85a21fda167?auto=format&fit=crop&w=400&q=80',
-    },
-    {
-      id: 'w-4',
-      name: 'Vorpal Greatsword',
-      category: 'Sword',
-      url: 'https://images.unsplash.com/photo-1595590424283-b8f17842773f?auto=format&fit=crop&w=400&q=80',
-    },
-    {
-      id: 'w-5',
-      name: 'Rune Dagger',
-      category: 'Dagger',
-      url: 'https://images.unsplash.com/photo-1615671524827-c1fe3973b648?auto=format&fit=crop&w=400&q=80',
-    },
-  ],
-  armor: [
-    {
-      id: 'a-1',
-      name: 'Mithral Heavy Shield / Bullet',
-      category: 'Shield',
-      url: 'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?auto=format&fit=crop&w=400&q=80',
-    },
-    {
-      id: 'a-2',
-      name: 'Plasteel / Mithral Full Plate',
-      category: 'Armor',
-      url: 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=400&q=80',
-    },
-    {
-      id: 'a-3',
-      name: 'Engraved Tower Shield',
-      category: 'Shield',
-      url: 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=400&q=80',
-    },
-    {
-      id: 'a-4',
-      name: 'Hardened Dragonhide Armor',
-      category: 'Armor',
-      url: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=400&q=80',
-    },
-  ],
-  magicItems: [
-    {
-      id: 'm-1',
-      name: 'Ring of Protection / Lazy Draw',
-      category: 'Ring',
-      url: 'https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=400&q=80',
-    },
-    {
-      id: 'm-2',
-      name: 'Headband of Alluring Charisma',
-      category: 'Headband',
-      url: 'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?auto=format&fit=crop&w=400&q=80',
-    },
-    {
-      id: 'm-3',
-      name: 'Cloak of Resistance +2',
-      category: 'Cloak',
-      url: 'https://images.unsplash.com/photo-1512436991641-6745cdb1723f?auto=format&fit=crop&w=400&q=80',
-    },
-    {
-      id: 'm-4',
-      name: 'Belt of Giant Strength +2',
-      category: 'Belt',
-      url: 'https://images.unsplash.com/photo-1624222247344-550fb60583dc?auto=format&fit=crop&w=400&q=80',
-    },
-    {
-      id: 'm-5',
-      name: 'Boots of Speed',
-      category: 'Boots',
-      url: 'https://images.unsplash.com/photo-1549298916-b41d501d3772?auto=format&fit=crop&w=400&q=80',
-    },
-    {
-      id: 'm-6',
-      name: 'Handy Haversack Backpack',
-      category: 'Bag',
-      url: 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?auto=format&fit=crop&w=400&q=80',
-    },
-    {
-      id: 'm-7',
-      name: 'Amulet of Natural Armor',
-      category: 'Amulet',
-      url: 'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?auto=format&fit=crop&w=400&q=80',
-    },
-    {
-      id: 'm-8',
-      name: 'Ioun Stone (Dusty Rose Prism)',
-      category: 'Ioun',
-      url: 'https://images.unsplash.com/photo-1518709766631-a6a7f45921c3?auto=format&fit=crop&w=400&q=80',
-    },
-  ],
-  potionsAndGear: [
-    {
-      id: 'g-1',
-      name: 'Potion of Cure Serious Wounds',
-      category: 'Potion',
-      url: 'https://images.unsplash.com/photo-1514733670139-4d87a1941d55?auto=format&fit=crop&w=400&q=80',
-    },
-    {
-      id: 'g-2',
-      name: 'Elixir of Dragon Breath',
-      category: 'Potion',
-      url: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=400&q=80',
-    },
-    {
-      id: 'g-3',
-      name: 'Enchanted Arcane Scroll',
-      category: 'Scroll',
-      url: 'https://images.unsplash.com/photo-1589829085413-56de8ae18c73?auto=format&fit=crop&w=400&q=80',
-    },
-    {
-      id: 'g-4',
-      name: 'Cut Fire Ruby (500 gp)',
-      category: 'Gem',
-      url: 'https://images.unsplash.com/photo-1600003014755-ba31aa59c4b6?auto=format&fit=crop&w=400&q=80',
-    },
-  ],
-};
 
 export const ImageFileBrowserModal: React.FC<ImageFileBrowserProps> = ({
   isOpen,
@@ -242,19 +49,18 @@ export const ImageFileBrowserModal: React.FC<ImageFileBrowserProps> = ({
   currentImageUrl = '',
   onSelectImage,
   characterExistingImages = [],
+  glyphStyle = '01-flat-enamel',
 }) => {
   // Navigation tabs: 'upload' | 'presets' | 'library' | 'url'
-  const [activeTab, setActiveTab] = useState<'upload' | 'presets' | 'library' | 'url'>(
-    targetType === 'item' ? 'upload' : 'upload'
-  );
+  const [activeTab, setActiveTab] = useState<'upload' | 'presets' | 'library' | 'url'>('presets');
 
   // Selected image candidate
   const [selectedUrl, setSelectedUrl] = useState<string>(currentImageUrl);
   const [urlInput, setUrlInput] = useState<string>(currentImageUrl);
 
   // Local preset subcategory filter
-  const [presetCategory, setPresetCategory] = useState<'all' | 'portraits' | 'weapons' | 'armor' | 'magic' | 'gear'>(
-    targetType === 'item' ? 'all' : 'portraits'
+  const [presetCategory, setPresetCategory] = useState<'all' | 'portraits' | 'glyphs'>(
+    targetType === 'item' ? 'glyphs' : 'all'
   );
 
   // Search filter
@@ -377,31 +183,24 @@ export const ImageFileBrowserModal: React.FC<ImageFileBrowserProps> = ({
 
   if (!isOpen) return null;
 
-  // Flattened preset list based on active filter
+  // Flattened preset list based on active filter (7 Interchangeable Glyphs + 4 Generic Portraits)
   const getFilteredPresets = () => {
+    const activeSet = glyphStyle === 'none' ? '01-flat-enamel' : glyphStyle;
+    const glyphPresets = GLYPH_DEFINITIONS.map((g) => ({
+      id: g.id,
+      name: g.name,
+      category: `Glyph (${g.category})`,
+      url: getGlyphUrl(g.id, activeSet, '01-flat-enamel') || `/character-sheet-icons/01-flat-enamel/${g.filename}`,
+    }));
+
     let list: Array<{ id: string; name: string; category: string; url: string }> = [];
 
     if (presetCategory === 'all') {
-      if (targetType === 'item') {
-        list = [
-          ...FANTASY_PRESETS.weapons,
-          ...FANTASY_PRESETS.armor,
-          ...FANTASY_PRESETS.magicItems,
-          ...FANTASY_PRESETS.potionsAndGear,
-        ];
-      } else {
-        list = [...FANTASY_PRESETS.portraits];
-      }
+      list = [...glyphPresets, ...GENERIC_PORTRAITS];
     } else if (presetCategory === 'portraits') {
-      list = FANTASY_PRESETS.portraits;
-    } else if (presetCategory === 'weapons') {
-      list = FANTASY_PRESETS.weapons;
-    } else if (presetCategory === 'armor') {
-      list = FANTASY_PRESETS.armor;
-    } else if (presetCategory === 'magic') {
-      list = FANTASY_PRESETS.magicItems;
-    } else if (presetCategory === 'gear') {
-      list = FANTASY_PRESETS.potionsAndGear;
+      list = [...GENERIC_PORTRAITS];
+    } else if (presetCategory === 'glyphs') {
+      list = [...glyphPresets];
     }
 
     if (searchQuery.trim()) {
@@ -626,12 +425,9 @@ export const ImageFileBrowserModal: React.FC<ImageFileBrowserProps> = ({
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-1 overflow-x-auto pb-1 text-xs">
                   {[
-                    { id: 'all', label: 'All Presets' },
-                    { id: 'portraits', label: 'Portraits' },
-                    { id: 'weapons', label: 'Weapons' },
-                    { id: 'armor', label: 'Armor' },
-                    { id: 'magic', label: 'Magic Items' },
-                    { id: 'gear', label: 'Potions & Gems' },
+                    { id: 'all', label: 'All (Glyphs & Portraits)' },
+                    { id: 'glyphs', label: '7 Action/Item Glyphs' },
+                    { id: 'portraits', label: '4 Generic Portraits' },
                   ].map((cat) => (
                     <button
                       key={cat.id}
