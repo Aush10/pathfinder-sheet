@@ -7,6 +7,7 @@
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
     "build:standalone": "vite build --config vite.singlefile.config.ts && node -e \"require('node:fs').copyFileSync('dist-standalone/index.html','public/pathfinder1e_standalone.html')\"",
+    "dist:runtime": "npm run build:standalone && powershell -NoProfile -ExecutionPolicy Bypass -File .\\installer\\Package-PF1MW.ps1",
     "preview": "vite preview",
     "clean": "rm -rf dist dist-standalone server.js",
     "lint": "tsc --noEmit"
