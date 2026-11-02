@@ -14,7 +14,9 @@ import {
   Copy,
 } from 'lucide-react';
 import { PF1Character, XdxMacroEntry } from '../../types/character';
-import { DerivedCombatStats } from '../../engine/pf1eMath';
+import { DerivedCombatStats, evaluateConditions } from '../../engine/pf1eMath';
+import { executeMacaroni, applyMacaroniToCharacter } from '../../engine/macaroni';
+import { buildFormulaContext } from '../../engine/formula';
 
 interface XDXToolProps {
   isOpen: boolean;
@@ -31,6 +33,9 @@ interface RollLogItem {
   rawInput: string;
   resultOutput: string;
   appliedPushes?: string[];
+  slots?: Array<{ slot: number; evaluated: string }>;
+  isFinished?: boolean;
+  quirkyMessage?: string;
 }
 
 export const XDXTool: React.FC<XDXToolProps> = ({
@@ -92,7 +97,7 @@ export const XDXTool: React.FC<XDXToolProps> = ({
 
   // Get sheet call value
   const getCallValue = (token: string): number | null => {
-    const clean = token.replace(/^#/, '').toUpperCase();
+    const clean = token.replace(/^[#@]/, '').toUpperCase();
     switch (clean) {
       case 'HP':
         return character.hpCurrent;
@@ -104,24 +109,51 @@ export const XDXTool: React.FC<XDXToolProps> = ({
         return character.hpTemp;
       case 'STR':
       case 'STRENGTH':
+      case 'STR_MOD':
+      case 'STRMOD':
         return derived.strMod;
       case 'DEX':
       case 'DEXTERITY':
+      case 'DEX_MOD':
+      case 'DEXMOD':
         return derived.dexMod;
       case 'CON':
       case 'CONSTITUTION':
+      case 'CON_MOD':
+      case 'CONMOD':
         return derived.conMod;
       case 'INT':
       case 'INTELLIGENCE':
+      case 'INT_MOD':
+      case 'INTMOD':
         return derived.intMod;
       case 'WIS':
       case 'WISDOM':
+      case 'WIS_MOD':
+      case 'WISMOD':
         return derived.wisMod;
       case 'CHA':
       case 'CHARISMA':
+      case 'CHA_MOD':
+      case 'CHAMOD':
         return derived.chaMod;
+      case 'STR_SCORE':
+        return derived.strTotal;
+      case 'DEX_SCORE':
+        return derived.dexTotal;
+      case 'CON_SCORE':
+        return derived.conTotal;
+      case 'INT_SCORE':
+        return derived.intTotal;
+      case 'WIS_SCORE':
+        return derived.wisTotal;
+      case 'CHA_SCORE':
+        return derived.chaTotal;
       case 'BAB':
         return character.baseAttackBonus;
+      case 'INIT':
+      case 'INITIATIVE':
+        return derived.initiativeTotal;
       case 'FORT':
       case 'FORTITUDE':
         return derived.fortitudeTotal;
@@ -135,6 +167,7 @@ export const XDXTool: React.FC<XDXToolProps> = ({
       case 'TOUCH':
         return derived.touchAC;
       case 'FF':
+      case 'FLAT':
       case 'FLATFOOTED':
         return derived.flatFootedAC;
       case 'CMB':
@@ -144,24 +177,56 @@ export const XDXTool: React.FC<XDXToolProps> = ({
       case 'LEVEL':
       case 'LVL':
         return character.level;
+      case 'CL':
+      case 'CASTERLEVEL':
+        return character.casterLevel;
+      case 'SPEED':
+        return character.speedBase || 30;
       case 'SIZE':
         return 0;
-      default:
+      case 'MISC':
+        return 0;
+      default: {
+        // Check skills
+        const lower = clean.toLowerCase();
+        const skill = character.skills?.find(
+          (s) => s.name.toLowerCase().replace(/[^a-z0-9]/g, '_') === lower || s.name.toLowerCase() === lower
+        );
+        if (skill) {
+          const isClass = skill.isClassSkill && skill.ranks > 0 ? 3 : 0;
+          let abMod = 0;
+          switch (skill.keyAbility) {
+            case 'STR': abMod = derived.strMod; break;
+            case 'DEX': abMod = derived.dexMod; break;
+            case 'CON': abMod = derived.conMod; break;
+            case 'INT': abMod = derived.intMod; break;
+            case 'WIS': abMod = derived.wisMod; break;
+            case 'CHA': abMod = derived.chaMod; break;
+          }
+          return skill.ranks + abMod + (skill.miscMod || 0) + isClass;
+        }
+        // Check resource trackers
+        const tracker = character.resourceTrackers?.find(
+          (t) => t.name.toLowerCase() === lower || t.macroKey?.toLowerCase() === lower
+        );
+        if (tracker) {
+          return tracker.current;
+        }
         return null;
+      }
     }
   };
 
-  // Parse arithmetic with floor (/) and ceil (/+)
+  // Parse arithmetic with floor (/) and ceil (/+) and functions
   const evaluateMathChunk = (chunk: string): number => {
     try {
-      // Replace dice rolls first, e.g. 10(d6+5) or 10d6
       let parsed = chunk;
 
-      // Handle grouped multiplication like 10(d6+5)
-      parsed = parsed.replace(/(\d+)\s*\(\s*([dD]\d+)\s*([+-]\s*\d+)\s*\)/g, (_, mult, dPart, bonus) => {
-        const m = parseInt(mult);
-        const b = parseInt(bonus.replace(/\s+/g, ''));
-        const sides = parseInt(dPart.substring(1));
+      // Handle grouped multiplication like 10(d6+5) or 10(1d6+5)
+      parsed = parsed.replace(/(\d+)\s*\(\s*([dD]\d+|\d+[dD]\d+)\s*([+-]\s*\d+)\s*\)/g, (_, mult, dPart, bonus) => {
+        const m = parseInt(mult, 10);
+        const b = parseInt(bonus.replace(/\s+/g, ''), 10);
+        const sides = parseInt(dPart.replace(/^[0-9]*[dD]/, ''), 10);
         let rollSum = 0;
         for (let i = 0; i < m; i++) {
           rollSum += rollDie(sides) + b;
@@ -174,47 +239,68 @@ export const XDXTool: React.FC<XDXToolProps> = ({
         return String(evaluateDiceExpr(match));
       });
 
-      // Handle DC calculation: DC+#CON or DC+CON
-      // DC equation: 10 + 1/2 level + abilityMod
-      parsed = parsed.replace(/DC\s*\+?\s*#?([A-Za-z]+)?/gi, (_, abName) => {
+      // Handle DC calculation: DC+#CON or DC+CON (10 + 1/2 level + abilityMod)
+      parsed = parsed.replace(/DC(?:\s*\+\s*#?([A-Za-z0-9_]+))?/gi, (_, abName) => {
         const halfLevel = Math.floor(character.level / 2);
         let abMod = 0;
         if (abName) {
-          const val = getCallValue(abName);
-          if (val !== null) abMod = val;
+          if (/^\d+$/.test(abName)) {
+            abMod = parseInt(abName, 10);
+          } else {
+            const val = getCallValue(abName);
+            if (val !== null) abMod = val;
+          }
         }
         return String(10 + halfLevel + abMod);
       });
 
-      // Handle calls #CALL or ALL-CAPS words
-      parsed = parsed.replace(/#([A-Za-z_]+)/g, (_, name) => {
+      // Handle math functions: floor, round, ceil, abs, sqrt
+      parsed = parsed.replace(/(floor|round|ceil|abs|sqrt)\s*\(([^()]+)\)/gi, (_, fn, inner) => {
+        try {
+          const sanitizedInner = inner.replace(/[^0-9+\-*/().\s]/g, '');
+          // eslint-disable-next-line no-new-func
+          const val = Function(`"use strict"; return (${sanitizedInner});`)();
+          const f = fn.toLowerCase();
+          if (f === 'floor') return String(Math.floor(val));
+          if (f === 'round') return String(Math.round(val));
+          if (f === 'ceil') return String(Math.ceil(val));
+          if (f === 'abs') return String(Math.abs(val));
+          if (f === 'sqrt') return String(Math.sqrt(val));
+          return String(val);
+        } catch {
+          return inner;
+        }
+      });
+
+      // Handle calls #CALL or @CALL
+      parsed = parsed.replace(/[#@]([A-Za-z0-9_]+)/g, (_, name) => {
         const val = getCallValue(name);
         return String(val ?? 0);
       });
 
       // Handle all-caps calls not in quotes
-      parsed = parsed.replace(/\b([A-Z]{2,})\b/g, (match) => {
+      parsed = parsed.replace(/\b([A-Z]{2,}[0-9_]*)\b/g, (match) => {
         const val = getCallValue(match);
         return val !== null ? String(val) : match;
       });
 
-      // Handle /+ as round UP (replace with ceil division pattern)
+      // Handle /+ as round UP (ceil division)
       if (parsed.includes('/+')) {
         parsed = parsed.replace(/(\d+)\s*\/\+\s*(\d+)/g, (_, a, b) => {
-          return String(Math.ceil(parseInt(a) / parseInt(b)));
+          return String(Math.ceil(parseInt(a, 10) / parseInt(b, 10)));
         });
       }
 
       // Standard division rounds down (floor) per PF1e rules
       if (parsed.includes('/')) {
         parsed = parsed.replace(/(\d+)\s*\/\s*(\d+)/g, (_, a, b) => {
-          return String(Math.floor(parseInt(a) / parseInt(b)));
+          return String(Math.floor(parseInt(a, 10) / parseInt(b, 10)));
         });
       }
 
       // Safe arithmetic evaluator for remaining numbers and +, -, *
       if (/^[0-9+\-*()\s]+$/.test(parsed)) {
-        // eslint-disable-next-line no-eval
+        // eslint-disable-next-line no-new-func
         const result = Function(`"use strict"; return Math.floor(${parsed});`)();
         return typeof result === 'number' && !isNaN(result) ? result : 0;
       }
@@ -224,20 +310,44 @@ export const XDXTool: React.FC<XDXToolProps> = ({
     return 0;
   };
 
+  // Find macro formula across savedMacros and customObjects
+  const findMacroFormula = (name: string): string | null => {
+    const clean = name.replace(/^[<#@{]{1,2}/, '').replace(/[>}]+$/, '').trim().toLowerCase();
+    const fromSaved = savedMacros.find((m) => m.name.toLowerCase() === clean);
+    if (fromSaved) return fromSaved.formula;
+    const fromCustom = character.customObjects?.find((o) => o.name.toLowerCase() === clean);
+    if (fromCustom) return fromCustom.formula;
+    return null;
+  };
+
   // Evaluate a single sub-macro inside pipes
   // Supports text literals in quotes "", pushes >>, and math/dice
   const evaluateSegment = (seg: string, pushesOut: string[]): string => {
-    let output = '';
     let remaining = seg.trim();
 
-    // 1. Check for << macro pull (e.g. <<firebreath)
-    if (remaining.startsWith('<<')) {
-      const macroName = remaining.substring(2).trim();
-      const found = savedMacros.find((m) => m.name.toLowerCase() === macroName.toLowerCase());
-      if (found) {
-        return evaluateSegment(found.formula, pushesOut);
+    // 1. Check for macro pull <<name, {name}, or direct macro name
+    const singlePullMatch = remaining.match(/^([<#@{]{1,2})?([a-zA-Z0-9_]+)[>} ]*$/);
+    if (singlePullMatch) {
+      const candidateName = singlePullMatch[2];
+      const formula = findMacroFormula(candidateName);
+      if (formula) {
+        // If the formula itself has pipes, evaluate pipeline
+        if (formula.includes('|') && !formula.startsWith('"')) {
+          const subPipes = formula.split('|').map((s) => s.trim()).filter(Boolean);
+          return subPipes.map((p) => evaluateSegment(p, pushesOut)).join(', ');
+        }
+        return evaluateSegment(formula, pushesOut);
       }
     }
+
+    // Replace embedded <<name or {name} inside expressions
+    remaining = remaining.replace(/([<{]{1,2})([a-zA-Z0-9_]+)([>}]*)/g, (match, _, name) => {
+      const formula = findMacroFormula(name);
+      if (formula) {
+        return evaluateSegment(formula, pushesOut);
+      }
+      return match;
+    });
 
     // 2. Extract and handle >> pushes
     // User rule: >>HP-5 will send -5 to HP. No spaces between call and equation.
@@ -247,14 +357,19 @@ export const XDXTool: React.FC<XDXToolProps> = ({
 
     if (strictPushMatch) {
       const target = strictPushMatch[1].toUpperCase();
-      const delta = parseInt(strictPushMatch[2]);
+      const delta = parseInt(strictPushMatch[2], 10);
       pushesOut.push(`Applied ${delta >= 0 ? `+${delta}` : delta} to ${target}`);
 
       // Apply directly to character
       if (target === 'HP') {
         onUpdateCharacter((prev) => ({
           ...prev,
-          hpCurrent: prev.hpCurrent + delta,
+          hpCurrent: Math.max(0, prev.hpCurrent + delta),
+        }));
+      } else if (target === 'THP' || target === 'TEMP') {
+        onUpdateCharacter((prev) => ({
+          ...prev,
+          hpTemp: Math.max(0, (prev.hpTemp || 0) + delta),
         }));
       }
 
@@ -301,23 +416,71 @@ export const XDXTool: React.FC<XDXToolProps> = ({
     return evaluatedParts.join(' ').replace(/\s+/g, ' ').trim();
   };
 
-  // Evaluate full macro pipeline with | (pipes)
+  // Evaluate full macro using Macaroni engine
   const executeXdxMacro = (raw: string) => {
     if (!raw.trim()) return;
 
-    const pushesOut: string[] = [];
-    // Split by pipe |
-    const segments = raw.split('|').map((s) => s.trim()).filter(Boolean);
+    const cond = evaluateConditions(character.conditions);
+    const context = buildFormulaContext(character, cond);
 
-    const results = segments.map((seg) => evaluateSegment(seg, pushesOut));
-    const combinedOutput = results.join(', ');
+    const macaroniResult = executeMacaroni(raw, {
+      character,
+      formulaContext: context,
+      uiPresets: character.uiMakePresets,
+    });
+
+    // 1. Dispatch UI alerts if any (<TAG"message">)
+    if (macaroniResult.alertEvents && macaroniResult.alertEvents.length > 0) {
+      macaroniResult.alertEvents.forEach((alert) => {
+        window.dispatchEvent(
+          new CustomEvent('macaroni:alert', {
+            detail: {
+              id: `alert-${Date.now()}-${Math.random()}`,
+              message: alert.message,
+              tag: alert.tag,
+              preset: alert.preset,
+              timestamp: Date.now(),
+            },
+          })
+        );
+      });
+    }
+
+    // 2. Dispatch decision queries if any (<?>)
+    if (macaroniResult.queryEvent) {
+      window.dispatchEvent(
+        new CustomEvent('macaroni:query', {
+          detail: macaroniResult.queryEvent,
+        })
+      );
+    }
+
+    // 3. Apply <^...> buff makes, ^ mutators, and >> pushes to character
+    const pushesOut: string[] = [];
+    if (
+      (macaroniResult.buffMakeEvents && macaroniResult.buffMakeEvents.length > 0) ||
+      (macaroniResult.stateMutations && macaroniResult.stateMutations.length > 0)
+    ) {
+      onUpdateCharacter((prev) => {
+        const applied = applyMacaroniToCharacter(prev, macaroniResult);
+        pushesOut.push(applied.statusMessage);
+        return applied.updatedCharacter;
+      });
+    } else if (macaroniResult.appliedPushes && macaroniResult.appliedPushes.length > 0) {
+      macaroniResult.appliedPushes.forEach((p) => {
+        pushesOut.push(p);
+      });
+    }
 
     const newLogItem: RollLogItem = {
       id: `log-${Date.now()}`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
       rawInput: raw,
-      resultOutput: combinedOutput,
+      resultOutput: macaroniResult.fullOutput || '(empty)',
       appliedPushes: pushesOut.length > 0 ? pushesOut : undefined,
+      slots: macaroniResult.slots.map((s) => ({ slot: s.slot, evaluated: s.evaluated })),
+      isFinished: macaroniResult.isFinished,
+      quirkyMessage: macaroniResult.quirkyMessage,
     };
 
     setRollLogs((prev) => [newLogItem, ...prev].slice(0, 50));
@@ -464,16 +627,18 @@ export const XDXTool: React.FC<XDXToolProps> = ({
           </button>
         </div>
 
-        {/* Quick Quickmacros presets */}
+        {/* Quick Macaroni presets */}
         <div className="flex items-center gap-1.5 flex-wrap pt-1 text-[10px]">
-          <span className="opacity-60">Examples:</span>
+          <span className="opacity-60">Macaroni Presets:</span>
           {[
-            { label: 'Attack & Dmg', f: '"to hit " d20+#bab+#str | 1d8+#str "slashing"' },
-            { label: 'Multi-Die |', f: '2d6 | 2d4' },
-            { label: 'Grouped 10(D6+5)', f: '10(d6+5)' },
-            { label: 'Push >>HP-5', f: '"blood" >>HP-5' },
-            { label: 'Spell DC+CON', f: 'DC+#CON "Fort DC"' },
-            { label: 'Round Up /+', f: '15/+2' },
+            { label: 'Att & Dmg &', f: '[d20+#BAB+#STR] & [1d8+#STR] "slashing"' },
+            { label: 'Crit Alert <>', f: '[d20+#BAB+#STR] & <11"Dragonfire Critical Strike!">' },
+            { label: 'Stepper !', f: 'this: 10-1! | this=0 | $' },
+            { label: 'Decision <?>', f: '<? "Tactical Tactic" | attack / defend / #HP / [] >' },
+            { label: 'Mutate HP^-d6', f: 'HP^-d6' },
+            { label: 'Push >>HP-5', f: '"blood drain" >>HP-5' },
+            { label: 'Math Only {}', f: '{firebreath}' },
+            { label: 'DC+#CON', f: 'DC+#CON "Fort DC"' },
           ].map((item, idx) => (
             <button
               key={idx}
@@ -481,7 +646,7 @@ export const XDXTool: React.FC<XDXToolProps> = ({
                 setMacroInput(item.f);
                 executeXdxMacro(item.f);
               }}
-              className="px-2 py-0.5 rounded bg-black/10 dark:bg-white/10 hover:bg-amber-500/20 hover:text-amber-400 border border-black/10 dark:border-white/10"
+              className="px-2 py-0.5 rounded bg-black/10 dark:bg-white/10 hover:bg-amber-500/20 hover:text-amber-400 border border-black/10 dark:border-white/10 font-mono transition-colors"
             >
               {item.label}
             </button>
@@ -490,16 +655,22 @@ export const XDXTool: React.FC<XDXToolProps> = ({
 
         {/* Syntax Help */}
         {showHelp && (
-          <div className="p-2.5 rounded bg-amber-500/10 border border-amber-500/30 text-[11px] leading-relaxed space-y-1">
-            <p><strong>10D6+5</strong> : Rolls 10d6 and adds 5.</p>
-            <p><strong>10(D6+5)</strong> : Grouped roll multiplication (10 * (d6+5)).</p>
-            <p><strong>|</strong> : Divides multiple macros in one roll (e.g. <code>2d6|2d4</code> displays results side by side).</p>
-            <p><strong>&quot;&quot;</strong> : Prints text literals (e.g. <code>&quot;to hit &quot; d20+10 | 4d6 &quot;damage&quot;</code>).</p>
-            <p><strong>#CALLS &amp; ALL-CAPS</strong> : Calls sheet values like <code>#HP</code>, <code>STR</code>, <code>BAB</code>, <code>FORT</code>, <code>LEVEL</code>, <code>AC</code>.</p>
-            <p><strong>&gt;&gt;HP-5</strong> : Pushes value to sheet stat directly (numeric check, no spaces between call &amp; equation).</p>
-            <p><strong>&lt;&lt;name</strong> : Pulls and evaluates saved macro by name (e.g. <code>&lt;&lt;firebreath</code>).</p>
-            <p><strong>DC</strong> : Ability DC = <code>10 + floor(1/2*level) + abilityMod</code> (e.g. <code>DC+#CON</code>).</p>
-            <p><strong>/+</strong> : Divides and rounds UP (standard <code>/</code> rounds down).</p>
+          <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] leading-relaxed space-y-1 font-mono">
+            <div className="font-bold text-amber-400 uppercase text-xs mb-1">Macaroni Vocabulary Guide:</div>
+            <p><strong>#FIELD</strong> : Reference field/stat as constant (e.g. <code>#HP</code>, <code>#BAB</code>, <code>#STR</code>, <code>#FORT</code>, <code>#AC</code>). Hover fields on sheet for 3s to copy.</p>
+            <p><strong>[ ]</strong> : Evaluate calculation or dice expression (e.g. <code>[1d4 + #STR]</code>).</p>
+            <p><strong>&lt;&lt;name</strong> : Listen for or pull another named macro (e.g. <code>&lt;&lt;firebreath</code>).</p>
+            <p><strong>&#123;name&#125;</strong> : Mathematical context call (strips flavor text/dialogues, pulls number only).</p>
+            <p><strong>&quot;&quot;</strong> : Written text to print with roll; ignored inside mathematical calls.</p>
+            <p><strong>^</strong> : Increase/delta mutator on called field (e.g. <code>HP^-d6</code>, <code>rounds^-1</code>).</p>
+            <p><strong>&gt;&gt;FIELD-5</strong> : Pushes value to sheet stat directly (no spaces between call and math).</p>
+            <p><strong>&lt;TAG"message"&gt;</strong> : Trigger styled alert card modal (e.g. <code>&lt;11"Dragonfire Crit!"&gt;</code>). Configurable in DSL Studio.</p>
+            <p><strong>&lt;?&gt;</strong> : Interactive decision query with selectable options and custom [ ] input.</p>
+            <p><strong>&amp;</strong> : Multi-slot separator. Access slots via <code>.1</code>, <code>.2</code> (e.g. <code>#(firebolt.2)</code>).</p>
+            <p><strong>|</strong> : Conditional branching and if-then pipeline (e.g. <code>d20 | 20 | &lt;"Crit!"&gt;</code>).</p>
+            <p><strong>!</strong> : Stepper advancement trigger. Advanced automatically or via Step button.</p>
+            <p><strong>$</strong> : Finished/absolute termination for expired buffs and loops.</p>
+            <p className="text-[10px] text-slate-400 italic pt-1">Note: Plain text outside symbols and quotes is inert and safely ignored.</p>
           </div>
         )}
       </div>
@@ -519,7 +690,7 @@ export const XDXTool: React.FC<XDXToolProps> = ({
         {rollLogs.map((log) => (
           <div
             key={log.id}
-            className="p-2.5 rounded-lg bg-black/10 dark:bg-white/5 border border-black/15 dark:border-white/15 space-y-1 font-mono"
+            className="p-2.5 rounded-lg bg-black/10 dark:bg-white/5 border border-black/15 dark:border-white/15 space-y-1.5 font-mono"
           >
             <div className="flex items-center justify-between text-[10px] opacity-60">
               <span className="font-bold text-amber-500">&gt; {log.rawInput}</span>
@@ -530,9 +701,35 @@ export const XDXTool: React.FC<XDXToolProps> = ({
               {log.resultOutput}
             </div>
 
+            {/* If multi-slot results, render slot chips */}
+            {log.slots && log.slots.length > 1 && (
+              <div className="flex flex-wrap gap-1 pt-1 border-t border-black/10 dark:border-white/10">
+                {log.slots.map((s) => (
+                  <span
+                    key={s.slot}
+                    className="px-1.5 py-0.5 rounded bg-black/30 border border-cyan-800/40 text-[10px] text-cyan-300"
+                  >
+                    .{s.slot} ➜ {s.evaluated}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {log.isFinished && (
+              <div className="text-[10px] text-amber-400 font-bold">
+                ✓ Terminated ($)
+              </div>
+            )}
+
             {log.appliedPushes && (
               <div className="text-[10px] text-rose-400 font-semibold pt-0.5 border-t border-black/10 dark:border-white/10">
                 ⚡ {log.appliedPushes.join(' · ')}
+              </div>
+            )}
+
+            {log.quirkyMessage && (
+              <div className="text-[10px] text-amber-300/80 italic">
+                🧀 {log.quirkyMessage}
               </div>
             )}
           </div>

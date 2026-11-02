@@ -106,7 +106,6 @@ export interface WeaponAttack {
   specialProperties?: string;
   isEquipped: boolean;
   imageUrl?: string;
-  icon?: string;
 }
 
 export interface ArmorItem {
@@ -204,7 +203,6 @@ export interface ResourceTracker {
   macroKey?: string; // e.g. "SMITE", "RAGE", "KI"
   category?: 'Class Resource' | 'Spell Slot' | 'Resource Pool' | 'Special';
   notes?: string;
-  icon?: string;
 }
 
 export interface CharacterActionItem {
@@ -231,7 +229,6 @@ export interface FeatItem {
   prerequisites?: string;
   summary: string;
   description?: string;
-  icon?: string;
 }
 
 export interface DowntimeCapital {
@@ -277,16 +274,8 @@ export interface CompanionNPC {
   ac?: string;
 }
 
-export interface ScratchpadPage {
-  id: string;
-  title: string;
-  content: string;
-}
-
 export interface CharacterBioData {
   scratchpad: string;
-  scratchpadPages?: ScratchpadPage[];
-  currentScratchpadPageIndex?: number;
   portraits: string[];
   currentPortraitIndex: number;
   bioSections: { id: string; title: string; content: string }[];
@@ -316,7 +305,20 @@ export interface SpellItem {
   preparedCount: number;
   isCast: boolean;
   description: string;
-  icon?: string;
+}
+
+export type MacaroniCategory = 'logic' | 'placeholder' | 'action' | 'step';
+
+export interface UiMakePreset {
+  tag: number; // e.g. 11, 42, 101
+  name: string; // e.g. "Dragonfire Critical"
+  layout: 'floating_card' | 'banner' | 'modal' | 'toast';
+  font: 'serif' | 'sans' | 'mono' | 'gothic';
+  theme: 'crimson_gold' | 'celestial_cyan' | 'toxic_emerald' | 'necrotic_slate' | 'default_amber';
+  imageUrl?: string;
+  hyperlinkUrl?: string;
+  hyperlinkLabel?: string;
+  soundCue?: 'fanfare' | 'critical' | 'whisper' | 'bell';
 }
 
 export interface CustomFormulaObject {
@@ -324,7 +326,8 @@ export interface CustomFormulaObject {
   name: string; // identifier e.g. "firebreath"
   description: string;
   formula: string; // e.g. '2d6 + (5 * floor(level / 2)) + " fire"'
-  category: 'Attack' | 'Buff' | 'Damage' | 'Utility';
+  category: MacaroniCategory | 'Attack' | 'Buff' | 'Damage' | 'Utility';
+  stepCount?: number;
 }
 
 export interface ConditionState {
@@ -352,12 +355,10 @@ export interface ConditionState {
 
 export type ThemeMode = 'parchment' | 'blueprint' | 'mythweavers' | 'print';
 export type SheetFont = 'times' | 'cinzel' | 'sans' | 'mono';
-export type GlyphStyleMode = '01-flat-enamel' | '02-beveled-token' | '03-arcane-stamp' | 'none';
 
 export interface WorkspaceLayout {
   theme: ThemeMode;
   font: SheetFont;
-  glyphStyle?: GlyphStyleMode;
   activeSheet: 1 | 2 | 3 | 4;
   showAllSheets: boolean;
   visibleModules: {
@@ -503,8 +504,6 @@ export interface CharacterProfileData {
 export interface RollupNotesData {
   content: string;
   isRolledUp: boolean;
-  pages?: ScratchpadPage[];
-  currentPageIndex?: number;
 }
 
 export interface CharacterClassEntry {
@@ -673,6 +672,68 @@ export interface PF1Character {
   companions?: CompanionNPC[];
   characterBio?: CharacterBioData;
   activeStorageTab?: 'worn' | 'stored' | 'companion';
+
+  // Session Journal Tool
+  journal?: JournalEntry[];
+
+  // Installed Standalone Modules (e.g. AI Companion)
+  installedModules?: {
+    aiCompanion?: boolean;
+    aiSettings?: AIModuleSettings;
+  };
+
+  // Workspace Image Library
+  workspaceLibraryImages?: Array<{
+    id: string;
+    name: string;
+    url: string;
+    category: 'portrait' | 'item' | 'sketch' | 'location' | 'general';
+    createdAt: number;
+  }>;
+
+  // Macaroni UI Make Presets (<11"message">)
+  uiMakePresets?: UiMakePreset[];
+}
+
+export type SketchDetailQuality = 'crude' | 'passible' | 'tasteful' | 'astounding';
+
+export interface JournalImage {
+  id: string;
+  url: string;
+  caption?: string;
+  style?: 'sketch' | 'standard';
+  quality?: SketchDetailQuality;
+  prompt?: string;
+  createdAt?: number;
+}
+
+export interface JournalEntry {
+  id: string;
+  title: string;
+  sessionDate: string;
+  realDate?: string;
+  location?: string;
+  content: string;
+  characterVoiceUsed?: string;
+  recalledNotes: string[];
+  images: JournalImage[];
+  tags: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface AIModuleSettings {
+  isInstalled: boolean;
+  allowedFields: {
+    hp: boolean;
+    conditions: boolean;
+    currency: boolean;
+    inventory: boolean;
+    notes: boolean;
+    journal: boolean;
+    customFormulas: boolean;
+  };
+  preferredVoice?: string;
 }
 
 export interface StepperRule {

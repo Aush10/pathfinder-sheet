@@ -33,15 +33,13 @@ import {
   FeatItem,
 } from '../../types/character';
 import { DerivedCombatStats } from '../../engine/pf1eMath';
-import { GlyphStyle, resolveIconOrGlyphUrl } from '../../data/glyphs';
-import { GlyphPicker } from '../tools/GlyphPicker';
+import { FieldCallTooltip } from '../common/FieldCallTooltip';
 
 interface SheetPage2ActionsSkillsProps {
   character: PF1Character;
   derived: DerivedCombatStats;
   theme: string;
   fontClass: string;
-  glyphStyle?: GlyphStyle;
   onUpdateCharacter: (updater: (prev: PF1Character) => PF1Character) => void;
   onRollFormula: (formula: string, label?: string) => void;
   visibleModules?: Record<string, boolean>;
@@ -60,21 +58,13 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
   derived,
   theme,
   fontClass,
-  glyphStyle = '01-flat-enamel',
   onUpdateCharacter,
   onRollFormula,
   visibleModules = {},
 }) => {
-  // Skill search, sorting, collapse 0-SP, and add new skill state
+  // Skill search & sorting state (Matches Wireframe Image 1: "add option to organize by name, relevant ability score (sdciwc), class/nonclass, bonus +/-, bonus -/+, custom order")
   const [skillSearch, setSkillSearch] = useState('');
   const [skillSort, setSkillSort] = useState<SkillSortOption>('custom');
-  const [collapseZeroSpSkills, setCollapseZeroSpSkills] = useState(false);
-  const [isAddSkillOpen, setIsAddSkillOpen] = useState(false);
-  const [newSkillName, setNewSkillName] = useState('');
-  const [newSkillAbility, setNewSkillAbility] = useState<AbilityName>('INT');
-  const [newSkillIsClass, setNewSkillIsClass] = useState(true);
-  const [newSkillTrainedOnly, setNewSkillTrainedOnly] = useState(false);
-  const [newSkillHasAcp, setNewSkillHasAcp] = useState(false);
 
   // Action search & category filter (Matches Wireframe Image 1: "search bar_smite____", "list of all available actions by section")
   const [actionSearch, setActionSearch] = useState('');
@@ -93,7 +83,6 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
   const [newResourceCategory, setNewResourceCategory] = useState<
     'Class Resource' | 'Spell Slot' | 'Resource Pool' | 'Special'
   >('Class Resource');
-  const [newResourceGlyph, setNewResourceGlyph] = useState('');
 
   // New action form state
   const [newActionName, setNewActionName] = useState('');
@@ -104,7 +93,7 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
     'Standard' | 'Move' | 'Swift' | 'Immediate' | 'Free' | 'Full-Round' | '1 Round'
   >('Standard');
   const [newActionMacro, setNewActionMacro] = useState('');
-  const [newActionIcon, setNewActionIcon] = useState('');
+  const [newActionIcon, setNewActionIcon] = useState('sparkles');
   const [newActionDesc, setNewActionDesc] = useState('');
 
   // New feat form state
@@ -112,12 +101,9 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
   const [newFeatType, setNewFeatType] = useState('Combat');
   const [newFeatPrereq, setNewFeatPrereq] = useState('');
   const [newFeatSummary, setNewFeatSummary] = useState('');
-  const [newFeatGlyph, setNewFeatGlyph] = useState('');
 
   // Styling helpers
   const isParchment = theme === 'parchment';
-  const isPrint = theme === 'print';
-  const isLightTheme = isParchment || isPrint;
   const isBlueprint = theme === 'blueprint';
   const isMythWeavers = theme === 'mythweavers';
 
@@ -244,31 +230,9 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
     return abilityMod + skill.ranks + classBonus + (skill.miscMod || 0) + acpPenalty;
   };
 
-  // Add a new custom skill to the skill list
-  const handleAddSkill = () => {
-    if (!newSkillName.trim()) return;
-    const newSk: SkillItem = {
-      id: `sk-custom-${Date.now()}`,
-      name: newSkillName.trim(),
-      keyAbility: newSkillAbility,
-      isClassSkill: newSkillIsClass,
-      ranks: 0,
-      miscMod: 0,
-      hasArmorCheckPenalty: newSkillHasAcp,
-      isTrainedOnly: newSkillTrainedOnly,
-    };
-    setField('skills', [...(character.skills || []), newSk]);
-    setNewSkillName('');
-    setIsAddSkillOpen(false);
-  };
-
   // Sort and filter skills
   const sortedSkills = useMemo(() => {
     let list = [...(character.skills || [])];
-
-    if (collapseZeroSpSkills) {
-      list = list.filter((s) => (s.ranks || 0) > 0);
-    }
 
     if (skillSearch.trim()) {
       const q = skillSearch.toLowerCase();
@@ -306,7 +270,7 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
       default:
         return list;
     }
-  }, [character.skills, skillSearch, skillSort, collapseZeroSpSkills, derived]);
+  }, [character.skills, skillSearch, skillSort, derived]);
 
   // Resource Trackers logic
   const resourceTrackers = character.resourceTrackers || [];
@@ -365,13 +329,11 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
       max: maxVal,
       macroKey: newResourceMacro.trim().toUpperCase() || undefined,
       category: newResourceCategory,
-      icon: newResourceGlyph || undefined,
     };
     setField('resourceTrackers', [...resourceTrackers, newRes]);
     setNewResourceName('');
     setNewResourceMax('3');
     setNewResourceMacro('');
-    setNewResourceGlyph('');
     setIsAddResourceOpen(false);
   };
 
@@ -408,7 +370,7 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
       category: newActionCategory,
       actionType: newActionType,
       macroFormula: newActionMacro.trim() || undefined,
-      icon: newActionIcon || undefined,
+      icon: newActionIcon,
       description: newActionDesc.trim() || 'No description provided.',
       shortSummary: `${newActionType} action. ${newActionMacro || ''}`,
     };
@@ -416,7 +378,6 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
     setSelectedActionId(newAct.id);
     setNewActionName('');
     setNewActionMacro('');
-    setNewActionIcon('');
     setNewActionDesc('');
     setIsAddActionOpen(false);
   };
@@ -440,13 +401,11 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
       type: newFeatType,
       prerequisites: newFeatPrereq.trim() || 'None',
       summary: newFeatSummary.trim() || 'Benefit description...',
-      icon: newFeatGlyph || undefined,
     };
     setField('characterFeats', [...characterFeats, newF]);
     setNewFeatName('');
     setNewFeatPrereq('');
     setNewFeatSummary('');
-    setNewFeatGlyph('');
     setIsAddFeatOpen(false);
   };
 
@@ -454,18 +413,8 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
     setField('characterFeats', characterFeats.filter((f) => f.id !== id));
   };
 
-  // Helper for rendering action icon or assigned glyph
+  // Helper for rendering action icon
   const renderActionIcon = (iconName?: string) => {
-    const resolvedGlyph = resolveIconOrGlyphUrl(iconName, glyphStyle);
-    if (resolvedGlyph) {
-      return (
-        <img
-          src={resolvedGlyph}
-          alt=""
-          className="w-5 h-5 object-contain shrink-0"
-        />
-      );
-    }
     switch (iconName) {
       case 'flame':
         return <Flame className="w-4 h-4 text-amber-500" />;
@@ -478,10 +427,10 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
       case 'book':
         return <BookOpen className="w-4 h-4 text-purple-500" />;
       case 'zap':
-        return <Zap className="w-4 h-4 text-amber-600 dark:text-yellow-400" />;
+        return <Zap className="w-4 h-4 text-yellow-400" />;
       case 'sparkles':
       default:
-        return <Sparkles className="w-4 h-4 text-amber-600 dark:text-amber-400" />;
+        return <Sparkles className="w-4 h-4 text-amber-400" />;
     }
   };
 
@@ -515,120 +464,21 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
           <div className={`rounded-xl border p-4 ${cardBg}`}>
             {/* Skills Header & Sort / Organization Controls */}
             <div className="flex flex-col gap-3 pb-3 border-b border-black/10 dark:border-white/10">
-              <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Award className="w-5 h-5 text-amber-600 dark:text-amber-500" />
+                  <Award className="w-5 h-5 text-amber-500" />
                   <h3 className="font-serif font-bold text-base tracking-wide">Skills Matrix</h3>
-                  <span className="text-[11px] font-mono opacity-70">
-                    ({sortedSkills.length}/{character.skills?.length || 35})
-                  </span>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => setCollapseZeroSpSkills(!collapseZeroSpSkills)}
-                    className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border flex items-center gap-1 transition-colors ${
-                      collapseZeroSpSkills
-                        ? 'bg-amber-600 text-slate-950 border-amber-600'
-                        : 'bg-black/5 dark:bg-white/10 border-black/15 dark:border-white/15 opacity-80 hover:opacity-100'
-                    }`}
-                    title="Fold / hide skills with 0 skill points (SP) invested"
-                  >
-                    <ChevronDown
-                      className={`w-3 h-3 transition-transform ${
-                        collapseZeroSpSkills ? '-rotate-90' : ''
-                      }`}
-                    />
-                    <span>{collapseZeroSpSkills ? 'Unfold 0 SP' : 'Fold Unused (0 SP)'}</span>
-                  </button>
-                  <button
-                    onClick={() => setIsAddSkillOpen(!isAddSkillOpen)}
-                    className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-600 hover:bg-amber-500 text-slate-950 flex items-center gap-1 transition-colors"
-                    title="Create a new skill and add it to the skill list"
-                  >
-                    <Plus className="w-3 h-3" />
-                    <span>New Skill</span>
-                  </button>
-                </div>
+                <span className="text-xs font-mono opacity-70">
+                  {character.skills?.length || 35} Skills
+                </span>
               </div>
-
-              {isAddSkillOpen && (
-                <div className="p-2.5 rounded-lg border border-amber-500/40 bg-black/5 dark:bg-white/5 space-y-2 text-xs font-mono">
-                  <div className="font-bold text-[11px] uppercase">Create Custom Skill</div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <input
-                      type="text"
-                      value={newSkillName}
-                      onChange={(e) => setNewSkillName(e.target.value)}
-                      placeholder="Skill Name (e.g. Craft: Traps)"
-                      className={`sm:col-span-2 px-2 py-1 rounded border text-xs ${inputStyle}`}
-                    />
-                    <select
-                      value={newSkillAbility}
-                      onChange={(e) => setNewSkillAbility(e.target.value as AbilityName)}
-                      className={`px-2 py-1 rounded border text-xs font-bold ${inputStyle}`}
-                    >
-                      {(['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'] as const).map((ab) => (
-                        <option key={ab} value={ab}>
-                          Key: {ab}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="flex items-center justify-between flex-wrap gap-2 pt-1">
-                    <div className="flex items-center gap-3 text-[11px]">
-                      <label className="flex items-center gap-1 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={newSkillIsClass}
-                          onChange={(e) => setNewSkillIsClass(e.target.checked)}
-                          className="rounded accent-amber-500"
-                        />
-                        <span>Class Skill</span>
-                      </label>
-                      <label className="flex items-center gap-1 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={newSkillTrainedOnly}
-                          onChange={(e) => setNewSkillTrainedOnly(e.target.checked)}
-                          className="rounded accent-amber-500"
-                        />
-                        <span>Trained Only</span>
-                      </label>
-                      <label className="flex items-center gap-1 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={newSkillHasAcp}
-                          onChange={(e) => setNewSkillHasAcp(e.target.checked)}
-                          className="rounded accent-amber-500"
-                        />
-                        <span>ACP</span>
-                      </label>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => setIsAddSkillOpen(false)}
-                        className="px-2 py-0.5 rounded bg-black/10 dark:bg-white/10 text-[11px]"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={handleAddSkill}
-                        className="px-2.5 py-0.5 rounded bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-[11px]"
-                      >
-                        Add Skill
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
 
               {/* SP Calculation Bar */}
               <div className="p-2.5 rounded-lg bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-xs space-y-2">
                 <div className="flex items-center justify-between font-mono">
-                  <span className={`font-bold ${isLightTheme ? 'text-amber-900' : 'text-amber-500'}`}>
-                    Skill Points Allocation:
-                  </span>
-                  <span className={spRemaining < 0 ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-emerald-700 dark:text-emerald-400 font-bold'}>
+                  <span className="font-bold text-amber-500">Skill Points Allocation:</span>
+                  <span className={spRemaining < 0 ? 'text-rose-500 font-bold' : 'text-emerald-500 font-bold'}>
                     {totalInvestedSp} / {totalAvailableSp} SP ({spRemaining >= 0 ? `${spRemaining} left` : `${Math.abs(spRemaining)} over`})
                   </span>
                 </div>
@@ -704,9 +554,11 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
                 const isOverLevel = sk.ranks > character.level;
 
                 return (
-                  <div
+                  <FieldCallTooltip
                     key={sk.id}
-                    className={`grid grid-cols-12 gap-1 items-center px-2 py-1.5 rounded transition-colors ${
+                    callName={`#${sk.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}`}
+                    description={`${sk.name} Bonus`}
+                    className={`grid grid-cols-12 gap-1 items-center px-2 py-1.5 rounded transition-colors w-full ${
                       sk.ranks > 0
                         ? 'bg-amber-500/10 dark:bg-amber-500/15'
                         : 'hover:bg-black/5 dark:hover:bg-white/5'
@@ -719,28 +571,19 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
                         checked={sk.isClassSkill}
                         onChange={(e) => updateSkill(sk.id, { isClassSkill: e.target.checked })}
                         className="rounded accent-amber-500 w-3 h-3 cursor-pointer"
-                        title="Class skill checkbox (+3 bonus if invested)"
                       />
                     </div>
 
                     {/* Skill Name */}
-                    <div className="col-span-5 flex items-center gap-1 truncate" title={sk.name}>
-                      <span
-                        className={`truncate ${
-                          sk.isClassSkill
-                            ? isLightTheme
-                              ? 'font-bold text-amber-900'
-                              : 'font-semibold text-amber-400'
-                            : ''
-                        }`}
-                      >
+                    <div className="col-span-5 flex items-center gap-1 truncate">
+                      <span className={`truncate cursor-help hover:text-amber-300 transition-colors ${sk.isClassSkill ? 'font-semibold text-amber-400' : ''}`}>
                         {sk.name}
                       </span>
                       {sk.hasArmorCheckPenalty && (
-                        <span className="text-[9px] text-rose-600 dark:text-rose-400 font-bold" title="Armor check penalty applies">*</span>
+                        <span className="text-[9px] text-rose-400 font-bold" title="Armor check penalty applies">*</span>
                       )}
                       {sk.isTrainedOnly && (
-                        <span className="text-[9px] text-cyan-700 dark:text-cyan-400 font-bold" title="Trained only">†</span>
+                        <span className="text-[9px] text-cyan-400" title="Trained only">†</span>
                       )}
                     </div>
 
@@ -761,9 +604,8 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
                           updateSkill(sk.id, { ranks: val });
                         }}
                         className={`w-7 text-center py-0.5 rounded border text-xs font-bold ${
-                          isOverLevel ? 'border-rose-500 bg-rose-500/20 text-rose-700 dark:text-rose-300' : inputStyle
+                          isOverLevel ? 'border-rose-500 bg-rose-500/20 text-rose-300' : inputStyle
                         }`}
-                        title={isOverLevel ? `Cannot invest more ranks than level (${character.level})` : 'Ranks invested'}
                       />
                     </div>
 
@@ -774,21 +616,12 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
                         value={sk.miscMod || 0}
                         onChange={(e) => updateSkill(sk.id, { miscMod: parseInt(e.target.value, 10) || 0 })}
                         className={`w-7 text-center py-0.5 rounded border text-xs ${inputStyle}`}
-                        title="Miscellaneous modifier"
                       />
                     </div>
 
                     {/* Total Bonus */}
-                    <div className="col-span-1 text-center font-bold text-xs">
-                      <span
-                        className={
-                          totalBonus >= 0
-                            ? isLightTheme
-                              ? 'text-amber-900 font-black'
-                              : 'text-amber-400'
-                            : 'text-rose-600 dark:text-rose-400'
-                        }
-                      >
+                    <div className="col-span-1 text-center font-bold text-xs cursor-help">
+                      <span className={totalBonus >= 0 ? 'text-amber-400' : 'text-rose-400'}>
                         {totalBonus >= 0 ? `+${totalBonus}` : totalBonus}
                       </span>
                     </div>
@@ -797,18 +630,13 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
                     <div className="col-span-2 flex justify-center">
                       <button
                         onClick={() => onRollFormula(`1d20+${totalBonus}`, `${sk.name} Check`)}
-                        className={`px-2 py-0.5 rounded font-bold text-[10px] flex items-center gap-1 transition-colors ${
-                          isLightTheme
-                            ? 'bg-amber-900/15 hover:bg-amber-600 text-amber-950 hover:text-black border border-amber-900/30'
-                            : 'bg-amber-600/30 hover:bg-amber-600 text-amber-200 hover:text-black'
-                        }`}
-                        title={`Roll 1d20+${totalBonus}`}
+                        className="px-2 py-0.5 rounded bg-amber-600/30 hover:bg-amber-600 text-amber-200 hover:text-black font-bold text-[10px] flex items-center gap-1 transition-colors"
                       >
                         <Dices className="w-2.5 h-2.5" />
                         <span>d20</span>
                       </button>
                     </div>
-                  </div>
+                  </FieldCallTooltip>
                 );
               })}
             </div>
@@ -840,7 +668,7 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
                 className="px-2.5 py-1 text-xs font-bold rounded-lg bg-amber-600 hover:bg-amber-500 text-slate-950 flex items-center gap-1 transition-colors shadow-sm"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>New Resource</span>
+                <span>+ Add Resource</span>
               </button>
             </div>
 
@@ -848,7 +676,6 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {resourceTrackers.map((res) => {
                 const percent = Math.min(100, Math.round((res.current / Math.max(1, res.max)) * 100));
-                const resGlyphUrl = resolveIconOrGlyphUrl(res.icon, glyphStyle);
 
                 return (
                   <div
@@ -857,35 +684,16 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5 truncate">
-                        {resGlyphUrl && (
-                          <img
-                            src={resGlyphUrl}
-                            alt=""
-                            className="w-4 h-4 object-contain shrink-0"
-                          />
-                        )}
-                        <span
-                          className={`font-bold text-xs truncate ${
-                            isLightTheme ? 'text-stone-900' : 'text-amber-300'
-                          }`}
-                        >
-                          {res.name}
-                        </span>
+                        <span className="font-bold text-xs truncate text-amber-300">{res.name}</span>
                         {res.macroKey && (
-                          <span
-                            className={`text-[9px] font-mono px-1 py-0.5 rounded border ${
-                              isLightTheme
-                                ? 'bg-cyan-900/10 text-cyan-900 border-cyan-800/30 font-bold'
-                                : 'bg-black/40 text-cyan-300 border-cyan-800/40'
-                            }`}
-                          >
+                          <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-black/40 text-cyan-300 border border-cyan-800/40">
                             #{res.macroKey}
                           </span>
                         )}
                       </div>
                       <button
                         onClick={() => deleteResource(res.id)}
-                        className="text-slate-500 hover:text-rose-500 p-0.5"
+                        className="text-slate-500 hover:text-rose-400 p-0.5"
                         title="Delete tracker"
                       >
                         <Trash2 className="w-3 h-3" />
@@ -893,7 +701,7 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
                     </div>
 
                     {/* Progress Bar */}
-                    <div className="w-full bg-black/20 dark:bg-black/30 rounded-full h-1.5 overflow-hidden">
+                    <div className="w-full bg-black/30 rounded-full h-1.5 overflow-hidden">
                       <div
                         className="bg-amber-500 h-1.5 transition-all duration-300"
                         style={{ width: `${percent}%` }}
@@ -902,22 +710,14 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
 
                     {/* Counter Controls: *use[] *refresh */}
                     <div className="flex items-center justify-between font-mono text-xs pt-1">
-                      <span
-                        className={`font-bold ${
-                          isLightTheme ? 'text-stone-900' : 'text-amber-200'
-                        }`}
-                      >
+                      <span className="font-bold text-amber-200">
                         {res.current} / {res.max}
                       </span>
 
                       <div className="flex items-center gap-1">
                         <button
                           onClick={() => useResource(res.id)}
-                          className={`px-2 py-0.5 rounded font-bold text-[10px] flex items-center gap-0.5 transition-colors ${
-                            isLightTheme
-                              ? 'bg-rose-500/20 hover:bg-rose-600 text-rose-900 hover:text-white'
-                              : 'bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white'
-                          }`}
+                          className="px-2 py-0.5 rounded bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white font-bold text-[10px] flex items-center gap-0.5 transition-colors"
                           title="Use 1 charge"
                         >
                           <Minus className="w-2.5 h-2.5" />
@@ -925,22 +725,14 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
                         </button>
                         <button
                           onClick={() => restoreResource(res.id)}
-                          className={`px-2 py-0.5 rounded font-bold text-[10px] flex items-center gap-0.5 transition-colors ${
-                            isLightTheme
-                              ? 'bg-emerald-500/20 hover:bg-emerald-600 text-emerald-900 hover:text-white'
-                              : 'bg-emerald-500/20 hover:bg-emerald-500 text-emerald-300 hover:text-white'
-                          }`}
+                          className="px-2 py-0.5 rounded bg-emerald-500/20 hover:bg-emerald-500 text-emerald-300 hover:text-white font-bold text-[10px] flex items-center gap-0.5 transition-colors"
                           title="Restore 1 charge"
                         >
                           <Plus className="w-2.5 h-2.5" />
                         </button>
                         <button
                           onClick={() => refreshResource(res.id)}
-                          className={`px-2 py-0.5 rounded font-bold text-[10px] flex items-center gap-0.5 transition-colors ${
-                            isLightTheme
-                              ? 'bg-cyan-500/20 hover:bg-cyan-600 text-cyan-900 hover:text-white'
-                              : 'bg-cyan-500/20 hover:bg-cyan-500 text-cyan-300 hover:text-white'
-                          }`}
+                          className="px-2 py-0.5 rounded bg-cyan-500/20 hover:bg-cyan-500 text-cyan-300 hover:text-white font-bold text-[10px] flex items-center gap-0.5 transition-colors"
                           title="Refresh to full"
                         >
                           <RefreshCw className="w-2.5 h-2.5" />
@@ -954,7 +746,7 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
 
               {resourceTrackers.length === 0 && (
                 <div className="col-span-2 text-center py-6 text-xs opacity-50 font-mono">
-                  No active resource trackers. Click &quot;+ New Resource&quot; to track Smite, Rage, Spell Slots, or Pools.
+                  No active resource trackers. Click &quot;+ Add Resource&quot; to track Smite, Rage, Spell Slots, or Pools.
                 </div>
               )}
             </div>
@@ -964,7 +756,7 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
           <div className={`rounded-xl border p-4 ${cardBg} space-y-3`}>
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-2 border-b border-black/10 dark:border-white/10">
               <div className="flex items-center gap-2">
-                <Swords className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                <Swords className="w-5 h-5 text-amber-400" />
                 <h3 className="font-serif font-bold text-base tracking-wide">Action Directory</h3>
               </div>
 
@@ -973,7 +765,7 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
                 className="px-2.5 py-1 text-xs font-bold rounded-lg bg-amber-600 hover:bg-amber-500 text-slate-950 flex items-center gap-1 transition-colors shadow-sm"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>New Action</span>
+                <span>+ Add New Action</span>
               </button>
             </div>
 
@@ -987,8 +779,6 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
                     className={`px-2.5 py-1 rounded text-xs whitespace-nowrap transition-colors ${
                       actionCategoryFilter === cat
                         ? 'bg-amber-500 text-slate-950 font-bold'
-                        : isLightTheme
-                        ? 'bg-black/10 hover:bg-black/20 text-stone-800 font-medium'
                         : 'bg-black/10 dark:bg-white/10 hover:bg-black/20 text-slate-300'
                     }`}
                   >
@@ -1025,23 +815,17 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
                     }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="p-1.5 rounded-md bg-black/10 dark:bg-white/10 shrink-0 flex items-center justify-center w-8 h-8 overflow-hidden">
+                      <div className="p-1.5 rounded-md bg-black/20 dark:bg-white/10 shrink-0">
                         {renderActionIcon(act.icon)}
                       </div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <span
-                            className={`font-bold text-xs truncate ${
-                              isLightTheme ? 'text-stone-900' : 'text-amber-200'
-                            }`}
-                          >
-                            {act.name}
-                          </span>
-                          <span className="text-[10px] font-mono opacity-75 px-1 rounded bg-black/10 dark:bg-black/30">
+                          <span className="font-bold text-xs truncate text-amber-200">{act.name}</span>
+                          <span className="text-[10px] font-mono opacity-60 px-1 rounded bg-black/30">
                             {act.actionType || 'Standard'}
                           </span>
                         </div>
-                        <p className="text-[11px] opacity-75 truncate font-sans">
+                        <p className="text-[11px] opacity-70 truncate font-sans">
                           {act.shortSummary || act.description.slice(0, 60)}
                         </p>
                       </div>
@@ -1066,7 +850,7 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
                           e.stopPropagation();
                           deleteAction(act.id);
                         }}
-                        className="text-slate-500 hover:text-rose-500 p-1"
+                        className="text-slate-500 hover:text-rose-400 p-1"
                         title="Delete action"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -1088,23 +872,13 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
           <div className={`rounded-xl border p-4 ${cardBg}`}>
             <div className="flex items-center justify-between pb-2 mb-2 border-b border-black/10 dark:border-white/10">
               <div className="flex items-center gap-2">
-                <Info className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
-                <span
-                  className={`font-bold text-xs uppercase tracking-wider font-mono ${
-                    isLightTheme ? 'text-cyan-900' : 'text-cyan-300'
-                  }`}
-                >
+                <Info className="w-4 h-4 text-cyan-400" />
+                <span className="font-bold text-xs uppercase tracking-wider text-cyan-300 font-mono">
                   Selected Action Inspector
                 </span>
               </div>
               {selectedAction && (
-                <span
-                  className={`text-xs font-mono px-2 py-0.5 rounded border ${
-                    isLightTheme
-                      ? 'bg-amber-900/10 text-amber-950 border-amber-800/30 font-bold'
-                      : 'bg-black/40 text-amber-300 border-amber-500/30'
-                  }`}
-                >
+                <span className="text-xs font-mono px-2 py-0.5 rounded bg-black/40 text-amber-300 border border-amber-500/30">
                   {selectedAction.category}
                 </span>
               )}
@@ -1114,13 +888,7 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
               <div className="space-y-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h4
-                      className={`font-serif font-bold text-lg ${
-                        isLightTheme ? 'text-stone-900' : 'text-amber-300'
-                      }`}
-                    >
-                      {selectedAction.name}
-                    </h4>
+                    <h4 className="font-serif font-bold text-lg text-amber-300">{selectedAction.name}</h4>
                     <div className="flex items-center gap-2 mt-0.5 text-xs font-mono opacity-75">
                       <span>Action: {selectedAction.actionType || 'Standard'}</span>
                       {selectedAction.range && <span>• Range: {selectedAction.range}</span>}
@@ -1139,26 +907,8 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
                   )}
                 </div>
 
-                <div className="p-3 rounded-lg bg-black/5 dark:bg-black/30 border border-black/10 dark:border-white/10 text-xs leading-relaxed font-sans whitespace-pre-wrap">
+                <div className="p-3 rounded-lg bg-black/10 dark:bg-black/30 border border-black/10 dark:border-white/10 text-xs leading-relaxed font-sans whitespace-pre-wrap">
                   {selectedAction.description}
-                </div>
-
-                {/* Allow changing glyph on existing action */}
-                <div className="pt-1">
-                  <GlyphPicker
-                    value={selectedAction.icon || ''}
-                    onChange={(glyphId) =>
-                      setField(
-                        'characterActions',
-                        characterActions.map((a) =>
-                          a.id === selectedAction.id ? { ...a, icon: glyphId || undefined } : a
-                        )
-                      )
-                    }
-                    glyphStyle={glyphStyle}
-                    label="Action Glyph"
-                    compact={true}
-                  />
                 </div>
               </div>
             ) : (
@@ -1173,7 +923,7 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
           <div className={`rounded-xl border p-4 ${cardBg} space-y-3`}>
             <div className="flex items-center justify-between pb-2 border-b border-black/10 dark:border-white/10">
               <div className="flex items-center gap-2">
-                <BookOpen className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                <BookOpen className="w-5 h-5 text-amber-400" />
                 <h3 className="font-serif font-bold text-base tracking-wide">Feats &amp; Special Qualities</h3>
               </div>
 
@@ -1182,55 +932,37 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
                 className="px-2.5 py-1 text-xs font-bold rounded-lg bg-amber-600 hover:bg-amber-500 text-slate-950 flex items-center gap-1 transition-colors shadow-sm"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>New Feat</span>
+                <span>+ Add New Feat</span>
               </button>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {characterFeats.map((feat) => {
-                const featGlyphUrl = resolveIconOrGlyphUrl(feat.icon, glyphStyle);
-                return (
-                  <div
-                    key={feat.id}
-                    className="p-2.5 rounded-lg bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 space-y-1"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        {featGlyphUrl && (
-                          <img
-                            src={featGlyphUrl}
-                            alt=""
-                            className="w-4 h-4 object-contain shrink-0"
-                          />
-                        )}
-                        <span
-                          className={`font-bold text-xs truncate ${
-                            isLightTheme ? 'text-stone-900' : 'text-amber-200'
-                          }`}
-                        >
-                          {feat.name}
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => deleteFeat(feat.id)}
-                        className="text-slate-500 hover:text-rose-500 p-0.5 shrink-0"
-                        title="Delete feat"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
-                    <div className="text-[10px] font-mono opacity-60">
-                      <span>{feat.type || 'General'}</span>
-                      {feat.prerequisites && feat.prerequisites !== 'None' && (
-                        <span> • Req: {feat.prerequisites}</span>
-                      )}
-                    </div>
-                    <p className="text-[11px] opacity-75 font-sans line-clamp-2">
-                      {feat.summary}
-                    </p>
+              {characterFeats.map((feat) => (
+                <div
+                  key={feat.id}
+                  className="p-2.5 rounded-lg bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 space-y-1"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-amber-200">{feat.name}</span>
+                    <button
+                      onClick={() => deleteFeat(feat.id)}
+                      className="text-slate-500 hover:text-rose-400 p-0.5"
+                      title="Delete feat"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
                   </div>
-                );
-              })}
+                  <div className="text-[10px] font-mono opacity-60">
+                    <span>{feat.type || 'General'}</span>
+                    {feat.prerequisites && feat.prerequisites !== 'None' && (
+                      <span> • Req: {feat.prerequisites}</span>
+                    )}
+                  </div>
+                  <p className="text-[11px] opacity-75 font-sans line-clamp-2">
+                    {feat.summary}
+                  </p>
+                </div>
+              ))}
             </div>
           </div>
           )}
@@ -1244,12 +976,10 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
           <div className={`w-full max-w-md rounded-2xl border p-6 space-y-4 shadow-2xl ${cardBg}`}>
             <div className="flex items-center justify-between border-b pb-3 border-black/10 dark:border-white/10">
-              <h3 className={`font-serif font-bold text-base ${isLightTheme ? 'text-amber-900' : 'text-amber-400'}`}>
-                New Resource Tracker
-              </h3>
+              <h3 className="font-serif font-bold text-base text-amber-400">Add Resource Tracker</h3>
               <button
                 onClick={() => setIsAddResourceOpen(false)}
-                className="p-1 rounded opacity-70 hover:opacity-100"
+                className="p-1 rounded text-slate-400 hover:text-white"
               >
                 ✕
               </button>
@@ -1303,13 +1033,6 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
                   <option value="Special">Special / Item</option>
                 </select>
               </div>
-
-              <GlyphPicker
-                value={newResourceGlyph}
-                onChange={setNewResourceGlyph}
-                glyphStyle={glyphStyle}
-                label="Assign Glyph (Optional)"
-              />
             </div>
 
             <div className="flex justify-end gap-2 pt-2 border-t border-black/10 dark:border-white/10">
@@ -1337,12 +1060,10 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
           <div className={`w-full max-w-lg rounded-2xl border p-6 space-y-4 shadow-2xl ${cardBg}`}>
             <div className="flex items-center justify-between border-b pb-3 border-black/10 dark:border-white/10">
-              <h3 className={`font-serif font-bold text-base ${isLightTheme ? 'text-amber-900' : 'text-amber-400'}`}>
-                New Action
-              </h3>
+              <h3 className="font-serif font-bold text-base text-amber-400">Add New Action</h3>
               <button
                 onClick={() => setIsAddActionOpen(false)}
-                className="p-1 rounded opacity-70 hover:opacity-100"
+                className="p-1 rounded text-slate-400 hover:text-white"
               >
                 ✕
               </button>
@@ -1396,23 +1117,34 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
                 </div>
               </div>
 
-              <div>
-                <label className="block font-bold opacity-75 mb-1">Macro Sensitive Roll / Formula</label>
-                <input
-                  type="text"
-                  value={newActionMacro}
-                  onChange={(e) => setNewActionMacro(e.target.value)}
-                  placeholder="e.g. 2d6+CHA, 6d6 fire, 1d20+12"
-                  className={`w-full px-3 py-1.5 rounded border font-mono ${inputStyle}`}
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold opacity-75 mb-1">Macro Sensitive Roll / Formula</label>
+                  <input
+                    type="text"
+                    value={newActionMacro}
+                    onChange={(e) => setNewActionMacro(e.target.value)}
+                    placeholder="e.g. 2d6+CHA, 6d6 fire, 1d20+12"
+                    className={`w-full px-3 py-1.5 rounded border font-mono ${inputStyle}`}
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold opacity-75 mb-1">Icon Style</label>
+                  <select
+                    value={newActionIcon}
+                    onChange={(e) => setNewActionIcon(e.target.value)}
+                    className={`w-full px-3 py-1.5 rounded border font-mono ${inputStyle}`}
+                  >
+                    <option value="sparkles">Sparkles (Magic)</option>
+                    <option value="swords">Swords (Melee)</option>
+                    <option value="flame">Flame (Fire / Blast)</option>
+                    <option value="shield">Shield (Defensive)</option>
+                    <option value="crosshair">Crosshair (Target / Attack)</option>
+                    <option value="zap">Lightning (Energy)</option>
+                    <option value="book">Tome (Spells)</option>
+                  </select>
+                </div>
               </div>
-
-              <GlyphPicker
-                value={newActionIcon}
-                onChange={setNewActionIcon}
-                glyphStyle={glyphStyle}
-                label="Assign Glyph (Optional)"
-              />
 
               <div>
                 <label className="block font-bold opacity-75 mb-1">Description (Macro Sensitive)</label>
@@ -1451,12 +1183,10 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
           <div className={`w-full max-w-md rounded-2xl border p-6 space-y-4 shadow-2xl ${cardBg}`}>
             <div className="flex items-center justify-between border-b pb-3 border-black/10 dark:border-white/10">
-              <h3 className={`font-serif font-bold text-base ${isLightTheme ? 'text-amber-900' : 'text-amber-400'}`}>
-                New Feat
-              </h3>
+              <h3 className="font-serif font-bold text-base text-amber-400">Add New Feat</h3>
               <button
                 onClick={() => setIsAddFeatOpen(false)}
-                className="p-1 rounded opacity-70 hover:opacity-100"
+                className="p-1 rounded text-slate-400 hover:text-white"
               >
                 ✕
               </button>
@@ -1511,13 +1241,6 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
                   className={`w-full px-3 py-2 rounded border font-sans text-xs ${inputStyle}`}
                 />
               </div>
-
-              <GlyphPicker
-                value={newFeatGlyph}
-                onChange={setNewFeatGlyph}
-                glyphStyle={glyphStyle}
-                label="Assign Glyph (Optional)"
-              />
             </div>
 
             <div className="flex justify-end gap-2 pt-2 border-t border-black/10 dark:border-white/10">

@@ -26,9 +26,10 @@ import {
   Image as ImageIcon,
   FolderOpen,
   FileCode,
+  BookOpen,
+  Cpu,
 } from 'lucide-react';
-import { ThemeMode, SheetFont, GlyphStyleMode, WorkspaceLayout, PF1Character } from '../../types/character';
-import { GLYPH_STYLE_OPTIONS, getGlyphUrl } from '../../data/glyphs';
+import { ThemeMode, SheetFont, WorkspaceLayout, PF1Character } from '../../types/character';
 
 interface BlueprintSidebarProps {
   layout: WorkspaceLayout;
@@ -45,6 +46,9 @@ interface BlueprintSidebarProps {
   onOpenLoadout: () => void;
   onOpenAddClass: () => void;
   onOpenCMBt: () => void;
+  onOpenJournal?: () => void;
+  onOpenAITool?: () => void;
+  onInstallAITool?: () => void;
   onOpenNewSheet?: () => void;
   onOpenImageBrowser?: () => void;
   onExportStandaloneHTML?: () => void;
@@ -69,6 +73,9 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
   onOpenLoadout,
   onOpenAddClass,
   onOpenCMBt,
+  onOpenJournal,
+  onOpenAITool,
+  onInstallAITool,
   onOpenNewSheet,
   onOpenImageBrowser,
   onExportStandaloneHTML,
@@ -109,7 +116,7 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
   ];
 
   return (
-    <aside className="w-72 shrink-0 bg-slate-900/95 border-r border-cyan-500/30 text-slate-200 flex flex-col h-full shadow-2xl overflow-y-auto select-none print:hidden">
+    <aside className="w-80 shrink-0 bg-slate-900/95 border-r border-cyan-500/30 text-slate-200 flex flex-col h-full shadow-2xl overflow-y-auto select-none print:hidden">
       {/* Top Section: Layout, Color & Font */}
       <div className="p-4 border-b border-cyan-500/20 bg-slate-950/70">
         <div className="flex items-center justify-between mb-3">
@@ -207,64 +214,6 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
                 {f.label}
               </button>
             ))}
-          </div>
-        </div>
-
-        {/* Glyph Style Changer */}
-        <div className="space-y-1.5 pt-1">
-          <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
-            <span className="flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Glyph Style:</span>
-            </span>
-            {/* Skull glyph example preview of the chosen style */}
-            <div
-              className="flex items-center gap-1.5 px-1.5 py-0.5 rounded bg-slate-950/90 border border-slate-800"
-              title="Example Skull Glyph in selected style"
-            >
-              {(layout.glyphStyle || '01-flat-enamel') !== 'none' ? (
-                <img
-                  src={
-                    getGlyphUrl('grey-skull', layout.glyphStyle || '01-flat-enamel') ||
-                    '/character-sheet-icons/01-flat-enamel/grey-skull.png'
-                  }
-                  alt="Skull Glyph Preview"
-                  className="w-5 h-5 object-contain"
-                />
-              ) : (
-                <span className="text-[9px] text-slate-500 px-1">None</span>
-              )}
-              <span className="text-[9px] text-cyan-300/80 uppercase">Preview</span>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-1.5">
-            {GLYPH_STYLE_OPTIONS.map((gs) => {
-              const activeStyle = layout.glyphStyle || '01-flat-enamel';
-              const isSelected = activeStyle === gs.id;
-              const skullUrl = gs.id !== 'none' ? getGlyphUrl('grey-skull', gs.id) : null;
-              return (
-                <button
-                  key={gs.id}
-                  onClick={() => onUpdateLayout({ glyphStyle: gs.id as GlyphStyleMode })}
-                  className={`px-2 py-1 rounded text-[11px] font-mono truncate text-left border flex items-center justify-between gap-1.5 transition-all ${
-                    isSelected
-                      ? 'bg-cyan-900/60 border-cyan-400 text-cyan-200 font-bold'
-                      : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  <span className="truncate">{gs.label}</span>
-                  {skullUrl ? (
-                    <img
-                      src={skullUrl}
-                      alt={gs.label}
-                      className="w-4 h-4 object-contain shrink-0"
-                    />
-                  ) : (
-                    <span className="text-[9px] opacity-60 shrink-0">Ø</span>
-                  )}
-                </button>
-              );
-            })}
           </div>
         </div>
       </div>
@@ -447,6 +396,75 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
             </div>
           </button>
 
+          {/* Session Journal & Chronicle Tool */}
+          {onOpenJournal && (
+            <button
+              onClick={onOpenJournal}
+              className="p-2 rounded-lg bg-amber-950/50 hover:bg-amber-900/70 border border-amber-600/50 hover:border-amber-400 text-left transition-colors flex items-center gap-2 col-span-2 shadow-sm"
+              title="Session Journal: Record session logs, recall notes, and pencil sketches"
+            >
+              <BookOpen className="w-4 h-4 text-amber-400 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-amber-300">Session Journal & Notes</span>
+                  <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300">
+                    {character.journal?.length || 0} LOGS
+                  </span>
+                </div>
+                <div className="text-[10px] font-mono text-amber-400/80 truncate">
+                  Campaign Chronicle • Pencil Sketches
+                </div>
+              </div>
+            </button>
+          )}
+
+          {/* Standalone AI Companion Module Tool */}
+          {character.installedModules?.aiCompanion ? (
+            onOpenAITool && (
+              <button
+                onClick={onOpenAITool}
+                className="p-2.5 rounded-lg bg-gradient-to-r from-cyan-950/90 to-blue-950/90 hover:from-cyan-900 hover:to-blue-900 border border-cyan-400/80 hover:border-cyan-300 text-left transition-all shadow-md flex items-center gap-2.5 col-span-2 group"
+                title="AI Companion Tool: Plain English to DSL macros, in-character voice journal, pencil sketches & bounded sheet actions"
+              >
+                <Cpu className="w-4 h-4 text-cyan-400 group-hover:scale-110 transition-transform shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold font-mono text-cyan-200">AI Companion Tool</span>
+                    <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                      ACTIVE
+                    </span>
+                  </div>
+                  <div className="text-[10px] font-mono text-cyan-400/80 truncate">
+                    DSL Macros • Voice • Pencil Sketches
+                  </div>
+                </div>
+              </button>
+            )
+          ) : (
+            onInstallAITool && (
+              <button
+                onClick={onInstallAITool}
+                className="p-2 rounded-lg bg-slate-900/60 hover:bg-cyan-950/40 border border-dashed border-slate-700 hover:border-cyan-500/50 text-left transition-colors flex items-center gap-2 col-span-2 group"
+                title="Install the standalone AI Companion module"
+              >
+                <Cpu className="w-4 h-4 text-slate-500 group-hover:text-cyan-400 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-400 group-hover:text-cyan-300">
+                      + Install AI Companion
+                    </span>
+                    <span className="text-[9px] font-mono px-1 rounded bg-slate-800 text-slate-500">
+                      OPTIONAL
+                    </span>
+                  </div>
+                  <div className="text-[10px] font-mono text-slate-500 truncate">
+                    Standalone Assistant Module
+                  </div>
+                </div>
+              </button>
+            )
+          )}
+
           {/* CMBt: Combat Maneuvers & Grapple Track Tool */}
           <button
             onClick={onOpenCMBt}
@@ -508,17 +526,17 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
           {onOpenNewSheet && (
             <button
               onClick={onOpenNewSheet}
-              className="w-full py-1 px-2 rounded bg-rose-950/60 hover:bg-rose-900/80 border border-rose-500/50 hover:border-rose-400 text-rose-200 font-mono text-[10px] font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm group"
+              className="w-full py-2 px-3 rounded-lg bg-rose-950/60 hover:bg-rose-900/80 border border-rose-500/50 hover:border-rose-400 text-rose-200 font-mono text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-sm group"
               title="Clear all character data or start a pristine new sheet"
             >
-              <FilePlus className="w-3 h-3 text-rose-400 group-hover:scale-110 transition-transform" />
-              <span>New Sheet / Clear</span>
+              <FilePlus className="w-4 h-4 text-rose-400 group-hover:scale-110 transition-transform" />
+              <span>Start New Sheet / Clear All</span>
             </button>
           )}
 
           {/* Quick Access JSON & CSV Export / Import */}
           <div className="grid grid-cols-2 gap-1.5 text-[10px] font-mono pt-1">
-            {false && onExportStandaloneHTML && (
+            {onExportStandaloneHTML && (
               <button
                 onClick={onExportStandaloneHTML}
                 className="py-1.5 px-2 rounded-lg bg-emerald-950/70 hover:bg-emerald-900 border border-emerald-500/50 hover:border-emerald-400 text-emerald-300 font-bold flex items-center justify-center gap-1.5 transition-colors col-span-2 shadow-xs group"
@@ -528,17 +546,15 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
                 <span>Export Standalone HTML (.html)</span>
               </button>
             )}
-            {false && (
-              <a
-                href="/pathfinder_sheet_latest.zip"
-                download="pathfinder_sheet_latest.zip"
-                className="py-1.5 px-2 rounded-lg bg-cyan-950/70 hover:bg-cyan-900 border border-cyan-500/50 hover:border-cyan-400 text-cyan-300 font-bold flex items-center justify-center gap-1.5 transition-colors col-span-2 shadow-xs group text-center"
-                title="Download entire project source code zip to sync directly into your local folder or GitHub"
-              >
-                <Download className="w-3.5 h-3.5 text-cyan-400 group-hover:scale-110 transition-transform" />
-                <span>Download Full Source Code (.zip)</span>
-              </a>
-            )}
+            <a
+              href="/pathfinder_sheet_latest.zip"
+              download="pathfinder_sheet_latest.zip"
+              className="py-1.5 px-2 rounded-lg bg-cyan-950/70 hover:bg-cyan-900 border border-cyan-500/50 hover:border-cyan-400 text-cyan-300 font-bold flex items-center justify-center gap-1.5 transition-colors col-span-2 shadow-xs group text-center"
+              title="Download entire project source code zip to sync directly into your local folder or GitHub"
+            >
+              <Download className="w-3.5 h-3.5 text-cyan-400 group-hover:scale-110 transition-transform" />
+              <span>Download Full Source Code (.zip)</span>
+            </a>
             <button
               onClick={onExportJSON}
               className="py-1 px-1.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-800 text-cyan-400 hover:text-cyan-300 flex items-center justify-center gap-1 transition-colors"

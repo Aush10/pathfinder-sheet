@@ -27,15 +27,13 @@ import { DerivedCombatStats, getPointBuyCost } from '../../engine/pf1eMath';
 import { evaluateFormula } from '../../engine/formula';
 import { BuffBoxModule } from './BuffBoxModule';
 import { QuickModularTools } from '../workspace/QuickModularTools';
-import { GlyphStyle, resolveIconOrGlyphUrl } from '../../data/glyphs';
-import { GlyphPicker } from '../tools/GlyphPicker';
+import { FieldCallTooltip } from '../common/FieldCallTooltip';
 
 interface SheetPage1CoreProps {
   character: PF1Character;
   derived: DerivedCombatStats;
   theme: string;
   fontClass: string;
-  glyphStyle?: GlyphStyle;
   onUpdateCharacter: (updater: (prev: PF1Character) => PF1Character) => void;
   onRollFormula: (formula: string, label?: string) => void;
   visibleModules: Record<string, boolean>;
@@ -53,7 +51,6 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
   derived,
   theme,
   fontClass,
-  glyphStyle = '01-flat-enamel',
   onUpdateCharacter,
   onRollFormula,
   visibleModules,
@@ -64,9 +61,6 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
   const abilitiesList: AbilityName[] = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
   const [damageInput, setDamageInput] = useState<number>(5);
   const [healInput, setHealInput] = useState<number>(5);
-  const [isAddingFeatPage1, setIsAddingFeatPage1] = useState(false);
-  const [newFeatPage1Name, setNewFeatPage1Name] = useState('');
-  const [newFeatPage1Glyph, setNewFeatPage1Glyph] = useState('');
 
   // Handle direct field updates
   const setField = <K extends keyof PF1Character>(key: K, value: PF1Character[K]) => {
@@ -275,7 +269,7 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
             <span className="text-[10px] opacity-60 font-mono hidden sm:inline">Core Attributes &amp; Character Info</span>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-2">
             {onOpenImageBrowser && (
               <button
                 onClick={() =>
@@ -284,10 +278,10 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
                     currentUrl: character.profileData?.avatarUrl || character.characterBio?.portraits?.[0],
                   })
                 }
-                className="text-[9px] font-mono px-1.5 py-0.5 rounded border border-cyan-500/40 bg-cyan-950 text-cyan-200 hover:bg-cyan-900 flex items-center gap-1 transition-colors"
+                className="text-[11px] font-mono px-2 py-0.5 rounded border border-cyan-500/40 bg-cyan-950/40 text-cyan-300 hover:bg-cyan-900/60 flex items-center gap-1 transition-colors"
                 title="Open image file browser to set character portrait"
               >
-                <ImageIcon className="w-2.5 h-2.5 text-cyan-400" />
+                <ImageIcon className="w-3 h-3 text-cyan-400" />
                 <span>Profile Pic</span>
               </button>
             )}
@@ -295,10 +289,10 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
             {onOpenNewSheet && (
               <button
                 onClick={onOpenNewSheet}
-                className="text-[9px] font-mono px-1.5 py-0.5 rounded border border-rose-500/40 bg-rose-950 text-rose-200 hover:bg-rose-900 flex items-center gap-1 transition-colors"
+                className="text-[11px] font-mono px-2 py-0.5 rounded border border-rose-500/40 bg-rose-950/40 text-rose-300 hover:bg-rose-900/60 flex items-center gap-1 transition-colors"
                 title="Start a fresh blank sheet or reset character"
               >
-                <FilePlus className="w-2.5 h-2.5 text-rose-400" />
+                <FilePlus className="w-3 h-3 text-rose-400" />
                 <span>New Sheet / Clear</span>
               </button>
             )}
@@ -404,8 +398,8 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
             />
           </div>
 
-          <div>
-            <label className="block text-[11px] font-semibold uppercase tracking-wider opacity-75">
+          <FieldCallTooltip callName="#LEVEL" description="Character Level" className="block">
+            <label className="block text-[11px] font-semibold uppercase tracking-wider opacity-75 cursor-help">
               Level
             </label>
             <input
@@ -416,7 +410,7 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
               onChange={(e) => setField('level', parseInt(e.target.value) || 1)}
               className={`w-full text-xs font-bold font-mono px-2 py-1 rounded border ${inputStyle}`}
             />
-          </div>
+          </FieldCallTooltip>
 
           <div>
             <label className="block text-[11px] font-semibold uppercase tracking-wider opacity-75">
@@ -430,8 +424,8 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
             />
           </div>
 
-          <div>
-            <label className="block text-[11px] font-semibold uppercase tracking-wider opacity-75">
+          <FieldCallTooltip callName="#SIZE" description="Size Modifier" className="block">
+            <label className="block text-[11px] font-semibold uppercase tracking-wider opacity-75 cursor-help">
               Size
             </label>
             <select
@@ -449,7 +443,7 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
               <option value="Gargantuan">Gargantuan</option>
               <option value="Colossal">Colossal</option>
             </select>
-          </div>
+          </FieldCallTooltip>
 
           <div>
             <label className="block text-[11px] font-semibold uppercase tracking-wider opacity-75">
@@ -461,88 +455,6 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
               onChange={(e) => setField('deity', e.target.value)}
               className={`w-full text-xs px-2 py-1 rounded border ${inputStyle}`}
             />
-          </div>
-        </div>
-
-        {/* Physical Descriptors Row (Synced with Portrait & Bio) */}
-        <div className="mt-3 pt-2.5 border-t border-black/10 dark:border-white/10">
-          <div className="text-[10px] font-mono font-bold uppercase tracking-wider opacity-70 mb-1.5">
-            Physical Descriptors
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
-            <div>
-              <label className="block text-[10px] font-semibold uppercase opacity-70">Gender</label>
-              <input
-                type="text"
-                value={character.gender || ''}
-                onChange={(e) => setField('gender', e.target.value)}
-                className={`w-full text-xs px-2 py-0.5 rounded border ${inputStyle}`}
-              />
-            </div>
-            <div>
-              <label className="block text-[10px] font-semibold uppercase opacity-70">Age</label>
-              <input
-                type="number"
-                value={character.age || 0}
-                onChange={(e) => setField('age', parseInt(e.target.value) || 0)}
-                className={`w-full text-xs px-2 py-0.5 rounded border font-mono ${inputStyle}`}
-              />
-            </div>
-            <div>
-              <label className="block text-[10px] font-semibold uppercase opacity-70">Height</label>
-              <input
-                type="text"
-                value={character.height || ''}
-                onChange={(e) => setField('height', e.target.value)}
-                className={`w-full text-xs px-2 py-0.5 rounded border ${inputStyle}`}
-              />
-            </div>
-            <div>
-              <label className="block text-[10px] font-semibold uppercase opacity-70">Weight</label>
-              <input
-                type="text"
-                value={character.weight || ''}
-                onChange={(e) => setField('weight', e.target.value)}
-                className={`w-full text-xs px-2 py-0.5 rounded border ${inputStyle}`}
-              />
-            </div>
-            <div>
-              <label className="block text-[10px] font-semibold uppercase opacity-70">Eyes</label>
-              <input
-                type="text"
-                value={character.eyes || ''}
-                onChange={(e) => setField('eyes', e.target.value)}
-                className={`w-full text-xs px-2 py-0.5 rounded border ${inputStyle}`}
-              />
-            </div>
-            <div>
-              <label className="block text-[10px] font-semibold uppercase opacity-70">Hair</label>
-              <input
-                type="text"
-                value={character.hair || ''}
-                onChange={(e) => setField('hair', e.target.value)}
-                className={`w-full text-xs px-2 py-0.5 rounded border ${inputStyle}`}
-              />
-            </div>
-            <div>
-              <label className="block text-[10px] font-semibold uppercase opacity-70">Skin</label>
-              <input
-                type="text"
-                value={character.characterBio?.skin || ''}
-                onChange={(e) =>
-                  setField('characterBio', {
-                    ...(character.characterBio || {
-                      scratchpad: '',
-                      portraits: [],
-                      currentPortraitIndex: 0,
-                      bioSections: [],
-                    }),
-                    skin: e.target.value,
-                  })
-                }
-                className={`w-full text-xs px-2 py-0.5 rounded border ${inputStyle}`}
-              />
-            </div>
           </div>
         </div>
       </div>
@@ -631,7 +543,11 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
 
                     return (
                       <tr key={ab} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
-                        <td className="py-2 font-bold font-serif text-sm">{ab}</td>
+                        <td className="py-2 font-bold font-serif text-sm">
+                          <FieldCallTooltip callName={`#${ab}`} description={`${ab} modifier (hover 3s to copy)`}>
+                            <span className="cursor-help hover:text-amber-500 transition-colors">{ab}</span>
+                          </FieldCallTooltip>
+                        </td>
 
                         {/* Base Point Buy (6 to 18) */}
                         <td className="py-2 text-center">
@@ -679,14 +595,18 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
 
                         {/* Total ABS */}
                         <td className="py-2 text-center font-bold text-sm tabular-nums">
-                          {totalScore}
+                          <FieldCallTooltip callName={`#${ab}_SCORE`} description={`${ab} Total Score`}>
+                            <span className="cursor-help px-1 py-0.5 rounded hover:bg-black/5 dark:hover:bg-white/5">{totalScore}</span>
+                          </FieldCallTooltip>
                         </td>
 
                         {/* Mod (Calculated from Total ABS) */}
                         <td className="py-2 text-center">
-                          <span className="font-bold text-xs px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-300 tabular-nums">
-                            {baseMod >= 0 ? `+${baseMod}` : baseMod}
-                          </span>
+                          <FieldCallTooltip callName={`#${ab}`} description={`${ab} Modifier`}>
+                            <span className="font-bold text-xs px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-300 tabular-nums cursor-help">
+                              {baseMod >= 0 ? `+${baseMod}` : baseMod}
+                            </span>
+                          </FieldCallTooltip>
                         </td>
 
                         {/* Mod Adj (Direct modifier bonus not calculated with total score - User Specification) */}
@@ -707,21 +627,22 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
 
                         {/* Dice Roll with Effective Mod */}
                         <td className="py-2 text-center">
-                          <button
-                            onClick={() =>
-                              onRollFormula(
-                                `1d20+${effectiveMod}`,
-                                `${ab} Check (Mod ${effectiveMod >= 0 ? `+${effectiveMod}` : effectiveMod}${
-                                  directMod !== 0 ? ` [Score Mod ${baseMod >= 0 ? `+${baseMod}` : baseMod}, Adj ${directMod >= 0 ? `+${directMod}` : directMod}]` : ''
-                                })`
-                              )
-                            }
-                            className="p-1 rounded hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 transition-colors inline-flex items-center gap-1 font-bold text-xs"
-                            title={`Roll 1d20+${effectiveMod} (Base ${baseMod >= 0 ? `+${baseMod}` : baseMod} + Adj ${directMod >= 0 ? `+${directMod}` : directMod})`}
-                          >
-                            <span>{effectiveMod >= 0 ? `+${effectiveMod}` : effectiveMod}</span>
-                            <Dices className="w-3.5 h-3.5" />
-                          </button>
+                          <FieldCallTooltip callName={`#${ab}`} description={`${ab} Check / Modifier`}>
+                            <button
+                              onClick={() =>
+                                onRollFormula(
+                                  `1d20+${effectiveMod}`,
+                                  `${ab} Check (Mod ${effectiveMod >= 0 ? `+${effectiveMod}` : effectiveMod}${
+                                    directMod !== 0 ? ` [Score Mod ${baseMod >= 0 ? `+${baseMod}` : baseMod}, Adj ${directMod >= 0 ? `+${directMod}` : directMod}]` : ''
+                                  })`
+                                )
+                              }
+                              className="p-1 rounded hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 transition-colors inline-flex items-center gap-1 font-bold text-xs"
+                            >
+                              <span>{effectiveMod >= 0 ? `+${effectiveMod}` : effectiveMod}</span>
+                              <Dices className="w-3.5 h-3.5" />
+                            </button>
+                          </FieldCallTooltip>
                         </td>
                       </tr>
                     );
@@ -763,11 +684,15 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
           </div>
 
           {/* Initiative Bonus (Top of Base Attack & Maneuvers per User Specification) */}
-          <div className="p-2.5 rounded-lg bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 flex items-center justify-between flex-wrap gap-2 font-mono text-xs">
+          <FieldCallTooltip
+            callName="#INIT"
+            description="Initiative Bonus"
+            className="p-2.5 rounded-lg bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 flex items-center justify-between flex-wrap gap-2 font-mono text-xs w-full"
+          >
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1.5">
                 <Zap className="w-4 h-4 text-amber-500" />
-                <span className="font-bold text-xs uppercase tracking-wider text-amber-700 dark:text-amber-300">
+                <span className="font-bold text-xs uppercase tracking-wider text-amber-700 dark:text-amber-300 cursor-help">
                   Initiative Bonus
                 </span>
               </div>
@@ -775,7 +700,6 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
                 type="button"
                 onClick={() => onRollFormula(`1d20+${derived.initiativeTotal}`, 'Initiative Check')}
                 className="font-mono font-black text-xl text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1"
-                title="Click to roll 1d20 + Initiative"
               >
                 <span>{derived.initiativeTotal >= 0 ? `+${derived.initiativeTotal}` : derived.initiativeTotal}</span>
                 <Dices className="w-3.5 h-3.5 opacity-70" />
@@ -797,22 +721,25 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
                   value={character.initMiscMod || 0}
                   onChange={(e) => setField('initMiscMod', parseInt(e.target.value) || 0)}
                   className={`w-12 text-center py-0.5 text-xs rounded border tabular-nums ${inputStyle}`}
-                  title="Adjustable Initiative Miscellaneous Modifier (e.g. Improved Initiative feat +4)"
                 />
               </div>
 
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 opacity-75 font-mono">
-                Macro: INIT
+                Macro: #INIT
               </span>
             </div>
-          </div>
+          </FieldCallTooltip>
 
           {/* BAB Input Row & Iteratives */}
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-center font-mono text-xs">
             {/* BAB Input: Provided by the Player */}
-            <div className="sm:col-span-5 p-2 rounded bg-amber-500/10 border border-amber-500/30 flex items-center justify-between">
+            <FieldCallTooltip
+              callName="#BAB"
+              description="Base Attack Bonus"
+              className="sm:col-span-5 p-2 rounded bg-amber-500/10 border border-amber-500/30 flex items-center justify-between w-full"
+            >
               <div>
-                <span className="text-[10px] font-bold uppercase text-amber-700 dark:text-amber-300 block">
+                <span className="text-[10px] font-bold uppercase text-amber-700 dark:text-amber-300 block cursor-help">
                   Base Attack (BAB)
                 </span>
                 <span className="text-[9px] opacity-70">Player Provided</span>
@@ -824,13 +751,16 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
                   value={character.baseAttackBonus}
                   onChange={(e) => setField('baseAttackBonus', parseInt(e.target.value) || 0)}
                   className={`w-14 text-center font-mono font-black text-xl py-0.5 rounded border tabular-nums ${inputStyle}`}
-                  title="Base Attack Bonus (BAB) provided by player"
                 />
               </div>
-            </div>
+            </FieldCallTooltip>
 
             {/* Iterative Attacks Chain */}
-            <div className="sm:col-span-7 p-2 rounded bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10">
+            <FieldCallTooltip
+              callName="#BAB"
+              description="Base Attack Bonus"
+              className="sm:col-span-7 p-2 rounded bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 block w-full"
+            >
               <div className="text-[10px] font-semibold uppercase opacity-75 mb-0.5">
                 Iterative Attack Chain
               </div>
@@ -845,21 +775,24 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
                 ))}
                 <span className="text-[10px] opacity-60 ml-auto">Macro: #BAB</span>
               </div>
-            </div>
+            </FieldCallTooltip>
           </div>
 
           {/* CMB & CMD Maneuvers Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 font-mono text-xs">
             {/* CMB Box: STR + BAB + SIZE + Misc */}
-            <div className="p-2.5 rounded bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 flex flex-col justify-between">
+            <FieldCallTooltip
+              callName="#CMB"
+              description="Combat Maneuver Bonus"
+              className="p-2.5 rounded bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 flex flex-col justify-between w-full"
+            >
               <div className="flex items-center justify-between mb-1">
-                <span className="font-bold text-[11px] uppercase tracking-wider text-amber-700 dark:text-amber-300">
+                <span className="font-bold text-[11px] uppercase tracking-wider text-amber-700 dark:text-amber-300 cursor-help">
                   CMB (Maneuver Bonus)
                 </span>
                 <button
                   onClick={() => onRollFormula(`1d20+${derived.cmbTotal}`, 'Combat Maneuver Bonus (CMB)')}
                   className="p-1 rounded hover:bg-amber-500/20 text-amber-600 dark:text-amber-400"
-                  title="Roll 1d20 + CMB"
                 >
                   <Dices className="w-3.5 h-3.5" />
                 </button>
@@ -891,12 +824,16 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
                   />
                 </div>
               </div>
-            </div>
+            </FieldCallTooltip>
 
             {/* CMD Box: STR or DEX + BAB + 10 + SIZE + Misc */}
-            <div className="p-2.5 rounded bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 flex flex-col justify-between">
+            <FieldCallTooltip
+              callName="#CMD"
+              description="Combat Maneuver Defense"
+              className="p-2.5 rounded bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 flex flex-col justify-between w-full"
+            >
               <div className="flex items-center justify-between mb-1">
-                <span className="font-bold text-[11px] uppercase tracking-wider text-amber-700 dark:text-amber-300">
+                <span className="font-bold text-[11px] uppercase tracking-wider text-amber-700 dark:text-amber-300 cursor-help">
                   CMD (Defense)
                 </span>
                 {/* Ability Selector: STR or DEX */}
@@ -911,7 +848,6 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
                           ? 'bg-amber-600 text-slate-950 font-bold'
                           : 'opacity-70 hover:opacity-100'
                       }`}
-                      title={mode === 'BOTH' ? 'Standard PF1e uses STR + DEX' : `Use ${mode} ASB`}
                     >
                       {mode === 'BOTH' ? 'STR+DEX' : mode}
                     </button>
@@ -947,7 +883,7 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
                   />
                 </div>
               </div>
-            </div>
+            </FieldCallTooltip>
           </div>
         </div>
 
@@ -964,14 +900,14 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
                 className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs rounded flex items-center gap-1 transition-colors"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>New Attack / Weapon</span>
+                <span>Add Attack / Weapon</span>
               </button>
             </div>
 
             <div className="p-3 space-y-2.5">
               {character.weapons.length === 0 ? (
                 <div className="p-4 text-center text-xs opacity-60">
-                  No attacks added. Click "+ New Attack / Weapon" to add an attack roll.
+                  No attacks added. Click "Add Attack / Weapon" to add an attack roll.
                 </div>
               ) : (
                 character.weapons.map((wp) => {
@@ -992,37 +928,26 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
                     size: 0,
                   });
 
-                  const resolvedGlyph = resolveIconOrGlyphUrl(wp.icon || wp.imageUrl, glyphStyle);
-
                   return (
                     <div
                       key={wp.id}
-                      className="p-2.5 rounded-lg border border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 space-y-1.5 overflow-hidden"
+                      className="p-2.5 rounded-lg border border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 space-y-1.5"
                     >
                       <div className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
-                        <div className="md:col-span-5 flex items-center gap-1.5 min-w-0">
+                        <div className="md:col-span-5 flex items-center gap-1.5">
                           <input
                             type="checkbox"
                             checked={wp.isEquipped}
                             onChange={(e) => updateWeapon(wp.id, { isEquipped: e.target.checked })}
-                            className="rounded text-amber-500 shrink-0"
+                            className="rounded text-amber-500"
                             title="Equipped"
                           />
-                          {resolvedGlyph && (
-                            <div className="w-6 h-6 rounded border border-amber-500/40 bg-black/20 p-0.5 shrink-0 overflow-hidden flex items-center justify-center">
-                              <img
-                                src={resolvedGlyph}
-                                alt={wp.name}
-                                className="w-full h-full object-contain"
-                              />
-                            </div>
-                          )}
                           <input
                             type="text"
                             value={wp.name}
                             onChange={(e) => updateWeapon(wp.id, { name: e.target.value })}
                             placeholder="Attack / Weapon Name"
-                            className={`w-full min-w-0 font-bold text-xs px-2 py-0.5 rounded border ${inputStyle}`}
+                            className={`w-full font-bold text-xs px-2 py-0.5 rounded border ${inputStyle}`}
                           />
                         </div>
 
@@ -1108,17 +1033,6 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
                           </select>
                         </div>
                       </div>
-
-                      {/* Optional Glyph Assignment for Weapon / Attack */}
-                      <div className="pt-1 border-t border-black/5 dark:border-white/5 flex items-center justify-between gap-2 flex-wrap">
-                        <GlyphPicker
-                          value={wp.icon || ''}
-                          onChange={(glyphId) => updateWeapon(wp.id, { icon: glyphId })}
-                          glyphStyle={glyphStyle}
-                          label=""
-                          compact={true}
-                        />
-                      </div>
                     </div>
                   );
                 })
@@ -1150,12 +1064,20 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
               {/* Primary HP Box: Current HP / Total Max HP + Death Saves + Clean THP Box */}
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 mb-3">
                 {/* [Current / Max HP] - 7 cols */}
-                <div className="sm:col-span-7 p-3 rounded-lg bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 flex flex-col justify-between">
+                <FieldCallTooltip
+                  callName="#HP"
+                  description="Current Hit Points"
+                  className="sm:col-span-7 p-3 rounded-lg bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 flex flex-col justify-between w-full"
+                >
                   <div className="flex items-center justify-between text-[11px] font-mono mb-1">
-                    <span className="font-bold opacity-75 uppercase">Current / Max HP</span>
-                    <span className="text-amber-600 dark:text-amber-400 font-bold">
-                      Calculated Max: {derived.hpBreakdownDetails.calculatedTotalMaxHP}
+                    <span className="font-bold opacity-75 uppercase cursor-help hover:text-amber-500 transition-colors">
+                      Current / Max HP
                     </span>
+                    <FieldCallTooltip callName="#MAXHP" description="Maximum Hit Points">
+                      <span className="text-amber-600 dark:text-amber-400 font-bold cursor-help">
+                        Calculated Max: {derived.hpBreakdownDetails.calculatedTotalMaxHP}
+                      </span>
+                    </FieldCallTooltip>
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -1166,7 +1088,6 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
                       className={`w-20 text-center font-mono font-black text-2xl py-1 rounded border tabular-nums ${inputStyle} ${
                         character.hpCurrent < 0 ? 'text-rose-600 font-black' : ''
                       }`}
-                      title="Current Hit Points"
                     />
                     <span className="text-2xl font-bold opacity-40">/</span>
                     <span className="font-mono font-black text-2xl tabular-nums text-amber-600 dark:text-amber-400">
@@ -1203,12 +1124,18 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
                       </div>
                     </div>
                   </div>
-                </div>
+                </FieldCallTooltip>
 
                 {/* ["THP" Temp HP] - 5 cols cleanly separated */}
-                <div className="sm:col-span-5 p-3 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex flex-col justify-between">
+                <FieldCallTooltip
+                  callName="#THP"
+                  description="Temporary Hit Points"
+                  className="sm:col-span-5 p-3 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex flex-col justify-between w-full"
+                >
                   <div className="flex items-center justify-between text-[11px] font-mono">
-                    <span className="font-bold text-cyan-600 dark:text-cyan-400 uppercase">THP (Temp HP)</span>
+                    <span className="font-bold text-cyan-600 dark:text-cyan-400 uppercase cursor-help hover:underline">
+                      THP (Temp HP)
+                    </span>
                     <Sparkles className="w-3.5 h-3.5 text-cyan-500" />
                   </div>
                   <div className="flex items-center gap-2 mt-1">
@@ -1218,13 +1145,12 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
                       value={character.hpTemp}
                       onChange={(e) => setField('hpTemp', Math.max(0, parseInt(e.target.value) || 0))}
                       className={`w-full text-center font-mono font-black text-2xl py-1 rounded border tabular-nums text-cyan-600 dark:text-cyan-400 ${inputStyle}`}
-                      title="THP dissolves first when damage is taken"
                     />
                   </div>
                   <div className="text-[10px] text-cyan-600/90 dark:text-cyan-400/90 mt-1 text-center font-mono font-medium">
                     Absorbs damage first
                   </div>
-                </div>
+                </FieldCallTooltip>
               </div>
 
               {/* Death Saving Throws + Calculation Mode Selector */}
@@ -1310,7 +1236,7 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
                     className="text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 text-[11px]"
                   >
                     <Plus className="w-3 h-3" />
-                    <span>New Bonus Source</span>
+                    <span>+ Add Bonus Source</span>
                   </button>
                 </div>
 
@@ -1490,32 +1416,46 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
                       </button>
                     </span>
                     <span>·</span>
-                    <span>Speed: {character.speedBase} ft</span>
+                    <FieldCallTooltip callName="#SPEED" description="Base Speed">
+                      <span className="cursor-help">Speed: {character.speedBase} ft</span>
+                    </FieldCallTooltip>
                   </div>
                 </div>
 
                 {/* Big 3 AC metrics */}
                 <div className="grid grid-cols-3 gap-2 text-center mb-3">
-                  <div className="p-2 rounded bg-amber-500/10 border border-amber-500/30">
-                    <span className="text-[10px] uppercase font-bold tracking-wider opacity-80">
+                  <FieldCallTooltip
+                    callName="#AC"
+                    description="Total Armor Class"
+                    className="p-2 rounded bg-amber-500/10 border border-amber-500/30 block w-full"
+                  >
+                    <span className="text-[10px] uppercase font-bold tracking-wider opacity-80 cursor-help block">
                       Total AC
                     </span>
-                    <div className="text-2xl font-mono font-black tabular-nums">{derived.acTotal}</div>
-                  </div>
-                  <div className="p-2 rounded bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10">
-                    <span className="text-[10px] uppercase font-bold tracking-wider opacity-80">
+                    <div className="text-2xl font-mono font-black tabular-nums cursor-help">{derived.acTotal}</div>
+                  </FieldCallTooltip>
+                  <FieldCallTooltip
+                    callName="#TOUCH"
+                    description="Touch Armor Class"
+                    className="p-2 rounded bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 block w-full"
+                  >
+                    <span className="text-[10px] uppercase font-bold tracking-wider opacity-80 cursor-help block">
                       Touch AC
                     </span>
-                    <div className="text-2xl font-mono font-black tabular-nums">{derived.touchAC}</div>
-                  </div>
-                  <div className="p-2 rounded bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10">
-                    <span className="text-[10px] uppercase font-bold tracking-wider opacity-80">
+                    <div className="text-2xl font-mono font-black tabular-nums cursor-help">{derived.touchAC}</div>
+                  </FieldCallTooltip>
+                  <FieldCallTooltip
+                    callName="#FF"
+                    description="Flat-Footed Armor Class"
+                    className="p-2 rounded bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 block w-full"
+                  >
+                    <span className="text-[10px] uppercase font-bold tracking-wider opacity-80 cursor-help block">
                       Flat-Footed
                     </span>
-                    <div className="text-2xl font-mono font-black tabular-nums">
+                    <div className="text-2xl font-mono font-black tabular-nums cursor-help">
                       {derived.flatFootedAC}
                     </div>
-                  </div>
+                  </FieldCallTooltip>
                 </div>
 
                 {/* Mathematical Breakdown Row: BAB replaced with ARMOR BONUS per user spec #1 */}
@@ -1637,15 +1577,17 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
                       saveObj: character.saves.will,
                     },
                   ].map((save) => (
-                    <div
+                    <FieldCallTooltip
                       key={save.key}
-                      className="p-2.5 rounded bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 flex flex-col justify-between text-center font-mono"
+                      callName={save.macroCall}
+                      description={`${save.name} Saving Throw`}
+                      className="p-2.5 rounded bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 flex flex-col justify-between text-center font-mono w-full"
                     >
                       <div className="flex items-center justify-between text-[10px]">
-                        <span className="font-bold uppercase tracking-wider opacity-80">
+                        <span className="font-bold uppercase tracking-wider opacity-80 cursor-help">
                           {save.name}
                         </span>
-                        <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 font-bold">
+                        <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 font-bold cursor-help hover:underline">
                           {save.macroCall}
                         </span>
                       </div>
@@ -1653,7 +1595,6 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
                       <button
                         onClick={() => onRollFormula(`1d20+${save.total}`, `${save.name} Save (${save.abName} ASB ${save.asb >= 0 ? `+${save.asb}` : save.asb})`)}
                         className="my-1.5 px-2 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 rounded font-black text-xl tabular-nums transition-colors inline-flex items-center justify-center gap-1 group"
-                        title={`Click to roll 1d20+${save.total}`}
                       >
                         <span>{save.total >= 0 ? `+${save.total}` : save.total}</span>
                         <Dices className="w-3.5 h-3.5 opacity-60 group-hover:opacity-100" />
@@ -1680,7 +1621,6 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
                               }));
                             }}
                             className={`w-11 text-center py-0.5 rounded border font-bold ${inputStyle}`}
-                            title="Player provided base save"
                           />
                         </div>
 
@@ -1689,7 +1629,7 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
                           {save.saveObj.magicMod !== 0 && ` + Magic (${save.saveObj.magicMod})`}
                         </div>
                       </div>
-                    </div>
+                    </FieldCallTooltip>
                   ))}
                 </div>
               </div>
@@ -1710,7 +1650,7 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
                 className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs rounded flex items-center gap-1 transition-colors"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>New Armor</span>
+                <span>Add Armor</span>
               </button>
             </div>
           </div>
@@ -1810,104 +1750,37 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
           <div className={`px-4 py-2 border-b flex items-center justify-between ${headerBg}`}>
             <span className="font-bold text-xs uppercase tracking-wider">Feats & Special Abilities</span>
             <button
-              onClick={() => setIsAddingFeatPage1(!isAddingFeatPage1)}
+              onClick={() => {
+                const item = prompt('Enter new feat or special ability:');
+                if (item?.trim()) setField('featsAndAbilities', [...character.featsAndAbilities, item.trim()]);
+              }}
               className="px-2 py-0.5 rounded bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs flex items-center gap-1 transition-colors"
             >
               <Plus className="w-3 h-3" />
-              <span>New Feat</span>
+              <span>Add Feat</span>
             </button>
           </div>
-          <div className="p-3 space-y-2.5">
-            {isAddingFeatPage1 && (
-              <div className="p-2.5 rounded-lg border border-amber-500/40 bg-black/5 dark:bg-white/5 space-y-2 text-xs">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={newFeatPage1Name}
-                    onChange={(e) => setNewFeatPage1Name(e.target.value)}
-                    placeholder="Feat or special ability name..."
-                    className={`flex-1 px-2 py-1 rounded border text-xs ${inputStyle}`}
-                  />
+          <div className="p-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+              {character.featsAndAbilities.map((feat, idx) => (
+                <div
+                  key={idx}
+                  className="p-2 rounded bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 flex items-center justify-between group"
+                >
+                  <span className="font-medium">• {feat}</span>
                   <button
-                    onClick={() => {
-                      if (!newFeatPage1Name.trim()) return;
-                      setField('featsAndAbilities', [
-                        ...character.featsAndAbilities,
-                        newFeatPage1Name.trim(),
-                      ]);
-                      if (newFeatPage1Glyph) {
-                        setField('characterFeats', [
-                          ...(character.characterFeats || []),
-                          {
-                            id: `feat-${Date.now()}`,
-                            name: newFeatPage1Name.trim(),
-                            type: 'General',
-                            summary: newFeatPage1Name.trim(),
-                            icon: newFeatPage1Glyph,
-                          },
-                        ]);
-                      }
-                      setNewFeatPage1Name('');
-                      setNewFeatPage1Glyph('');
-                      setIsAddingFeatPage1(false);
-                    }}
-                    className="px-2.5 py-1 rounded bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs"
+                    onClick={() =>
+                      setField(
+                        'featsAndAbilities',
+                        character.featsAndAbilities.filter((_, i) => i !== idx)
+                      )
+                    }
+                    className="opacity-0 group-hover:opacity-100 p-0.5 text-red-500 hover:bg-red-500/20 rounded transition-all"
                   >
-                    Save
-                  </button>
-                  <button
-                    onClick={() => setIsAddingFeatPage1(false)}
-                    className="px-2 py-1 rounded bg-black/10 dark:bg-white/10 text-xs"
-                  >
-                    Cancel
+                    <Trash2 className="w-3 h-3" />
                   </button>
                 </div>
-                <GlyphPicker
-                  value={newFeatPage1Glyph}
-                  onChange={setNewFeatPage1Glyph}
-                  glyphStyle={glyphStyle}
-                  label="Assign Glyph (Optional)"
-                  compact={true}
-                />
-              </div>
-            )}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-              {character.featsAndAbilities.map((feat, idx) => {
-                const matchedFeatObj = (character.characterFeats || []).find(
-                  (cf) => cf.name.toLowerCase() === feat.toLowerCase()
-                );
-                const featGlyph = resolveIconOrGlyphUrl(matchedFeatObj?.icon, glyphStyle);
-                return (
-                  <div
-                    key={idx}
-                    className="p-2 rounded bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 flex items-center justify-between group"
-                  >
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      {featGlyph ? (
-                        <img
-                          src={featGlyph}
-                          alt=""
-                          className="w-4 h-4 object-contain shrink-0"
-                        />
-                      ) : (
-                        <span>•</span>
-                      )}
-                      <span className="font-medium truncate">{feat}</span>
-                    </div>
-                    <button
-                      onClick={() =>
-                        setField(
-                          'featsAndAbilities',
-                          character.featsAndAbilities.filter((_, i) => i !== idx)
-                        )
-                      }
-                      className="opacity-0 group-hover:opacity-100 p-0.5 text-red-500 hover:bg-red-500/20 rounded transition-all shrink-0"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </div>
-                );
-              })}
+              ))}
             </div>
           </div>
         </div>
