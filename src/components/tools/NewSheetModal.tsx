@@ -13,7 +13,6 @@ import {
 interface NewSheetModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirmNewAdventurer: () => void;
   onConfirmBlank: () => void;
   onConfirmDefault: () => void;
   onExportBackup: () => void;
@@ -23,7 +22,6 @@ interface NewSheetModalProps {
 export const NewSheetModal: React.FC<NewSheetModalProps> = ({
   isOpen,
   onClose,
-  onConfirmNewAdventurer,
   onConfirmBlank,
   onConfirmDefault,
   onExportBackup,
@@ -33,7 +31,7 @@ export const NewSheetModal: React.FC<NewSheetModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm select-none">
-      <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+      <div className="w-full max-w-lg bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
         <div className="px-5 py-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -87,10 +85,10 @@ export const NewSheetModal: React.FC<NewSheetModalProps> = ({
               Choose New Sheet Template
             </span>
 
-            {/* Option 1: Default new adventurer template */}
+            {/* Option 1: Blank Level 1 */}
             <button
               onClick={() => {
-                onConfirmNewAdventurer();
+                onConfirmBlank();
                 onClose();
               }}
               className="w-full p-3.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700 hover:border-amber-500/60 text-left transition-all group flex items-start gap-3"
@@ -101,40 +99,19 @@ export const NewSheetModal: React.FC<NewSheetModalProps> = ({
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-sm text-slate-100 group-hover:text-amber-300 transition-colors">
-                    New Adventurer (Default Starter)
+                    Blank Slate (Level 1 Clean Sheet)
                   </span>
                   <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800">
-                    Default New Sheet
+                    Recommended for new character
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 mt-1 leading-normal">
-                  Load the level 1 Fighter starter with its abilities, skills, equipment, and other defaults.
+                  Fresh 1st-level adventurer with base 10 scores, 0 skill ranks, standard adventurer backpack, empty weapon & spell list.
                 </p>
               </div>
             </button>
 
-            {/* Option 2: Blank Level 1 */}
-            <button
-              onClick={() => {
-                onConfirmBlank();
-                onClose();
-              }}
-              className="w-full p-3.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700 hover:border-cyan-500/60 text-left transition-all group flex items-start gap-3"
-            >
-              <div className="w-9 h-9 rounded-lg bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300 shrink-0 mt-0.5 group-hover:scale-105 transition-transform">
-                <FilePlus className="w-5 h-5" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="font-bold text-sm text-slate-100 group-hover:text-cyan-300 transition-colors">
-                  Blank Slate (Level 1 Clean Sheet)
-                </div>
-                <p className="text-xs text-slate-400 mt-1 leading-normal">
-                  Start with base 10 scores, no skill ranks, an empty weapon and spell list, and standard starter gear.
-                </p>
-              </div>
-            </button>
-
-            {/* Option 3: Reset to Iconic Valerius */}
+            {/* Option 2: Reset to Iconic Valerius */}
             <button
               onClick={() => {
                 onConfirmDefault();

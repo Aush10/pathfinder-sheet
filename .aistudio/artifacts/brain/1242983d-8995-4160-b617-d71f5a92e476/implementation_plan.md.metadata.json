@@ -1,6 +1,6 @@
 {
-  "summary":  "Architectural and UX implementation plan for the 3-part Pathfinder 1e modular character sheet and workspace with a Blueprint theme builder, Parchment Tan table-facing sheet, dynamic formula object engine, automated calculations, and interactive tablet tools.",
-  "updatedAt":  "2026-10-26T18:14:36.595466058Z",
+  "summary":  "Implementation plan for upgrading the Macaroni Macro Language with the <^...> Buff-Making syntax, redesigning the Buff Box UI to match the simplified reference layout (inline macro bar, no-x-scroll condensed 19-row matrix), adding an AI Buff Maker tab, adding a Standard Buffs & Conditions guide with quirky tabletop messages, and building a Micro Image Cropper & Staging Editor into the Image Browser.",
+  "updatedAt":  "2026-11-02T01:27:43.240535880Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

@@ -4,68 +4,68 @@ import {
   ChevronDown,
   ChevronUp,
   X,
-  RotateCcw,
   Plus,
   Trash2,
   Edit2,
   Check,
-  ShieldAlert,
-  Flame,
   Zap,
   CheckSquare,
   Square,
-  Filter,
+  Play,
+  Terminal,
 } from 'lucide-react';
 import {
   BuffBonusType,
   BuffStatTarget,
   BuffBoxData,
   CustomBuffEffect,
+  PF1Character,
 } from '../../types/character';
 import { computeBuffBoxTotals } from '../../engine/pf1eMath';
+import { executeMacaroni, pickQuirkyMessage } from '../../engine/macaroni';
 
 export const BUFF_BONUS_TYPES: BuffBonusType[] = [
-  'Untyped',
-  'Enhancement',
-  'Circumstance',
-  'Competence',
-  'Deflection',
-  'Dodge',
-  'Insight',
-  'Item',
-  'Inherent',
-  'Luck',
-  'Morale',
-  'Pro/Sac',
-  'Race',
-  'NAT armor',
-  'Armor',
-  'Level advance',
-  'Shield',
-  'Size',
-  'Alt size',
+  'Untyped',        // Row 1
+  'Enhancement',    // Row 2
+  'Circumstance',   // Row 3
+  'Competence',     // Row 4
+  'Deflection',     // Row 5
+  'Dodge',          // Row 6
+  'Insight',        // Row 7
+  'Item',           // Row 8
+  'Inherent',       // Row 9
+  'Luck',           // Row 10
+  'Morale',         // Row 11
+  'Pro/Sac',        // Row 12
+  'Race',           // Row 13
+  'NAT armor',      // Row 14
+  'Armor',          // Row 15
+  'Level advance',  // Row 16
+  'Shield',         // Row 17
+  'Size',           // Row 18
+  'Alt size',       // Row 19
 ];
 
-export const BUFF_STAT_TARGETS: Array<{ key: BuffStatTarget; label: string }> = [
-  { key: 'hp', label: 'HP' },
-  { key: 'mattack', label: 'Mattack' },
-  { key: 'rattack', label: 'Rattack' },
-  { key: 'fort', label: 'Fort' },
-  { key: 'ref', label: 'Ref' },
-  { key: 'will', label: 'Will' },
-  { key: 'ac', label: 'AC' },
-  { key: 'str', label: 'STR' },
-  { key: 'dex', label: 'DEX' },
-  { key: 'con', label: 'CON' },
-  { key: 'int', label: 'INT' },
-  { key: 'wis', label: 'WIS' },
-  { key: 'cha', label: 'CHA' },
-  { key: 'str_mod', label: 'STR Mod' },
-  { key: 'dex_mod', label: 'DEX Mod' },
-  { key: 'con_mod', label: 'CON Mod' },
-  { key: 'int_mod', label: 'INT Mod' },
-  { key: 'wis_mod', label: 'WIS Mod' },
-  { key: 'cha_mod', label: 'CHA Mod' },
+export const BUFF_STAT_TARGETS: Array<{ key: BuffStatTarget; label: string; shortLabel: string }> = [
+  { key: 'hp', label: 'HP', shortLabel: 'HP' },                 // Col 1
+  { key: 'mattack', label: 'Mattack', shortLabel: 'MATTACK' },  // Col 2
+  { key: 'rattack', label: 'Rattack', shortLabel: 'RATTACK' },  // Col 3
+  { key: 'fort', label: 'Fort', shortLabel: 'FORT' },           // Col 4
+  { key: 'ref', label: 'Ref', shortLabel: 'REF' },              // Col 5
+  { key: 'will', label: 'Will', shortLabel: 'WILL' },           // Col 6
+  { key: 'ac', label: 'AC', shortLabel: 'AC' },                 // Col 7
+  { key: 'str', label: 'STR', shortLabel: 'STR' },              // Col 8
+  { key: 'dex', label: 'DEX', shortLabel: 'DEX' },              // Col 9
+  { key: 'con', label: 'CON', shortLabel: 'CON' },              // Col 10
+  { key: 'int', label: 'INT', shortLabel: 'INT' },              // Col 11
+  { key: 'wis', label: 'WIS', shortLabel: 'WIS' },              // Col 12
+  { key: 'cha', label: 'CHA', shortLabel: 'CHA' },              // Col 13
+  { key: 'str_mod', label: 'STR Mod', shortLabel: 'STR MOD' },  // Col 14
+  { key: 'dex_mod', label: 'DEX Mod', shortLabel: 'DEX MOD' },  // Col 15
+  { key: 'con_mod', label: 'CON Mod', shortLabel: 'CON MOD' },  // Col 16
+  { key: 'int_mod', label: 'INT Mod', shortLabel: 'INT MOD' },  // Col 17
+  { key: 'wis_mod', label: 'WIS Mod', shortLabel: 'WIS MOD' },  // Col 18
+  { key: 'cha_mod', label: 'CHA Mod', shortLabel: 'CHA MOD' },  // Col 19
 ];
 
 export function createEmptyBuffBox(): BuffBoxData {
@@ -101,13 +101,79 @@ const PRESET_TEMPLATES: Array<{
   category: 'activatable' | 'permanent' | 'debuff';
   bonusType: BuffBonusType;
   values: Partial<Record<BuffStatTarget, number>>;
+  macro?: string;
   notes?: string;
 }> = [
+  {
+    name: 'Mage Armor',
+    category: 'activatable',
+    bonusType: 'Enhancement',
+    values: { ac: 4 },
+    macro: 'MageArmor:|<^{7:2}+4>|$',
+    notes: '+4 armor/enhancement bonus to AC (1 hour/level)',
+  },
+  {
+    name: 'Sustained +10 AC',
+    category: 'activatable',
+    bonusType: 'Untyped',
+    values: { ac: 10 },
+    macro: 'SustainedWard:|<^{7:1}+10>|$',
+    notes: 'Sustained +10 untyped bonus to AC',
+  },
+  {
+    name: 'Bardic Inspiration +2',
+    category: 'activatable',
+    bonusType: 'Competence',
+    values: { mattack: 2, rattack: 2, will: 2 },
+    macro: 'BardicInspiration: <^MATTACK.Competence+2, RATTACK.Competence+2, WILL.Morale+2>',
+    notes: 'Inspire Courage +2 competence on attacks/damage, +2 morale vs fear',
+  },
+  {
+    name: 'Barbarian Rage',
+    category: 'activatable',
+    bonusType: 'Morale',
+    values: { str: 4, con: 4, will: 2, ac: -2 },
+    macro: 'BarbarianRage: <^STR.Morale+4, CON.Morale+4, WILL.Morale+2, AC-2>',
+    notes: '+4 Morale STR & CON, +2 Morale Will, -2 AC penalty',
+  },
+  {
+    name: 'Dodge Feat',
+    category: 'permanent',
+    bonusType: 'Dodge',
+    values: { ac: 2 },
+    macro: 'DodgeFeat:|<^AC.Dodge+2>|$',
+    notes: 'Permanent +2 Dodge bonus to AC',
+  },
+  {
+    name: 'Grappled',
+    category: 'debuff',
+    bonusType: 'Untyped',
+    values: { dex: -4, mattack: -2, rattack: -2 },
+    macro: 'Grappled: <^DEX-4, MATTACK-2, RATTACK-2>',
+    notes: '-4 penalty to Dexterity, -2 penalty on all attack rolls & CMB',
+  },
+  {
+    name: 'Sickened',
+    category: 'debuff',
+    bonusType: 'Untyped',
+    values: { mattack: -2, rattack: -2, fort: -2, ref: -2, will: -2 },
+    macro: 'Sickened: <^MATTACK-2, RATTACK-2, FORT-2, REF-2, WILL-2>',
+    notes: '-2 untyped penalty on all attack rolls, weapon damage, saves, and skill checks',
+  },
+  {
+    name: 'Shaken',
+    category: 'debuff',
+    bonusType: 'Untyped',
+    values: { mattack: -2, rattack: -2, fort: -2, ref: -2, will: -2 },
+    macro: 'Shaken: <^MATTACK-2, RATTACK-2, FORT-2, REF-2, WILL-2>',
+    notes: '-2 untyped penalty on attack rolls, saving throws, skill checks, and ability checks',
+  },
   {
     name: 'Haste',
     category: 'activatable',
     bonusType: 'Dodge',
     values: { mattack: 1, rattack: 1, ac: 1, ref: 1 },
+    macro: 'Haste: <^MATTACK+1, RATTACK+1, AC.Dodge+1, REF.Dodge+1>',
     notes: '+1 attack, +1 dodge AC, +1 Reflex, +30ft speed',
   },
   {
@@ -115,6 +181,7 @@ const PRESET_TEMPLATES: Array<{
     category: 'activatable',
     bonusType: 'Morale',
     values: { mattack: 2, rattack: 2, fort: 2, ref: 2, will: 2 },
+    macro: 'Heroism: <^MATTACK.Morale+2, RATTACK.Morale+2, FORT.Morale+2, REF.Morale+2, WILL.Morale+2>',
     notes: '+2 morale bonus to attack rolls, saves, and skill checks',
   },
   {
@@ -122,84 +189,16 @@ const PRESET_TEMPLATES: Array<{
     category: 'activatable',
     bonusType: 'Enhancement',
     values: { str: 4 },
+    macro: 'BullsStrength: <^STR.Enhancement+4>',
     notes: '+4 enhancement to Strength',
-  },
-  {
-    name: "Cat's Grace",
-    category: 'activatable',
-    bonusType: 'Enhancement',
-    values: { dex: 4 },
-    notes: '+4 enhancement to Dexterity',
-  },
-  {
-    name: "Bear's Endurance",
-    category: 'activatable',
-    bonusType: 'Enhancement',
-    values: { con: 4 },
-    notes: '+4 enhancement to Constitution',
   },
   {
     name: 'Shield of Faith',
     category: 'activatable',
     bonusType: 'Deflection',
     values: { ac: 2 },
+    macro: 'ShieldOfFaith: <^AC.Deflection+2>',
     notes: '+2 deflection bonus to AC',
-  },
-  {
-    name: 'Barkskin',
-    category: 'activatable',
-    bonusType: 'NAT armor',
-    values: { ac: 2 },
-    notes: '+2 enhancement to natural armor',
-  },
-  {
-    name: 'Sickened',
-    category: 'debuff',
-    bonusType: 'Untyped',
-    values: { mattack: -2, rattack: -2, fort: -2, ref: -2, will: -2 },
-    notes: '-2 untyped penalty on all attack rolls, damage, saves, skill checks',
-  },
-  {
-    name: 'Shaken',
-    category: 'debuff',
-    bonusType: 'Untyped',
-    values: { mattack: -2, rattack: -2, fort: -2, ref: -2, will: -2 },
-    notes: '-2 untyped penalty on attack rolls, saving throws, skill checks',
-  },
-  {
-    name: 'Fatigued',
-    category: 'debuff',
-    bonusType: 'Untyped',
-    values: { str: -2, dex: -2 },
-    notes: '-2 Strength, -2 Dexterity, cannot run or charge',
-  },
-  {
-    name: 'Exhausted',
-    category: 'debuff',
-    bonusType: 'Untyped',
-    values: { str: -6, dex: -6, ac: -3 },
-    notes: '-6 Strength, -6 Dexterity, half speed',
-  },
-  {
-    name: 'Ray of Enfeeblement',
-    category: 'debuff',
-    bonusType: 'Untyped',
-    values: { str: -6 },
-    notes: '1d6+5 Strength penalty (untyped)',
-  },
-  {
-    name: 'Power Attack (-2 / +4)',
-    category: 'activatable',
-    bonusType: 'Untyped',
-    values: { mattack: -2 },
-    notes: '-2 attack roll penalty for extra melee damage',
-  },
-  {
-    name: 'Combat Expertise (-2 / +2)',
-    category: 'activatable',
-    bonusType: 'Dodge',
-    values: { mattack: -2, ac: 2 },
-    notes: '-2 attack for +2 dodge bonus to AC',
   },
 ];
 
@@ -208,8 +207,8 @@ interface BuffBoxModuleProps {
   customBuffs?: CustomBuffEffect[];
   onUpdateBuffBox: (newBox: BuffBoxData) => void;
   onUpdateCustomBuffs?: (newBuffs: CustomBuffEffect[]) => void;
-  abilities?: import('../../types/character').PF1Character['abilities'];
-  onUpdateCharacter?: (updater: (prev: import('../../types/character').PF1Character) => import('../../types/character').PF1Character) => void;
+  abilities?: PF1Character['abilities'];
+  onUpdateCharacter?: (updater: (prev: PF1Character) => PF1Character) => void;
   theme?: string;
   fontClass?: string;
   isToolModal?: boolean;
@@ -221,60 +220,36 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
   customBuffs = [],
   onUpdateBuffBox,
   onUpdateCustomBuffs,
-  abilities,
   onUpdateCharacter,
   theme = 'parchment',
   fontClass = '',
   isToolModal = false,
   onCloseModal,
 }) => {
-  const [viewMode, setViewMode] = useState<'expanded' | 'rollup' | 'icon'>('rollup');
-  const [filterCategory, setFilterCategory] = useState<'all' | 'active' | 'activatable' | 'permanent' | 'debuff'>('all');
-  const [showFullMatrixTable, setShowFullMatrixTable] = useState(false);
+  const [viewMode, setViewMode] = useState<'expanded' | 'rollup' | 'icon'>(
+    isToolModal ? 'expanded' : 'rollup'
+  );
+  const [showFullMatrixTable, setShowFullMatrixTable] = useState(true);
 
-  // New Buff / Debuff Creator Form State
+  // New Buff / Debuff Creator Form State (Simplified single-row header!)
   const [newName, setNewName] = useState('');
   const [newCategory, setNewCategory] = useState<'activatable' | 'permanent' | 'debuff'>('activatable');
   const [newBonusType, setNewBonusType] = useState<BuffBonusType>('Untyped');
-  const [newValues, setNewValues] = useState<Record<BuffStatTarget, number>>({
-    hp: 0,
-    mattack: 0,
-    rattack: 0,
-    fort: 0,
-    ref: 0,
-    will: 0,
-    ac: 0,
-    str: 0,
-    dex: 0,
-    con: 0,
-    int: 0,
-    wis: 0,
-    cha: 0,
-    str_mod: 0,
-    dex_mod: 0,
-    con_mod: 0,
-    int_mod: 0,
-    wis_mod: 0,
-    cha_mod: 0,
-  });
-  const [newNotes, setNewNotes] = useState('');
+  const [quickStatKey, setQuickStatKey] = useState<BuffStatTarget>('ac');
+  const [quickStatVal, setQuickStatVal] = useState<number>(4);
+  const [newValues, setNewValues] = useState<Partial<Record<BuffStatTarget, number>>>({});
   const [editingBuffId, setEditingBuffId] = useState<string | null>(null);
+
+  // Inline Macro Sensitive Area State
+  const [macroInput, setMacroInput] = useState('MageArmor:|<^{7:2}+4>|$');
+  const [liveMacroResult, setLiveMacroResult] = useState<string>('Ready — type or run a <^...> buff macro');
+  const [quirkySubtext, setQuirkySubtext] = useState<string>('');
 
   const safeBox: BuffBoxData = buffBox || createEmptyBuffBox();
   const totals = computeBuffBoxTotals(safeBox, customBuffs);
 
-  // Filtered list of buffs & debuffs
-  const filteredBuffs = customBuffs.filter((b) => {
-    if (filterCategory === 'active') return b.isActive;
-    if (filterCategory === 'activatable') return b.category === 'activatable';
-    if (filterCategory === 'permanent') return b.category === 'permanent';
-    if (filterCategory === 'debuff') return b.category === 'debuff';
-    return true;
-  });
-
   const activeCount = customBuffs.filter((b) => b.isActive).length;
 
-  // Active altered stats across all buffs & debuffs
   const activeAlteredStats = BUFF_STAT_TARGETS.filter((t) => totals[t.key] !== 0).map((t) => ({
     label: t.label,
     value: totals[t.key],
@@ -294,8 +269,14 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
 
   const handleToggleBuff = (id: string) => {
     if (!onUpdateCustomBuffs) return;
+    const target = customBuffs.find((b) => b.id === id);
     const updated = customBuffs.map((b) => (b.id === id ? { ...b, isActive: !b.isActive } : b));
     onUpdateCustomBuffs(updated);
+    if (target) {
+      const nextState = !target.isActive;
+      setLiveMacroResult(`${target.name}: ${nextState ? 'ACTIVE' : 'INACTIVE'}`);
+      setQuirkySubtext(pickQuirkyMessage(nextState ? (target.category === 'debuff' ? 'debuff' : 'buff') : 'toggled_off'));
+    }
   };
 
   const handleDeleteBuff = (id: string) => {
@@ -303,11 +284,26 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
     onUpdateCustomBuffs(customBuffs.filter((b) => b.id !== id));
   };
 
+  const handleAddQuickStatToDraft = () => {
+    if (quickStatVal === 0) return;
+    setNewValues((prev) => ({
+      ...prev,
+      [quickStatKey]: quickStatVal,
+    }));
+  };
+
   const handleSaveBuff = () => {
     if (!newName.trim() || !onUpdateCustomBuffs) return;
 
+    // If user didn't click "+ Stat" yet, include the currently selected quickStatKey/quickStatVal if non-zero
+    const effectiveValues: Partial<Record<BuffStatTarget, number>> =
+      Object.keys(newValues).length > 0
+        ? { ...newValues }
+        : quickStatVal !== 0
+        ? { [quickStatKey]: quickStatVal }
+        : { ac: 2 };
+
     if (editingBuffId) {
-      // Update existing
       const updated = customBuffs.map((b) =>
         b.id === editingBuffId
           ? {
@@ -315,51 +311,30 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
               name: newName.trim(),
               category: newCategory,
               bonusType: newBonusType,
-              values: { ...newValues },
-              notes: newNotes.trim() || undefined,
+              values: effectiveValues,
             }
           : b
       );
       onUpdateCustomBuffs(updated);
+      setLiveMacroResult(`Updated "${newName.trim()}" (${newBonusType})`);
+      setQuirkySubtext(pickQuirkyMessage(newCategory === 'debuff' ? 'debuff' : 'buff'));
       setEditingBuffId(null);
     } else {
-      // Create new
       const newBuff: CustomBuffEffect = {
         id: `buff-${Date.now()}`,
         name: newName.trim(),
         category: newCategory,
         bonusType: newBonusType,
-        isActive: true, // Auto-activate newly created buff
-        values: { ...newValues },
-        notes: newNotes.trim() || undefined,
+        isActive: true,
+        values: effectiveValues,
       };
       onUpdateCustomBuffs([newBuff, ...customBuffs]);
+      setLiveMacroResult(`Added & Activated "${newBuff.name}"`);
+      setQuirkySubtext(pickQuirkyMessage(newCategory === 'debuff' ? 'debuff' : 'buff'));
     }
 
-    // Reset creator form
     setNewName('');
-    setNewNotes('');
-    setNewValues({
-      hp: 0,
-      mattack: 0,
-      rattack: 0,
-      fort: 0,
-      ref: 0,
-      will: 0,
-      ac: 0,
-      str: 0,
-      dex: 0,
-      con: 0,
-      int: 0,
-      wis: 0,
-      cha: 0,
-      str_mod: 0,
-      dex_mod: 0,
-      con_mod: 0,
-      int_mod: 0,
-      wis_mod: 0,
-      cha_mod: 0,
-    });
+    setNewValues({});
   };
 
   const handleEditBuff = (b: CustomBuffEffect) => {
@@ -367,108 +342,202 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
     setNewName(b.name);
     setNewCategory(b.category);
     setNewBonusType(b.bonusType);
-    const initialValues: Record<BuffStatTarget, number> = {
-      hp: 0,
-      mattack: 0,
-      rattack: 0,
-      fort: 0,
-      ref: 0,
-      will: 0,
-      ac: 0,
-      str: 0,
-      dex: 0,
-      con: 0,
-      int: 0,
-      wis: 0,
-      cha: 0,
-      str_mod: 0,
-      dex_mod: 0,
-      con_mod: 0,
-      int_mod: 0,
-      wis_mod: 0,
-      cha_mod: 0,
-      ...(b.values || {}),
-    };
-    setNewValues(initialValues);
-    setNewNotes(b.notes || '');
-    if (viewMode === 'rollup' || viewMode === 'icon') {
+    setNewValues({ ...(b.values || {}) });
+    const firstKey = (Object.keys(b.values || {})[0] as BuffStatTarget) || 'ac';
+    setQuickStatKey(firstKey);
+    setQuickStatVal(b.values?.[firstKey] || 2);
+    if (viewMode !== 'expanded') {
       setViewMode('expanded');
     }
   };
 
   const handleLoadTemplate = (tpl: typeof PRESET_TEMPLATES[0]) => {
+    if (onUpdateCustomBuffs) {
+      // Immediately add or update the preset so the user gets 1-click gratification, AND populate the form + macro box!
+      const existingIdx = customBuffs.findIndex(
+        (b) => b.name.toLowerCase() === tpl.name.toLowerCase()
+      );
+      if (existingIdx >= 0) {
+        const nextBuffs = [...customBuffs];
+        nextBuffs[existingIdx] = {
+          ...nextBuffs[existingIdx],
+          isActive: true,
+          category: tpl.category,
+          bonusType: tpl.bonusType,
+          values: { ...tpl.values },
+        };
+        onUpdateCustomBuffs(nextBuffs);
+      } else {
+        const newBuff: CustomBuffEffect = {
+          id: `preset-${Date.now()}`,
+          name: tpl.name,
+          category: tpl.category,
+          bonusType: tpl.bonusType,
+          isActive: true,
+          values: { ...tpl.values },
+          notes: tpl.notes,
+        };
+        onUpdateCustomBuffs([newBuff, ...customBuffs]);
+      }
+    }
     setNewName(tpl.name);
     setNewCategory(tpl.category);
     setNewBonusType(tpl.bonusType);
-    setNewNotes(tpl.notes || '');
-    const filledValues: Record<BuffStatTarget, number> = {
-      hp: 0,
-      mattack: 0,
-      rattack: 0,
-      fort: 0,
-      ref: 0,
-      will: 0,
-      ac: 0,
-      str: 0,
-      dex: 0,
-      con: 0,
-      int: 0,
-      wis: 0,
-      cha: 0,
-      str_mod: 0,
-      dex_mod: 0,
-      con_mod: 0,
-      int_mod: 0,
-      wis_mod: 0,
-      cha_mod: 0,
-    };
-    for (const key of Object.keys(tpl.values) as BuffStatTarget[]) {
-      filledValues[key] = tpl.values[key] || 0;
+    setNewValues({ ...tpl.values });
+    if (tpl.macro) {
+      setMacroInput(tpl.macro);
     }
-    setNewValues(filledValues);
+    setLiveMacroResult(`Loaded Preset: ${tpl.name} (${tpl.bonusType})`);
+    setQuirkySubtext(pickQuirkyMessage(tpl.category === 'debuff' ? 'debuff' : 'buff'));
+  };
+
+  /**
+   * Executes a Macaroni macro directly inside the Buff Box's Macro Sensitive Area!
+   * Supports <^{col:row}+N>, <^Stat.Type+N>, <^ALLCAPS+N>, named MageArmor:|<^{7:2}+4>|$, or unnamed <^AC+10>.
+   */
+  const handleRunInlineMacro = () => {
+    const expr = macroInput.trim();
+    if (!expr) return;
+
+    const dummyCharacter = {
+      level: 1,
+      baseAttackBonus: 1,
+      casterLevel: 1,
+      hpCurrent: 20,
+      hpTotalMax: 20,
+      hpTemp: 0,
+      abilities: {
+        STR: { name: 'STR', base: 14, raceMod: 0, levelAsiMod: 0, enhMod: 0, miscMod: 0, tempMod: 0 },
+        DEX: { name: 'DEX', base: 14, raceMod: 0, levelAsiMod: 0, enhMod: 0, miscMod: 0, tempMod: 0 },
+        CON: { name: 'CON', base: 14, raceMod: 0, levelAsiMod: 0, enhMod: 0, miscMod: 0, tempMod: 0 },
+        INT: { name: 'INT', base: 12, raceMod: 0, levelAsiMod: 0, enhMod: 0, miscMod: 0, tempMod: 0 },
+        WIS: { name: 'WIS', base: 12, raceMod: 0, levelAsiMod: 0, enhMod: 0, miscMod: 0, tempMod: 0 },
+        CHA: { name: 'CHA', base: 12, raceMod: 0, levelAsiMod: 0, enhMod: 0, miscMod: 0, tempMod: 0 },
+      },
+      buffBox: safeBox,
+      customBuffs,
+    } as unknown as PF1Character;
+
+    const macRes = executeMacaroni(expr, {
+      character: dummyCharacter,
+      formulaContext: {},
+    });
+
+    if (macRes.buffMakeEvents && macRes.buffMakeEvents.length > 0) {
+      let nextBox = { ...safeBox };
+      let nextCustomBuffs = [...customBuffs];
+      const summaries: string[] = [];
+      let qKind: 'buff' | 'debuff' | 'locked' | 'toggled_off' = 'buff';
+
+      for (const spec of macRes.buffMakeEvents) {
+        if (spec.isDirectMatrix || !spec.name) {
+          // Unnamed macro -> populate 19-row base matrix directly!
+          for (const entry of spec.matrixEntries) {
+            nextBox = {
+              ...nextBox,
+              [entry.bonusType]: {
+                ...(nextBox[entry.bonusType] || {}),
+                [entry.stat]: entry.value,
+              },
+            };
+          }
+          onUpdateBuffBox(nextBox);
+          qKind = spec.category === 'debuff' ? 'debuff' : 'buff';
+          summaries.push(`Matrix Cell Set: ${spec.summaryText}`);
+        } else {
+          // Named macro -> create, lock ($), or toggle in Saved Status Effects
+          const existingIdx = nextCustomBuffs.findIndex(
+            (b) => b.name.toLowerCase() === spec.name!.toLowerCase()
+          );
+          if (existingIdx >= 0) {
+            const existing = nextCustomBuffs[existingIdx];
+            if (spec.isLockedOnce && existing.isActive) {
+              qKind = 'locked';
+              summaries.push(`${existing.name} is ACTIVE & Locked ($)`);
+            } else {
+              const nextActive = spec.isLockedOnce ? true : !existing.isActive;
+              nextCustomBuffs[existingIdx] = {
+                ...existing,
+                isActive: nextActive,
+                bonusType: spec.bonusType,
+                category: spec.category,
+                values: spec.values,
+              };
+              if (onUpdateCustomBuffs) onUpdateCustomBuffs(nextCustomBuffs);
+              qKind = nextActive ? (spec.category === 'debuff' ? 'debuff' : 'buff') : 'toggled_off';
+              summaries.push(`${existing.name} ➜ ${nextActive ? 'ON' : 'OFF'}`);
+            }
+          } else {
+            const created: CustomBuffEffect = {
+              id: `mac-buff-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+              name: spec.name,
+              category: spec.category,
+              bonusType: spec.bonusType,
+              isActive: true,
+              values: spec.values,
+              notes: `Macro: ${expr}`,
+            };
+            nextCustomBuffs = [created, ...nextCustomBuffs];
+            if (onUpdateCustomBuffs) onUpdateCustomBuffs(nextCustomBuffs);
+            qKind = spec.category === 'debuff' ? 'debuff' : 'buff';
+            summaries.push(spec.summaryText);
+          }
+        }
+      }
+
+      setLiveMacroResult(summaries.join(' • '));
+      setQuirkySubtext(pickQuirkyMessage(qKind));
+    } else {
+      setLiveMacroResult(macRes.fullOutput || 'Executed macro');
+      setQuirkySubtext(macRes.quirkyMessage || pickQuirkyMessage('roll'));
+    }
+
+    // If macro also triggered a UI Make alert <"">, dispatch it
+    if (macRes.alertEvents && macRes.alertEvents.length > 0) {
+      macRes.alertEvents.forEach((alert) => {
+        window.dispatchEvent(
+          new CustomEvent('macaroni:alert', {
+            detail: {
+              id: `alert-${Date.now()}-${Math.random()}`,
+              message: alert.message,
+              tag: alert.tag,
+              preset: alert.preset,
+              timestamp: Date.now(),
+            },
+          })
+        );
+      });
+    }
   };
 
   const isParchment = theme === 'parchment';
   const isBlueprint = theme === 'blueprint';
   const isMythWeavers = theme === 'mythweavers';
-  const isLightTheme = isParchment || theme === 'print';
 
   const cardBg = isParchment
-    ? 'bg-amber-50/80 border-amber-800/30 text-stone-900 shadow-sm'
+    ? 'bg-slate-950 border-cyan-500/40 text-slate-100 shadow-lg'
     : isBlueprint
-    ? 'bg-slate-900/95 border-cyan-500/50 text-cyan-50 shadow-cyan-950/50'
+    ? 'bg-slate-950 border-cyan-500/50 text-cyan-50 shadow-cyan-950/50'
     : isMythWeavers
-    ? 'bg-[#15171a] border-[#2d3139] text-slate-100'
-    : 'bg-white border-black text-black';
+    ? 'bg-[#0f1217] border-[#2d3139] text-slate-100'
+    : 'bg-slate-950 border-slate-700 text-slate-100';
 
-  const headerBg = isParchment
-    ? 'bg-amber-900/10 border-amber-900/20 text-amber-950 font-serif'
-    : isBlueprint
-    ? 'bg-cyan-950/90 border-cyan-500/40 text-cyan-300 font-mono'
-    : isMythWeavers
-    ? 'bg-[#0f1113] border-[#2d3139] text-amber-400 font-serif'
-    : 'bg-neutral-100 border-black text-black';
-
-  const inputStyle = isParchment
-    ? 'bg-white/90 border-amber-900/20 text-stone-900 focus:border-amber-700'
-    : isBlueprint
-    ? 'bg-slate-950/80 border-cyan-700/50 text-cyan-200 focus:border-cyan-400'
-    : isMythWeavers
-    ? 'bg-[#0d0e10] border-[#383d47] text-amber-100 focus:border-amber-500'
-    : 'bg-white border-neutral-400 text-black';
+  const headerBg = 'bg-slate-900/95 border-cyan-500/30 text-cyan-300 font-mono';
+  const inputStyle =
+    'bg-slate-900/90 border-slate-700/80 text-cyan-100 focus:border-cyan-400 focus:outline-none';
 
   // Compact Icon Mode |<^>|
   if (viewMode === 'icon') {
     return (
-      <div className="inline-flex items-center shrink-0 whitespace-nowrap">
+      <div className="inline-flex items-center">
         <button
           onClick={() => setViewMode('rollup')}
-          className="px-2.5 py-1 rounded-md font-mono text-xs font-bold bg-amber-600 hover:bg-amber-500 text-slate-950 shadow-md border border-amber-400 flex items-center gap-1.5 transition-all whitespace-nowrap shrink-0"
+          className="px-2.5 py-1 rounded-md font-mono text-xs font-bold bg-amber-600 hover:bg-amber-500 text-slate-950 shadow-md border border-amber-400 flex items-center gap-1.5 transition-all"
           title="Expand Buff Box (|<^>|)"
         >
-          <span className="whitespace-nowrap shrink-0">|&lt;^&gt;|</span>
-          <span className="whitespace-nowrap shrink-0">Buff Box</span>
-          <span className="ml-1 px-1.5 py-0.2 rounded-full bg-slate-950 text-amber-300 text-[10px] whitespace-nowrap shrink-0">
+          <span>|&lt;^&gt;|</span>
+          <span>Buff Box</span>
+          <span className="ml-1 px-1.5 py-0.2 rounded-full bg-slate-950 text-amber-300 text-[10px]">
             {activeCount} active
           </span>
         </button>
@@ -479,48 +548,38 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
   return (
     <div className={`border rounded-lg overflow-hidden ${cardBg} ${fontClass} transition-all duration-200`}>
       {/* Header Bar */}
-      <div className={`px-3 py-2 border-b flex items-center justify-between gap-2 ${headerBg}`}>
-        <div className="flex items-center gap-2 min-w-0">
-          <Sparkles className={`w-4 h-4 shrink-0 ${isLightTheme ? 'text-amber-700' : 'text-amber-500'}`} />
-          <span className="font-bold text-xs uppercase tracking-wider truncate">
+      <div className={`px-3 py-2 border-b flex items-center justify-between ${headerBg}`}>
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-amber-400" />
+          <span className="font-bold text-xs uppercase tracking-wider text-cyan-300">
             Buff Box: Status Effects &amp; Bonus Matrix
           </span>
-          <span className={`text-[10px] font-mono px-2 py-0.5 rounded border whitespace-nowrap shrink-0 ${
-            isLightTheme
-              ? 'bg-sky-100 text-sky-900 border-sky-700/40 font-bold'
-              : 'bg-cyan-950 text-cyan-300 border-cyan-500/30'
-          }`}>
+          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/30">
             {activeCount} Active / {customBuffs.length} Total
           </span>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
-          {/* Roll left into small compact icon |<^>| - Never wraps */}
+        <div className="flex items-center gap-2">
           <button
             onClick={() => setViewMode('icon')}
-            className={`px-2 py-0.5 text-xs font-mono font-bold rounded border whitespace-nowrap shrink-0 ${
-              isLightTheme
-                ? 'border-amber-700/50 bg-amber-100 hover:bg-amber-200 text-amber-950'
-                : 'border-amber-500/40 bg-black/5 dark:bg-white/5 hover:bg-amber-500/20 text-amber-400'
-            }`}
+            className="px-2 py-0.5 text-xs font-mono font-bold rounded border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400"
             title="Roll into compact icon |<^>|"
           >
             |&lt;^&gt;|
           </button>
 
-          {/* Toggle rollup vs expanded */}
           <button
             onClick={() => setViewMode(viewMode === 'expanded' ? 'rollup' : 'expanded')}
-            className="px-2.5 py-0.5 text-xs font-mono font-semibold rounded border border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/10 flex items-center gap-1 transition-colors whitespace-nowrap shrink-0"
+            className="px-2.5 py-0.5 text-xs font-mono font-semibold rounded border border-cyan-500/30 bg-slate-900 hover:bg-slate-800 text-cyan-200 flex items-center gap-1 transition-colors"
           >
             {viewMode === 'expanded' ? (
               <>
-                <ChevronUp className="w-3.5 h-3.5 shrink-0" />
+                <ChevronUp className="w-3.5 h-3.5" />
                 <span>Roll Up</span>
               </>
             ) : (
               <>
-                <ChevronDown className="w-3.5 h-3.5 shrink-0" />
+                <ChevronDown className="w-3.5 h-3.5" />
                 <span>Expand Matrix</span>
               </>
             )}
@@ -529,7 +588,7 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
           {onCloseModal && (
             <button
               onClick={onCloseModal}
-              className="p-1 rounded hover:bg-black/10 dark:hover:bg-white/10 text-slate-400 hover:text-slate-200"
+              className="p-1 rounded hover:bg-white/10 text-slate-400 hover:text-slate-200"
             >
               <X className="w-4 h-4" />
             </button>
@@ -537,29 +596,29 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
         </div>
       </div>
 
-      {/* ROLLED UP VIEW: Shows active sum badges with fast toggles */}
+      {/* ROLLED UP VIEW */}
       {viewMode === 'rollup' && (
-        <div className="p-3 space-y-2">
+        <div className="p-3 space-y-2 bg-slate-950">
           {activeAlteredStats.length === 0 ? (
-            <div className="flex items-center justify-between text-xs opacity-75">
-              <span>No active buffs or debuffs. Check an effect below or expand to create one.</span>
+            <div className="flex items-center justify-between text-xs text-slate-400">
+              <span>No active buffs or debuffs. Check an effect below or expand to use the Macaroni Buff Maker.</span>
               <button
                 onClick={() => setViewMode('expanded')}
-                className="text-xs font-bold text-amber-600 dark:text-amber-400 underline ml-2 font-mono"
+                className="text-xs font-bold text-cyan-400 hover:underline ml-2 font-mono"
               >
-                Open Creator & Matrix
+                Open Buff Box
               </button>
             </div>
           ) : (
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-semibold opacity-75 mr-1 font-mono">Active Sum Matrix:</span>
+              <span className="text-xs font-semibold text-amber-300 mr-1 font-mono">Active Sum Matrix:</span>
               {activeAlteredStats.map((stat) => (
                 <span
                   key={stat.key}
                   className={`px-2 py-0.5 rounded text-xs font-mono font-bold border ${
                     stat.value > 0
-                      ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-600 dark:text-emerald-300'
-                      : 'bg-rose-500/15 border-rose-500/40 text-rose-600 dark:text-rose-300'
+                      ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                      : 'bg-rose-500/15 border-rose-500/40 text-rose-300'
                   }`}
                 >
                   {stat.label}: {stat.value > 0 ? `+${stat.value}` : stat.value}
@@ -567,17 +626,16 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
               ))}
               <button
                 onClick={() => setViewMode('expanded')}
-                className="text-[11px] underline opacity-75 hover:opacity-100 ml-auto font-mono text-cyan-400"
+                className="text-[11px] underline text-cyan-400 hover:text-cyan-300 ml-auto font-mono"
               >
                 Manage Effects
               </button>
             </div>
           )}
 
-          {/* Quick toggle list in rollup */}
           {customBuffs.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 pt-1 border-t border-black/5 dark:border-white/5">
-              {customBuffs.slice(0, 8).map((buff) => (
+            <div className="flex flex-wrap gap-1.5 pt-1.5 border-t border-slate-800/80">
+              {customBuffs.slice(0, 10).map((buff) => (
                 <button
                   key={buff.id}
                   onClick={() => handleToggleBuff(buff.id)}
@@ -597,76 +655,74 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
                   <span>{buff.name}</span>
                 </button>
               ))}
-              {customBuffs.length > 8 && (
-                <button
-                  onClick={() => setViewMode('expanded')}
-                  className="px-2 py-1 rounded text-[10px] font-mono text-slate-400 hover:text-slate-200"
-                >
-                  +{customBuffs.length - 8} more...
-                </button>
-              )}
             </div>
           )}
         </div>
       )}
 
-      {/* EXPANDED VIEW: Creator Prompt + Active Sums + List of Buffs/Debuffs + Matrix */}
+      {/* EXPANDED VIEW — Matches Simplified Blueprint Reference Layout */}
       {viewMode === 'expanded' && (
-        <div className="p-3 space-y-4">
-          {/* 1. CREATOR PROMPT AT THE TOP */}
-          <div className="p-3 rounded-lg border border-cyan-500/40 bg-slate-950/80 space-y-3">
+        <div className="p-3 space-y-3 bg-[#090d14]">
+          {/* 1. STREAMLINED SINGLE-ROW CREATOR BAR */}
+          <div className="p-3 rounded-lg border border-cyan-500/30 bg-[#0d131d] space-y-2.5">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-1.5">
                 <Plus className="w-4 h-4 text-cyan-400" />
-                <span className="text-xs font-mono font-bold text-cyan-200 uppercase">
+                <span className="text-xs font-mono font-bold text-cyan-200 uppercase tracking-wide">
                   {editingBuffId ? 'Edit Status Effect / Buff' : 'Create New Buff or Debuff'}
                 </span>
                 <span className="text-[10px] font-mono text-slate-400">
-                  (Supports negative penalties & Untyped debuffs)
+                  (Supports negative penalties &amp; Untyped debuffs)
                 </span>
               </div>
 
-              {/* Template preset selector */}
               <select
                 onChange={(e) => {
                   const tpl = PRESET_TEMPLATES.find((p) => p.name === e.target.value);
                   if (tpl) handleLoadTemplate(tpl);
+                  e.target.value = '';
                 }}
                 defaultValue=""
-                className="px-2 py-1 rounded bg-slate-900 border border-slate-700 text-slate-300 text-[11px] font-mono"
+                className="px-3 py-1 rounded bg-slate-900 border border-slate-700 text-slate-200 text-xs font-mono focus:border-cyan-400 focus:outline-none"
               >
-                <option value="" disabled>Load Standard Preset...</option>
+                <option value="" disabled>
+                  Load Standard Preset...
+                </option>
                 {PRESET_TEMPLATES.map((p) => (
                   <option key={p.name} value={p.name}>
-                    {p.name} ({p.category})
+                    {p.name} ({p.category} • {p.bonusType})
                   </option>
                 ))}
               </select>
             </div>
 
-            {/* Input row: Name, Category, Bonus Type */}
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 text-xs">
-              <div className="sm:col-span-5">
-                <label className="text-[10px] font-mono text-slate-400 uppercase">Name of Buff / Debuff</label>
+            {/* Single Streamlined Row: Name + Category + Bonus Type + Quick Stat Adder */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-end text-xs">
+              <div className="md:col-span-4">
+                <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">
+                  Name of Buff / Debuff
+                </label>
                 <input
                   type="text"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   placeholder="e.g. Haste, Sickened, Bull's Strength, Shaken"
-                  className={`w-full px-2.5 py-1.5 rounded font-medium ${inputStyle}`}
+                  className={`w-full px-2.5 py-1.5 rounded border text-xs font-mono ${inputStyle}`}
                 />
               </div>
 
-              <div className="sm:col-span-4">
-                <label className="text-[10px] font-mono text-slate-400 uppercase">Status Effect Category</label>
-                <div className="flex items-center gap-1">
+              <div className="md:col-span-4">
+                <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">
+                  Status Effect Category
+                </label>
+                <div className="grid grid-cols-3 gap-1">
                   <button
                     type="button"
                     onClick={() => setNewCategory('activatable')}
-                    className={`flex-1 py-1.5 rounded text-[11px] font-mono text-center border transition-all ${
+                    className={`py-1.5 rounded text-[11px] font-mono text-center border transition-all ${
                       newCategory === 'activatable'
                         ? 'bg-cyan-500/20 text-cyan-200 border-cyan-400 font-bold'
-                        : 'bg-slate-900 text-slate-400 border-slate-800'
+                        : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
                     }`}
                   >
                     Activatable
@@ -674,10 +730,10 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
                   <button
                     type="button"
                     onClick={() => setNewCategory('permanent')}
-                    className={`flex-1 py-1.5 rounded text-[11px] font-mono text-center border transition-all ${
+                    className={`py-1.5 rounded text-[11px] font-mono text-center border transition-all ${
                       newCategory === 'permanent'
                         ? 'bg-amber-500/20 text-amber-200 border-amber-400 font-bold'
-                        : 'bg-slate-900 text-slate-400 border-slate-800'
+                        : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
                     }`}
                   >
                     Permanent
@@ -688,10 +744,10 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
                       setNewCategory('debuff');
                       setNewBonusType('Untyped');
                     }}
-                    className={`flex-1 py-1.5 rounded text-[11px] font-mono text-center border transition-all ${
+                    className={`py-1.5 rounded text-[11px] font-mono text-center border transition-all ${
                       newCategory === 'debuff'
                         ? 'bg-rose-500/20 text-rose-200 border-rose-400 font-bold'
-                        : 'bg-slate-900 text-slate-400 border-slate-800'
+                        : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
                     }`}
                   >
                     Debuff
@@ -699,133 +755,148 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
                 </div>
               </div>
 
-              <div className="sm:col-span-3">
-                <label className="text-[10px] font-mono text-slate-400 uppercase">Bonus Type</label>
+              <div className="md:col-span-4">
+                <label className="block text-[10px] font-mono text-slate-400 uppercase mb-1">
+                  Bonus Type
+                </label>
                 <select
                   value={newBonusType}
                   onChange={(e) => setNewBonusType(e.target.value as BuffBonusType)}
-                  className={`w-full px-2 py-1.5 rounded font-mono text-xs ${inputStyle}`}
+                  className={`w-full px-2.5 py-1.5 rounded border font-mono text-xs ${inputStyle}`}
                 >
-                  {BUFF_BONUS_TYPES.map((bt) => (
+                  {BUFF_BONUS_TYPES.map((bt, idx) => (
                     <option key={bt} value={bt}>
-                      {bt} {bt === 'Untyped' ? '(Debuff default)' : ''}
+                      {idx + 1}. {bt} {bt === 'Untyped' ? '(Debuff default)' : ''}
                     </option>
                   ))}
                 </select>
               </div>
             </div>
 
-            {/* Target Values Input Grid (13 stats) */}
-            <div className="space-y-1">
-              <label className="text-[10px] font-mono text-slate-400 uppercase">
-                Modifier Values (enter positive numbers for buffs, negative numbers like -2 for debuffs):
-              </label>
-              <div className="grid grid-cols-4 sm:grid-cols-7 md:grid-cols-13 gap-1.5 text-xs font-mono">
-                {BUFF_STAT_TARGETS.map((t) => (
-                  <div key={t.key} className="text-center">
-                    <span className="block text-[10px] text-slate-400 font-semibold truncate">{t.label}</span>
-                    <input
-                      type="number"
-                      value={newValues[t.key] === 0 ? '' : newValues[t.key]}
-                      placeholder="0"
-                      onChange={(e) =>
-                        setNewValues({
-                          ...newValues,
-                          [t.key]: parseInt(e.target.value, 10) || 0,
+            {/* Compact Stat Modifier Bar (Replaces the 19-box wall!) */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-800/70">
+              <div className="flex flex-wrap items-center gap-1.5 text-xs font-mono">
+                <span className="text-[10px] text-slate-400 uppercase">Target Stat:</span>
+                <select
+                  value={quickStatKey}
+                  onChange={(e) => setQuickStatKey(e.target.value as BuffStatTarget)}
+                  className={`px-2 py-1 rounded border text-xs font-mono ${inputStyle}`}
+                >
+                  {BUFF_STAT_TARGETS.map((t, idx) => (
+                    <option key={t.key} value={t.key}>
+                      Col {idx + 1}: {t.label}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  value={quickStatVal}
+                  onChange={(e) => setQuickStatVal(parseInt(e.target.value, 10) || 0)}
+                  className={`w-16 text-center py-1 rounded border text-xs font-mono font-bold tabular-nums ${inputStyle}`}
+                  title="Modifier Value (e.g. +4 or -2)"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddQuickStatToDraft}
+                  className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 text-[11px] font-mono"
+                >
+                  + Stat
+                </button>
+
+                {/* Show any queued stat chips */}
+                {Object.entries(newValues)
+                  .filter(([, v]) => (v || 0) !== 0)
+                  .map(([k, v]) => (
+                    <span
+                      key={k}
+                      onClick={() =>
+                        setNewValues((prev) => {
+                          const copy = { ...prev };
+                          delete copy[k as BuffStatTarget];
+                          return copy;
                         })
                       }
-                      className={`w-full text-center py-1 rounded border text-xs font-mono tabular-nums ${inputStyle} ${
-                        newValues[t.key] > 0
-                          ? 'text-emerald-400 font-bold'
-                          : newValues[t.key] < 0
-                          ? 'text-rose-400 font-bold'
-                          : ''
-                      }`}
-                    />
-                  </div>
-                ))}
+                      className="px-2 py-0.5 rounded bg-cyan-950/90 border border-cyan-500/40 text-cyan-200 text-[10px] font-mono font-bold cursor-pointer hover:border-rose-400"
+                      title="Click to remove stat"
+                    >
+                      {k.toUpperCase()}: {(v || 0) >= 0 ? `+${v}` : v} ×
+                    </span>
+                  ))}
               </div>
-            </div>
-
-            {/* Save / Cancel buttons */}
-            <div className="flex items-center justify-between pt-1">
-              <input
-                type="text"
-                value={newNotes}
-                onChange={(e) => setNewNotes(e.target.value)}
-                placeholder="Optional notes or duration (e.g. '1 round/level', 'Save ends', 'Item enhancement')..."
-                className={`max-w-md text-xs px-2.5 py-1 rounded ${inputStyle}`}
-              />
 
               <div className="flex items-center gap-2">
                 {editingBuffId && (
                   <button
+                    type="button"
                     onClick={() => {
                       setEditingBuffId(null);
                       setNewName('');
+                      setNewValues({});
                     }}
-                    className="px-3 py-1.5 rounded bg-slate-800 text-slate-300 text-xs font-mono hover:bg-slate-700"
+                    className="px-2.5 py-1 rounded bg-slate-800 text-slate-300 text-xs font-mono hover:bg-slate-700"
                   >
                     Cancel
                   </button>
                 )}
                 <button
+                  type="button"
                   onClick={handleSaveBuff}
                   disabled={!newName.trim()}
-                  className="px-4 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 text-slate-950 font-mono font-bold text-xs flex items-center gap-1.5 transition-colors shadow-md"
+                  className="px-3.5 py-1 rounded bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 text-slate-950 font-mono font-bold text-xs flex items-center gap-1 transition-colors"
                 >
                   <Check className="w-3.5 h-3.5" />
-                  <span>{editingBuffId ? 'Update Effect' : 'Save & Add to Buff Box'}</span>
+                  <span>{editingBuffId ? 'Update Buff' : 'Save Buff'}</span>
                 </button>
               </div>
             </div>
           </div>
 
-          {/* 2. SUM MATRIX OF ALL BUFFS & DEBUFFS */}
-          <div className="p-3 rounded-lg border border-amber-500/40 bg-slate-950/90 space-y-2">
+          {/* 2. SUM MATRIX OF ALL ACTIVE BUFFS & DEBUFFS (Directly below Creator!) */}
+          <div className="p-3 rounded-lg border border-amber-500/40 bg-[#0b1018] space-y-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Zap className="w-4 h-4 text-amber-400" />
-                <span className="text-xs font-mono font-bold text-amber-300 uppercase">
-                  Sum Matrix of All Active Buffs & Debuffs ({activeCount} active)
+                <span className="text-xs font-mono font-bold text-amber-400 uppercase tracking-wide">
+                  Sum Matrix of All Active Buffs &amp; Debuffs ({activeCount} Active)
                 </span>
               </div>
               <button
                 onClick={() => setShowFullMatrixTable(!showFullMatrixTable)}
                 className="text-[11px] font-mono text-cyan-400 hover:underline"
               >
-                {showFullMatrixTable ? 'Hide 19-Row Breakdown' : 'Show Full 19-Row Typed Matrix'}
+                {showFullMatrixTable ? 'Hide 19-Row Typed Matrix' : 'Show Full 19-Row Typed Matrix'}
               </button>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-center border-collapse text-xs font-mono">
+            {/* Condensed 19-Column Sum Table — Fits without horizontal scrolling */}
+            <div className="w-full overflow-hidden">
+              <table className="w-full table-fixed text-center border-collapse font-mono">
                 <thead>
-                  <tr className="border-b border-slate-800 text-[10px] uppercase text-slate-400">
-                    <th className="p-1.5 text-left">Category</th>
+                  <tr className="border-b border-slate-800 text-[9px] uppercase text-slate-400">
+                    <th className="py-1.5 px-1 text-left w-[96px]">Category</th>
                     {BUFF_STAT_TARGETS.map((t) => (
-                      <th key={t.key} className="p-1.5 text-center min-w-[44px]">
-                        {t.label}
+                      <th key={t.key} className="py-1 px-0.5 text-center leading-tight truncate">
+                        {t.shortLabel}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  <tr className="bg-slate-900/80 font-bold border-b border-amber-500/40">
-                    <td className="p-2 text-left text-amber-300 font-bold text-xs uppercase">
+                  <tr className="bg-slate-900/60 font-bold border-b border-slate-800/80">
+                    <td className="py-2 px-1 text-left text-amber-400 font-bold text-[10px] uppercase leading-tight">
                       Total Active Sum
                     </td>
                     {BUFF_STAT_TARGETS.map((t) => {
                       const totalVal = totals[t.key];
                       return (
-                        <td key={t.key} className="p-2 text-xs tabular-nums">
+                        <td key={t.key} className="py-2 px-0.5 text-[11px] tabular-nums">
                           <span
-                            className={`px-1.5 py-0.5 rounded ${
+                            className={`inline-block w-full rounded py-0.5 ${
                               totalVal > 0
-                                ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/40 font-black'
+                                ? 'bg-emerald-950/90 text-emerald-400 border border-emerald-500/40 font-black'
                                 : totalVal < 0
-                                ? 'bg-rose-950 text-rose-400 border border-rose-500/40 font-black'
-                                : 'opacity-40 text-slate-500'
+                                ? 'bg-rose-950/90 text-rose-400 border border-rose-500/40 font-black'
+                                : 'text-slate-600'
                             }`}
                           >
                             {totalVal > 0 ? `+${totalVal}` : totalVal}
@@ -839,124 +910,79 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
             </div>
           </div>
 
-          {/* 2B. ABILITY SCORES MOD ADJ (Direct Modifier Adjustments for All 6 Ability Scores) */}
-          <div className="p-3 rounded-lg border border-cyan-500/40 bg-slate-950/80 space-y-2">
-            <div className="flex items-center justify-between pb-1 border-b border-cyan-800/40">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-cyan-400" />
-                <span className="text-xs font-mono font-bold text-cyan-300 uppercase tracking-wide">
-                  Ability Scores Mod ADJ (Direct Modifier Buffs)
-                </span>
-              </div>
-              <span className="text-[10px] font-mono text-slate-400">
-                Direct modifier adjustments apply directly to attack rolls, checks, and saves without changing total score.
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 pt-1 font-mono text-xs">
-              {(['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'] as const).map((ab) => {
-                const statKey = `${ab.toLowerCase()}_mod` as BuffStatTarget;
-                const buffModSum = totals[statKey] || 0;
-                const directMod = abilities?.[ab]?.directMod || 0;
-                const totalModAdj = directMod + buffModSum;
-
-                return (
-                  <div
-                    key={ab}
-                    className="p-2 rounded-lg bg-black/40 border border-cyan-900/50 flex flex-col items-center justify-between space-y-1"
-                  >
-                    <span className="text-xs font-bold text-cyan-300">{ab} Mod ADJ</span>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] text-slate-400">Direct:</span>
-                      <input
-                        type="number"
-                        value={directMod}
-                        onChange={(e) => {
-                          const val = parseInt(e.target.value, 10) || 0;
-                          if (onUpdateCharacter) {
-                            onUpdateCharacter((prev) => ({
-                              ...prev,
-                              abilities: {
-                                ...prev.abilities,
-                                [ab]: {
-                                  ...prev.abilities[ab],
-                                  directMod: val,
-                                },
-                              },
-                            }));
-                          }
-                        }}
-                        disabled={!onUpdateCharacter}
-                        className={`w-11 text-center py-0.5 rounded border text-xs font-bold tabular-nums ${inputStyle} ${
-                          directMod !== 0 ? 'text-amber-300 border-amber-500/50' : 'text-slate-300'
-                        }`}
-                        title={`Direct ${ab} modifier adjustment`}
-                      />
-                    </div>
-                    <div className="text-[10px] flex items-center justify-between w-full pt-1 border-t border-slate-800 text-slate-400">
-                      <span>Buffs: {buffModSum >= 0 ? `+${buffModSum}` : buffModSum}</span>
-                      <strong className={`font-bold ${totalModAdj > 0 ? 'text-emerald-400' : totalModAdj < 0 ? 'text-rose-400' : 'text-slate-300'}`}>
-                        Net: {totalModAdj >= 0 ? `+${totalModAdj}` : totalModAdj}
-                      </strong>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* 3. LIST OF SAVED BUFFS & DEBUFFS WITH ACTIVATION CHECKBOXES */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between flex-wrap gap-2">
+          {/* 3. SAVED STATUS EFFECTS + INLINE MACRO SENSITIVE AREA */}
+          <div className="space-y-2.5 pt-1">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2">
               <div className="flex items-center gap-1.5">
-                <span className="text-xs font-mono font-bold text-slate-200 uppercase">
+                <span className="text-xs font-mono font-bold text-slate-200 uppercase tracking-wide">
                   Saved Status Effects ({customBuffs.length})
                 </span>
-                <span className="text-[10px] text-slate-500">
+                <span className="text-[10px] text-slate-400 font-mono">
                   (Click checkbox to activate or deactivate)
                 </span>
               </div>
 
-              {/* Filter tabs */}
-              <div className="flex items-center gap-1 text-[11px] font-mono">
-                {(['all', 'active', 'activatable', 'permanent', 'debuff'] as const).map((cat) => (
-                  <button
-                    key={cat}
-                    onClick={() => setFilterCategory(cat)}
-                    className={`px-2 py-0.5 rounded border transition-colors ${
-                      filterCategory === cat
-                        ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400 font-bold'
-                        : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
-                    }`}
-                  >
-                    {cat.toUpperCase()}
-                  </button>
-                ))}
+              {/* Inline Macro Sensitive Area + Run + Live Result of Buff in Effect */}
+              <div className="flex flex-wrap items-center gap-1.5 flex-1 lg:justify-end">
+                <div className="relative flex items-center min-w-[230px] sm:min-w-[270px]">
+                  <Terminal className="w-3.5 h-3.5 text-indigo-400 absolute left-2 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={macroInput}
+                    onChange={(e) => setMacroInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleRunInlineMacro();
+                    }}
+                    placeholder="Macro sensitive area: MageArmor:|<^{7:2}+4>|$"
+                    className="w-full pl-7 pr-2 py-1 rounded bg-indigo-950/60 border border-indigo-400/50 text-indigo-100 placeholder-indigo-300/50 text-xs font-mono focus:border-cyan-400 focus:outline-none"
+                    title="Type any Macaroni buff macro: <^{col:row}+N>, <^Stat.Type+N>, or <^ENHANCEMENTBONUSTOAC+4>"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleRunInlineMacro}
+                  className="px-3 py-1 rounded bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono font-black text-xs uppercase tracking-wider shadow-xs transition-colors flex items-center gap-1"
+                >
+                  <Play className="w-3 h-3 fill-current" />
+                  <span>run</span>
+                </button>
+
+                <div
+                  className="px-2.5 py-1 rounded bg-indigo-950/80 border border-indigo-500/40 text-indigo-100 text-[11px] font-mono min-w-[200px] max-w-md truncate"
+                  title={`${liveMacroResult}${quirkySubtext ? ` — ${quirkySubtext}` : ''}`}
+                >
+                  <span className="text-cyan-300 font-bold">{liveMacroResult}</span>
+                  {quirkySubtext && (
+                    <span className="ml-2 text-[10px] text-amber-300/90 italic">• {quirkySubtext}</span>
+                  )}
+                </div>
               </div>
             </div>
 
-            {filteredBuffs.length === 0 ? (
-              <div className="p-4 rounded-lg bg-slate-950 border border-slate-800 text-center text-xs text-slate-500 italic">
-                No effects found under filter "{filterCategory}". Use the creator prompt above to add new buffs or debuffs.
+            {/* 2-Column Saved Buffs Grid */}
+            {customBuffs.length === 0 ? (
+              <div className="p-4 rounded-lg bg-slate-950/80 border border-slate-800/80 text-center text-xs text-slate-400 font-mono">
+                No saved status effects yet. Run <code>MageArmor:|&lt;^&#123;7:2&#125;+4&gt;|$</code> above or load a standard preset!
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[360px] overflow-y-auto pr-1">
-                {filteredBuffs.map((buff) => {
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 max-h-[240px] overflow-y-auto pr-1">
+                {customBuffs.map((buff) => {
                   const nonZeroVals = BUFF_STAT_TARGETS.filter((t) => (buff.values[t.key] || 0) !== 0);
-                  const isDebuff = buff.category === 'debuff' || nonZeroVals.some((t) => (buff.values[t.key] || 0) < 0);
+                  const isDebuff =
+                    buff.category === 'debuff' || nonZeroVals.some((t) => (buff.values[t.key] || 0) < 0);
 
                   return (
                     <div
                       key={buff.id}
-                      className={`p-2.5 rounded-lg border transition-all flex items-start justify-between gap-2.5 ${
+                      className={`p-3 rounded-lg border transition-all flex items-start justify-between gap-2.5 ${
                         buff.isActive
                           ? isDebuff
-                            ? 'bg-rose-950/40 border-rose-500/50 text-rose-100 shadow-xs'
-                            : 'bg-cyan-950/40 border-cyan-500/50 text-cyan-100 shadow-xs'
-                          : 'bg-slate-950/50 border-slate-800 text-slate-400 opacity-75 hover:opacity-100'
+                            ? 'bg-[#2a0e1b]/80 border-rose-500/60 text-rose-100 shadow-xs'
+                            : 'bg-[#0c2430]/80 border-cyan-500/60 text-cyan-100 shadow-xs'
+                          : 'bg-slate-950/60 border-slate-800 text-slate-400 opacity-75 hover:opacity-100'
                       }`}
                     >
-                      {/* Left: Checkbox & Details */}
                       <div className="flex items-start gap-2.5 min-w-0 flex-1">
                         <button
                           type="button"
@@ -966,53 +992,42 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
                         >
                           {buff.isActive ? (
                             <CheckSquare
-                              className={`w-4 h-4 ${
-                                isDebuff ? 'text-rose-400' : 'text-cyan-400'
-                              }`}
+                              className={`w-4 h-4 ${isDebuff ? 'text-rose-400' : 'text-cyan-400'}`}
                             />
                           ) : (
                             <Square className="w-4 h-4 text-slate-600 hover:text-slate-400" />
                           )}
                         </button>
 
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5 flex-wrap">
+                        <div className="min-w-0 flex-1 space-y-1.5">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span
                               onClick={() => handleToggleBuff(buff.id)}
-                              className={`font-semibold text-xs cursor-pointer ${
+                              className={`font-bold text-xs font-mono cursor-pointer ${
                                 buff.isActive ? 'text-white' : 'text-slate-400 line-through'
                               }`}
                             >
                               {buff.name}
                             </span>
 
-                            {buff.itemId && (
-                              <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-amber-950/80 border border-amber-500/50 text-amber-300">
-                                🎒 Item Buff
-                              </span>
-                            )}
-
-                            {/* Category Badge */}
                             <span
-                              className={`text-[9px] font-mono px-1.5 py-0.2 rounded border ${
+                              className={`text-[10px] font-mono px-1.5 py-0.2 rounded border ${
                                 buff.category === 'permanent'
-                                  ? 'bg-amber-950/80 border-amber-500/40 text-amber-300'
+                                  ? 'bg-amber-950/90 border-amber-500/50 text-amber-300'
                                   : buff.category === 'debuff'
-                                  ? 'bg-rose-950/80 border-rose-500/40 text-rose-300'
-                                  : 'bg-cyan-950/80 border-cyan-500/40 text-cyan-300'
+                                  ? 'bg-rose-950/90 border-rose-500/50 text-rose-300'
+                                  : 'bg-cyan-950/90 border-cyan-500/50 text-cyan-300'
                               }`}
                             >
                               {buff.category}
                             </span>
 
-                            {/* Bonus Type Badge */}
-                            <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-slate-900 border border-slate-700 text-slate-300">
+                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-900 border border-slate-700 text-slate-300">
                               {buff.bonusType}
                             </span>
                           </div>
 
-                          {/* Value pills */}
-                          <div className="flex flex-wrap gap-1 mt-1">
+                          <div className="flex flex-wrap gap-1.5">
                             {nonZeroVals.length === 0 ? (
                               <span className="text-[10px] text-slate-500 italic">No modifiers</span>
                             ) : (
@@ -1021,10 +1036,10 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
                                 return (
                                   <span
                                     key={t.key}
-                                    className={`px-1.5 py-0.2 rounded text-[10px] font-mono font-bold ${
+                                    className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
                                       val > 0
-                                        ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/30'
-                                        : 'bg-rose-950 text-rose-300 border border-rose-500/30'
+                                        ? 'bg-emerald-950/90 text-emerald-300 border border-emerald-500/40'
+                                        : 'bg-rose-950/90 text-rose-300 border border-rose-500/40'
                                     }`}
                                   >
                                     {t.label}: {val > 0 ? `+${val}` : val}
@@ -1033,20 +1048,13 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
                               })
                             )}
                           </div>
-
-                          {buff.notes && (
-                            <div className="text-[10px] text-slate-400 mt-1 truncate">
-                              {buff.notes}
-                            </div>
-                          )}
                         </div>
                       </div>
 
-                      {/* Right: Action Buttons */}
                       <div className="flex items-center gap-1 shrink-0">
                         <button
                           onClick={() => handleEditBuff(buff)}
-                          className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-cyan-300 transition-colors"
+                          className="p-1 rounded hover:bg-white/10 text-slate-400 hover:text-cyan-300 transition-colors"
                           title="Edit effect"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
@@ -1066,51 +1074,70 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
             )}
           </div>
 
-          {/* 4. OPTIONAL FULL 19-ROW TYPED MATRIX (Enhancement, Luck, Morale, Untyped, etc.) */}
+          {/* 4. 19-ROW BONUS TYPE DISTRIBUTION (BASE MATRIX) — Condensed, No X-Scroll, Vertical Scroll */}
           {showFullMatrixTable && (
-            <div className="space-y-2 pt-2 border-t border-slate-800">
+            <div className="space-y-1.5 pt-2 border-t border-slate-800/80">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-mono font-bold text-slate-300 uppercase">
-                  19-Row Bonus Type Distribution (Base Matrix)
+                <span className="text-xs font-mono font-bold text-slate-200 uppercase tracking-wide">
+                  19 Row Bonus Type Distribution (Base Matrix)
                 </span>
-                <span className="text-[10px] text-slate-500 font-mono">
-                  Enter manual typed numbers directly into cells if desired
+                <span className="text-[10px] text-slate-400 font-mono">
+                  Enter manual typed numbers directly into cells or use <code>&lt;^&#123;col:row&#125;+val&gt;</code>
                 </span>
               </div>
 
-              <div className="overflow-x-auto max-h-[300px] overflow-y-auto border border-slate-800 rounded">
-                <table className="w-full text-left text-xs border-collapse font-mono">
-                  <thead className="sticky top-0 bg-slate-900 text-slate-100 text-[10px] uppercase font-bold border-b border-slate-700 z-10">
+              {/* Modified vertical scroll container — all 19 columns condensed to fit without horizontal scroll */}
+              <div className="max-h-[260px] overflow-y-auto overflow-x-hidden border border-slate-800 rounded-lg bg-[#070a0f]">
+                <table className="w-full table-fixed text-left border-collapse font-mono">
+                  <thead className="sticky top-0 bg-[#0d131d] text-slate-200 text-[9px] uppercase font-bold border-b border-slate-700 z-10">
                     <tr>
-                      <th className="p-2 min-w-[130px]">Bonus Type</th>
-                      {BUFF_STAT_TARGETS.map((t) => (
-                        <th key={t.key} className="p-1.5 text-center min-w-[48px]">
-                          {t.label}
+                      <th className="py-1.5 px-2 w-[112px]">Bonus Type</th>
+                      {BUFF_STAT_TARGETS.map((t, colIdx) => (
+                        <th
+                          key={t.key}
+                          className="py-1 px-0.5 text-center truncate"
+                          title={`Col ${colIdx + 1}: ${t.label} ({${colIdx + 1}:row})`}
+                        >
+                          <div className="text-[8px] text-cyan-500/70 leading-none">{colIdx + 1}</div>
+                          <div className="truncate">{t.shortLabel}</div>
                         </th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800/60 bg-slate-950">
-                    {BUFF_BONUS_TYPES.map((bonusType) => {
+                  <tbody className="divide-y divide-slate-800/50">
+                    {BUFF_BONUS_TYPES.map((bonusType, rowIdx) => {
                       const rowData = safeBox[bonusType] || {};
                       return (
-                        <tr key={bonusType} className="hover:bg-slate-900/50 transition-colors">
-                          <td className="p-1.5 font-medium text-xs whitespace-nowrap text-slate-300">
+                        <tr key={bonusType} className="hover:bg-slate-900/60 transition-colors">
+                          <td
+                            className="py-1 px-2 font-medium text-[11px] whitespace-nowrap text-slate-200 truncate"
+                            title={`Row ${rowIdx + 1}: ${bonusType}`}
+                          >
+                            <span className="text-[9px] text-slate-500 mr-1">{rowIdx + 1}.</span>
                             {bonusType}
                           </td>
-                          {BUFF_STAT_TARGETS.map((t) => {
+                          {BUFF_STAT_TARGETS.map((t, colIdx) => {
                             const cellVal = rowData[t.key] || 0;
                             return (
-                              <td key={t.key} className="p-1 text-center">
+                              <td key={t.key} className="p-0.5 text-center">
                                 <input
                                   type="number"
                                   value={cellVal === 0 ? '' : cellVal}
                                   placeholder="0"
+                                  title={`{${colIdx + 1}:${rowIdx + 1}} ${t.label} (${bonusType})`}
                                   onChange={(e) =>
-                                    updateCellInMatrix(bonusType, t.key, parseInt(e.target.value, 10) || 0)
+                                    updateCellInMatrix(
+                                      bonusType,
+                                      t.key,
+                                      parseInt(e.target.value, 10) || 0
+                                    )
                                   }
-                                  className={`w-11 text-center py-0.5 text-xs font-mono rounded border tabular-nums ${inputStyle} ${
-                                    cellVal !== 0 ? 'font-bold text-amber-400' : 'opacity-50'
+                                  className={`w-full text-center py-0.5 px-0 text-[10px] font-mono rounded border tabular-nums focus:outline-none focus:border-cyan-400 ${
+                                    cellVal > 0
+                                      ? 'bg-emerald-950/80 border-emerald-500/50 font-bold text-emerald-300'
+                                      : cellVal < 0
+                                      ? 'bg-rose-950/80 border-rose-500/50 font-bold text-rose-300'
+                                      : 'bg-slate-900/70 border-slate-800 text-slate-500'
                                   }`}
                                 />
                               </td>
@@ -1124,21 +1151,6 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
               </div>
             </div>
           )}
-
-          {/* Bottom Actions */}
-          <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-800">
-            <span className="opacity-75 text-[11px] font-mono text-slate-400">
-              Active sums automatically alter Attack rolls, Saves, AC, HP, and Ability Scores in real time.
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setViewMode('rollup')}
-                className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold font-mono text-xs rounded transition-colors"
-              >
-                Roll Up
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </div>

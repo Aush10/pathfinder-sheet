@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { PF1Character, SkillItem, InventoryItem, AbilityName, SkillPointsConfig } from '../../types/character';
 import { DerivedCombatStats } from '../../engine/pf1eMath';
+import { FieldCallTooltip } from '../common/FieldCallTooltip';
 
 interface SheetPage2SkillsGearProps {
   character: PF1Character;
@@ -409,7 +410,12 @@ export const SheetPage2SkillsGear: React.FC<SheetPage2SkillsGearProps> = ({
                           />
                         </td>
                         <td className="py-1 font-medium">
-                          <span>{sk.name}</span>
+                          <FieldCallTooltip
+                            callName={`#${sk.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}`}
+                            description={`${sk.name} total bonus (hover 3s to copy)`}
+                          >
+                            <span className="cursor-help hover:text-amber-500 transition-colors">{sk.name}</span>
+                          </FieldCallTooltip>
                           {sk.isTrainedOnly && (
                             <span className="ml-1 text-[9px] opacity-60 font-mono">⚑</span>
                           )}

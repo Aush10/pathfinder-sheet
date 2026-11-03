@@ -21,7 +21,6 @@ import {
   Scale,
   Edit2,
   ExternalLink,
-  Search,
 } from 'lucide-react';
 import {
   PF1Character,
@@ -30,19 +29,16 @@ import {
   MagicItemSlots,
   DowntimeCapital,
   CharacterBioData,
-  ScratchpadPage,
 } from '../../types/character';
 import { DerivedCombatStats } from '../../engine/pf1eMath';
 import { StorageInventoryModule } from './StorageInventoryModule';
 import { ImageFileBrowserModal } from '../tools/ImageFileBrowserModal';
-import { GlyphStyle } from '../../data/glyphs';
 
 interface SheetPage3BioStorageProps {
   character: PF1Character;
   derived: DerivedCombatStats;
   theme: string;
   fontClass: string;
-  glyphStyle?: GlyphStyle;
   onUpdateCharacter: (updater: (prev: PF1Character) => PF1Character) => void;
   onRollFormula?: (formula: string, label?: string) => void;
   visibleModules?: Record<string, boolean>;
@@ -53,13 +49,11 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
   derived,
   theme,
   fontClass,
-  glyphStyle = '01-flat-enamel',
   onUpdateCharacter,
   onRollFormula,
 }) => {
-  // Companion Modal state (supports both creating & reopening/editing)
+  // Companion Modal state
   const [isAddCompanionOpen, setIsAddCompanionOpen] = useState(false);
-  const [editingCompanionId, setEditingCompanionId] = useState<string | null>(null);
   const [newCompName, setNewCompName] = useState('');
   const [newCompType, setNewCompType] = useState<
     'Familiar' | 'Animal Companion' | "Nature's Bond" | 'NPC' | 'Summon' | 'Mount' | 'Eidolon' | 'Other'
@@ -67,14 +61,10 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
   const [newCompRelation, setNewCompRelation] = useState('');
   const [newCompNotes, setNewCompNotes] = useState('');
 
-  // Bio Section Modal state (supports both creating & reopening/editing)
+  // Bio Section Modal state
   const [isAddSectionOpen, setIsAddSectionOpen] = useState(false);
-  const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [newSectionTitle, setNewSectionTitle] = useState('');
   const [newSectionContent, setNewSectionContent] = useState('');
-
-  // Scratchpad search state
-  const [scratchpadSearch, setScratchpadSearch] = useState('');
 
   // Image URL state
   const [isImageUrlOpen, setIsImageUrlOpen] = useState(false);
@@ -86,8 +76,6 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
 
   // Theme styling helpers
   const isParchment = theme === 'parchment';
-  const isPrint = theme === 'print';
-  const isLightTheme = isParchment || isPrint;
   const isBlueprint = theme === 'blueprint';
   const isMythWeavers = theme === 'mythweavers';
 
@@ -133,130 +121,33 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
     setField('characterBio', { ...bioData, ...updates });
   };
 
-  // Portrait navigation (synced with Identity & Lineage character icon)
-  const rawPortraits = bioData.portraits || [];
-  const portraits =
-    rawPortraits.length > 0
-      ? rawPortraits
-      : character.profileData?.avatarUrl
-      ? [character.profileData.avatarUrl]
-      : ['/character-sheet-icons/04-generic-portraits/generic-knight.png'];
+  // Portrait navigation
+  const portraits = bioData.portraits || [];
   const currentPortraitIndex = Math.min(
     Math.max(0, bioData.currentPortraitIndex || 0),
     Math.max(0, portraits.length - 1)
   );
-  const currentPortrait =
-    portraits[currentPortraitIndex] || character.profileData?.avatarUrl || '';
-
-  const syncPortraitSelection = (nextPortraits: string[], nextIdx: number) => {
-    const chosenUrl = nextPortraits[nextIdx] || '';
-    onUpdateCharacter((prev) => ({
-      ...prev,
-      profileData: {
-        ...(prev.profileData || { customFields: [] }),
-        avatarUrl: chosenUrl,
-      },
-      characterBio: {
-        ...(prev.characterBio || bioData),
-        portraits: nextPortraits,
-        currentPortraitIndex: nextIdx,
-      },
-    }));
-  };
+  const currentPortrait = portraits[currentPortraitIndex] || '';
 
   const handlePrevPortrait = () => {
     if (portraits.length <= 1) return;
     const nextIdx = (currentPortraitIndex - 1 + portraits.length) % portraits.length;
-    syncPortraitSelection(portraits, nextIdx);
+    updateBio({ currentPortraitIndex: nextIdx });
   };
 
   const handleNextPortrait = () => {
     if (portraits.length <= 1) return;
     const nextIdx = (currentPortraitIndex + 1) % portraits.length;
-    syncPortraitSelection(portraits, nextIdx);
+    updateBio({ currentPortraitIndex: nextIdx });
   };
 
   const handleAddPortrait = () => {
     if (!newImageUrl.trim()) return;
     const nextList = [...portraits, newImageUrl.trim()];
-    syncPortraitSelection(nextList, nextList.length - 1);
+    updateBio({ portraits: nextList, currentPortraitIndex: nextList.length - 1 });
     setNewImageUrl('');
     setIsImageUrlOpen(false);
   };
-
-  // Multi-page Scratchpad navigation & search
-  const scratchpadPages: ScratchpadPage[] =
-    bioData.scratchpadPages && bioData.scratchpadPages.length > 0
-      ? bioData.scratchpadPages
-      : [
-          {
-            id: 'page-1',
-            title: 'Page 1',
-            content: bioData.scratchpad || '',
-          },
-        ];
-  const currentScratchpadIndex = Math.min(
-    Math.max(0, bioData.currentScratchpadPageIndex || 0),
-    Math.max(0, scratchpadPages.length - 1)
-  );
-  const activeScratchpadPage = scratchpadPages[currentScratchpadIndex] || scratchpadPages[0];
-
-  const handleUpdateActiveScratchpad = (newContent: string) => {
-    const updatedPages = scratchpadPages.map((p, idx) =>
-      idx === currentScratchpadIndex ? { ...p, content: newContent } : p
-    );
-    updateBio({
-      scratchpad: newContent,
-      scratchpadPages: updatedPages,
-      currentScratchpadPageIndex: currentScratchpadIndex,
-    });
-  };
-
-  const handlePrevScratchpadPage = () => {
-    if (scratchpadPages.length <= 1) return;
-    const nextIdx = (currentScratchpadIndex - 1 + scratchpadPages.length) % scratchpadPages.length;
-    updateBio({
-      scratchpadPages,
-      currentScratchpadPageIndex: nextIdx,
-      scratchpad: scratchpadPages[nextIdx]?.content || '',
-    });
-  };
-
-  const handleNextScratchpadPage = () => {
-    if (scratchpadPages.length <= 1) return;
-    const nextIdx = (currentScratchpadIndex + 1) % scratchpadPages.length;
-    updateBio({
-      scratchpadPages,
-      currentScratchpadPageIndex: nextIdx,
-      scratchpad: scratchpadPages[nextIdx]?.content || '',
-    });
-  };
-
-  const handleAddScratchpadPage = () => {
-    const nextNum = scratchpadPages.length + 1;
-    const newPage: ScratchpadPage = {
-      id: `page-${Date.now()}`,
-      title: `Page ${nextNum}`,
-      content: '',
-    };
-    const nextPages = [...scratchpadPages, newPage];
-    updateBio({
-      scratchpadPages: nextPages,
-      currentScratchpadPageIndex: nextPages.length - 1,
-      scratchpad: '',
-    });
-  };
-
-  const matchingScratchpadPages = useMemo(() => {
-    if (!scratchpadSearch.trim()) return [];
-    const q = scratchpadSearch.toLowerCase();
-    return scratchpadPages
-      .map((p, idx) => ({ page: p, index: idx }))
-      .filter(
-        ({ page }) =>
-          page.title.toLowerCase().includes(q) || page.content.toLowerCase().includes(q)
-      );
-  }, [scratchpadPages, scratchpadSearch]);
 
   // Downtime Capital helper
   const downtime: DowntimeCapital = character.downtimeCapital || {
@@ -275,55 +166,19 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
     setField('downtimeCapital', { ...downtime, ...updates });
   };
 
-  // Companions helper (supports both creating & editing)
+  // Companions helper
   const companions: CompanionNPC[] = character.companions || [];
-
-  const openNewCompanionModal = () => {
-    setEditingCompanionId(null);
-    setNewCompName('');
-    setNewCompType('Animal Companion');
-    setNewCompRelation('');
-    setNewCompNotes('');
-    setIsAddCompanionOpen(true);
-  };
-
-  const openEditCompanionModal = (comp: CompanionNPC) => {
-    setEditingCompanionId(comp.id);
-    setNewCompName(comp.name);
-    setNewCompType(comp.type);
-    setNewCompRelation(comp.relation);
-    setNewCompNotes(comp.notes || '');
-    setIsAddCompanionOpen(true);
-  };
 
   const handleAddCompanion = () => {
     if (!newCompName.trim()) return;
-    if (editingCompanionId) {
-      setField(
-        'companions',
-        companions.map((c) =>
-          c.id === editingCompanionId
-            ? {
-                ...c,
-                name: newCompName.trim(),
-                type: newCompType,
-                relation: newCompRelation.trim() || 'Companion',
-                notes: newCompNotes.trim(),
-              }
-            : c
-        )
-      );
-    } else {
-      const newComp: CompanionNPC = {
-        id: `comp-${Date.now()}`,
-        name: newCompName.trim(),
-        type: newCompType,
-        relation: newCompRelation.trim() || 'Companion',
-        notes: newCompNotes.trim(),
-      };
-      setField('companions', [...companions, newComp]);
-    }
-    setEditingCompanionId(null);
+    const newComp: CompanionNPC = {
+      id: `comp-${Date.now()}`,
+      name: newCompName.trim(),
+      type: newCompType,
+      relation: newCompRelation.trim() || 'Companion',
+      notes: newCompNotes.trim(),
+    };
+    setField('companions', [...companions, newComp]);
     setNewCompName('');
     setNewCompRelation('');
     setNewCompNotes('');
@@ -334,37 +189,15 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
     setField('companions', companions.filter((c) => c.id !== id));
   };
 
-  // Bio sections helper (supports both creating & reopening/editing)
-  const openNewSectionModal = () => {
-    setEditingSectionId(null);
-    setNewSectionTitle('');
-    setNewSectionContent('');
-    setIsAddSectionOpen(true);
-  };
-
-  const openEditSectionModal = (sec: { id: string; title: string; content: string }) => {
-    setEditingSectionId(sec.id);
-    setNewSectionTitle(sec.title);
-    setNewSectionContent(sec.content);
-    setIsAddSectionOpen(true);
-  };
-
+  // Bio sections helper
   const handleAddSection = () => {
     if (!newSectionTitle.trim()) return;
-    if (editingSectionId) {
-      updateSection(editingSectionId, {
-        title: newSectionTitle.trim(),
-        content: newSectionContent.trim(),
-      });
-    } else {
-      const newSec = {
-        id: `sec-${Date.now()}`,
-        title: newSectionTitle.trim(),
-        content: newSectionContent.trim() || 'Details...',
-      };
-      updateBio({ bioSections: [...(bioData.bioSections || []), newSec] });
-    }
-    setEditingSectionId(null);
+    const newSec = {
+      id: `sec-${Date.now()}`,
+      title: newSectionTitle.trim(),
+      content: newSectionContent.trim() || 'Details...',
+    };
+    updateBio({ bioSections: [...(bioData.bioSections || []), newSec] });
     setNewSectionTitle('');
     setNewSectionContent('');
     setIsAddSectionOpen(false);
@@ -388,163 +221,54 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
       {/* TOP ROW: Scratchpad, Bio Sections, Core Descriptors & Portrait (Image 2) */}
       {/* ========================================================================= */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-stretch">
-        {/* BOX 1 (md:col-span-3): Multi-Page Scratchpad with Cycling, +New Page & Search */}
+        {/* BOX 1 (md:col-span-3): Scratchpad with Pen/Notebook Icon */}
         <div className={`md:col-span-3 rounded-xl border p-3 flex flex-col ${cardBg}`}>
-          <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-black/10 dark:border-white/10 gap-1">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <FileText className="w-4 h-4 text-amber-600 dark:text-amber-500 shrink-0" />
-              <span
-                className={`font-serif font-bold text-xs uppercase tracking-wider truncate ${
-                  isLightTheme ? 'text-amber-950' : 'text-amber-300'
-                }`}
-              >
+          <div className="flex items-center justify-between pb-2 mb-2 border-b border-black/10 dark:border-white/10">
+            <div className="flex items-center gap-2">
+              <FileText className="w-4 h-4 text-amber-500" />
+              <span className="font-serif font-bold text-xs uppercase tracking-wider text-amber-300">
                 Scratchpad
               </span>
             </div>
-
-            {/* Page Navigation & +New Page Controls */}
-            <div className="flex items-center gap-1 font-mono text-[10px] shrink-0">
-              <button
-                type="button"
-                onClick={handlePrevScratchpadPage}
-                disabled={scratchpadPages.length <= 1}
-                className="p-0.5 rounded bg-black/10 dark:bg-white/10 hover:bg-black/20 disabled:opacity-30"
-                title="Previous Note Page"
-              >
-                <ChevronLeft className="w-3 h-3" />
-              </button>
-              <span className="px-1 font-bold">
-                {currentScratchpadIndex + 1}/{scratchpadPages.length}
-              </span>
-              <button
-                type="button"
-                onClick={handleNextScratchpadPage}
-                disabled={scratchpadPages.length <= 1}
-                className="p-0.5 rounded bg-black/10 dark:bg-white/10 hover:bg-black/20 disabled:opacity-30"
-                title="Next Note Page"
-              >
-                <ChevronRight className="w-3 h-3" />
-              </button>
-              <button
-                type="button"
-                onClick={handleAddScratchpadPage}
-                className="px-1.5 py-0.5 rounded bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold flex items-center gap-0.5 transition-colors"
-                title="Add a new scratchpad page"
-              >
-                <Plus className="w-2.5 h-2.5" />
-                <span>New Page</span>
-              </button>
-            </div>
+            <span className="text-[10px] font-mono opacity-50">Auto-saved</span>
           </div>
-
-          {/* Search across all scratchpad pages */}
-          <div className="relative mb-1.5">
-            <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 opacity-50" />
-            <input
-              type="text"
-              value={scratchpadSearch}
-              onChange={(e) => setScratchpadSearch(e.target.value)}
-              placeholder="Search all note pages..."
-              className={`w-full pl-6 pr-2 py-0.5 rounded border text-[11px] font-mono ${inputStyle}`}
-            />
-          </div>
-
-          {scratchpadSearch.trim() && (
-            <div className="mb-1.5 max-h-24 overflow-y-auto rounded border border-amber-500/40 bg-black/5 dark:bg-black/40 p-1.5 space-y-1 text-[10px] font-mono">
-              {matchingScratchpadPages.length > 0 ? (
-                matchingScratchpadPages.map(({ page, index }) => (
-                  <button
-                    key={page.id}
-                    type="button"
-                    onClick={() => {
-                      updateBio({
-                        scratchpadPages,
-                        currentScratchpadPageIndex: index,
-                        scratchpad: page.content,
-                      });
-                      setScratchpadSearch('');
-                    }}
-                    className="w-full text-left px-1.5 py-0.5 rounded hover:bg-amber-500/20 flex items-center justify-between gap-2"
-                  >
-                    <span className="font-bold truncate">{page.title}</span>
-                    <span className="opacity-70 truncate max-w-[140px]">
-                      {page.content.slice(0, 40)}
-                    </span>
-                  </button>
-                ))
-              ) : (
-                <div className="text-center opacity-60 py-0.5">No matching pages</div>
-              )}
-            </div>
-          )}
-
           <textarea
-            value={activeScratchpadPage?.content || ''}
-            onChange={(e) => handleUpdateActiveScratchpad(e.target.value)}
+            value={bioData.scratchpad || ''}
+            onChange={(e) => updateBio({ scratchpad: e.target.value })}
             placeholder="Quick notes, watch order, temporary loot, GM clues, initiative scratch..."
-            className={`w-full flex-1 min-h-[120px] p-2 rounded-lg border font-mono text-xs resize-none leading-relaxed ${inputStyle}`}
+            className={`w-full flex-1 min-h-[140px] p-2 rounded-lg border font-mono text-xs resize-none leading-relaxed ${inputStyle}`}
           />
         </div>
 
-        {/* BOX 2 (md:col-span-4): Bio Info, Background, Appearance, Goals (+ New Section & Reopen/Edit) */}
+        {/* BOX 2 (md:col-span-4): Bio Info, Background, Appearance, Goals (+Add Section) */}
         <div className={`md:col-span-4 rounded-xl border p-3 flex flex-col ${cardBg}`}>
           <div className="flex items-center justify-between pb-2 mb-2 border-b border-black/10 dark:border-white/10">
-            <span
-              className={`font-serif font-bold text-xs uppercase tracking-wider ${
-                isLightTheme ? 'text-amber-950' : 'text-amber-300'
-              }`}
-            >
+            <span className="font-serif font-bold text-xs uppercase tracking-wider text-amber-300">
               Biography &amp; Narrative
             </span>
             <button
-              onClick={openNewSectionModal}
-              className="px-2 py-0.5 rounded bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-[10px] flex items-center gap-1 transition-colors"
+              onClick={() => setIsAddSectionOpen(true)}
+              className="px-2 py-0.5 rounded bg-amber-600/30 hover:bg-amber-600 text-amber-300 hover:text-black font-bold text-[10px] flex items-center gap-1 transition-colors"
             >
               <Plus className="w-2.5 h-2.5" />
-              <span>New Section</span>
+              <span>+ Add Section</span>
             </button>
           </div>
 
           <div className="flex-1 space-y-2 overflow-y-auto max-h-[160px] pr-1">
             {(bioData.bioSections || []).map((sec) => (
-              <div
-                key={sec.id}
-                onClick={() => openEditSectionModal(sec)}
-                className="p-2 rounded bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 hover:border-amber-500/50 text-xs cursor-pointer transition-colors group"
-                title="Click to reopen and edit section"
-              >
-                <div
-                  className={`flex items-center justify-between font-bold pb-1 ${
-                    isLightTheme ? 'text-amber-900' : 'text-amber-400'
-                  }`}
-                >
-                  <span className="truncate">{sec.title}</span>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openEditSectionModal(sec);
-                      }}
-                      className="text-slate-500 hover:text-amber-500 p-0.5"
-                      title="Edit section"
-                    >
-                      <Edit2 className="w-2.5 h-2.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteSection(sec.id);
-                      }}
-                      className="text-slate-500 hover:text-rose-500 p-0.5"
-                      title="Delete section"
-                    >
-                      <Trash2 className="w-2.5 h-2.5" />
-                    </button>
-                  </div>
+              <div key={sec.id} className="p-2 rounded bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-xs">
+                <div className="flex items-center justify-between font-bold text-amber-400 pb-1">
+                  <span>{sec.title}</span>
+                  <button
+                    onClick={() => deleteSection(sec.id)}
+                    className="text-slate-500 hover:text-rose-400 p-0.5"
+                    title="Delete section"
+                  >
+                    <Trash2 className="w-2.5 h-2.5" />
+                  </button>
                 </div>
-                <p className="text-[11px] opacity-85 font-sans line-clamp-3 whitespace-pre-wrap">
+                <p className="text-[11px] opacity-80 font-sans line-clamp-3 whitespace-pre-wrap">
                   {sec.content}
                 </p>
               </div>
@@ -555,19 +279,15 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
         {/* BOX 3 (md:col-span-3): Physical Descriptors (Name, Race, Age, Height, Weight, Hair, Eyes, Skin) */}
         <div className={`md:col-span-3 rounded-xl border p-3 flex flex-col justify-between ${cardBg}`}>
           <div className="flex items-center justify-between pb-2 mb-2 border-b border-black/10 dark:border-white/10">
-            <span
-              className={`font-serif font-bold text-xs uppercase tracking-wider ${
-                isLightTheme ? 'text-amber-950' : 'text-amber-300'
-              }`}
-            >
+            <span className="font-serif font-bold text-xs uppercase tracking-wider text-amber-300">
               Physical Descriptors
             </span>
-            <span className="text-[10px] font-mono opacity-60">Lvl {character.level}</span>
+            <span className="text-[10px] font-mono opacity-50">Lvl {character.level}</span>
           </div>
 
           <div className="grid grid-cols-2 gap-2 text-xs font-mono">
             <div>
-              <span className="opacity-70 block text-[10px]">Name</span>
+              <span className="opacity-60 block text-[10px]">Name</span>
               <input
                 type="text"
                 value={character.name}
@@ -576,7 +296,7 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
               />
             </div>
             <div>
-              <span className="opacity-70 block text-[10px]">Race</span>
+              <span className="opacity-60 block text-[10px]">Race</span>
               <input
                 type="text"
                 value={character.race}
@@ -585,13 +305,7 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
               />
             </div>
             <div>
-              <span
-                className={`block text-[10px] font-bold ${
-                  isLightTheme ? 'text-amber-900' : 'text-amber-300'
-                }`}
-              >
-                Gender
-              </span>
+              <span className="opacity-60 block text-[10px] text-amber-300 font-bold">Gender</span>
               <select
                 value={character.gender || 'Male'}
                 onChange={(e) => setField('gender', e.target.value)}
@@ -704,9 +418,7 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
             </button>
             <button
               onClick={() => setIsPortraitBrowserOpen(true)}
-              className={`text-[10px] font-bold hover:underline truncate ${
-                isLightTheme ? 'text-amber-900' : 'text-amber-400'
-              }`}
+              className="text-[10px] text-amber-400 hover:underline truncate"
             >
               + File Browser
             </button>
@@ -827,21 +539,17 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
           <div className={`rounded-xl border p-4 ${cardBg} space-y-3`}>
             <div className="flex items-center justify-between pb-2 border-b border-black/10 dark:border-white/10">
               <div className="flex items-center gap-1.5">
-                <Users className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
-                <span
-                  className={`font-serif font-bold text-xs uppercase tracking-wider ${
-                    isLightTheme ? 'text-cyan-950' : 'text-cyan-300'
-                  }`}
-                >
+                <Users className="w-4 h-4 text-cyan-400" />
+                <span className="font-serif font-bold text-xs uppercase tracking-wider text-cyan-300">
                   Companions &amp; NPCs
                 </span>
               </div>
               <button
-                onClick={openNewCompanionModal}
-                className="px-2 py-0.5 rounded bg-cyan-700 hover:bg-cyan-600 text-white font-bold text-[10px] flex items-center gap-1 transition-colors"
+                onClick={() => setIsAddCompanionOpen(true)}
+                className="px-2 py-0.5 rounded bg-cyan-600/30 hover:bg-cyan-600 text-cyan-300 hover:text-white font-bold text-[10px] flex items-center gap-1 transition-colors"
               >
                 <Plus className="w-2.5 h-2.5" />
-                <span>New Companion</span>
+                <span>+ Add</span>
               </button>
             </div>
 
@@ -853,59 +561,28 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
               {companions.map((comp) => (
                 <div
                   key={comp.id}
-                  onClick={() => openEditCompanionModal(comp)}
-                  className="p-2.5 rounded-lg bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 hover:border-cyan-500/50 space-y-1.5 text-xs cursor-pointer transition-colors"
-                  title="Click to reopen and edit companion/NPC"
+                  className="p-2.5 rounded-lg bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 space-y-1.5 text-xs"
                 >
                   <div className="flex items-center justify-between">
-                    <span
-                      className={`font-bold ${
-                        isLightTheme ? 'text-stone-900' : 'text-amber-300'
-                      }`}
+                    <span className="font-bold text-amber-300">{comp.name}</span>
+                    <button
+                      onClick={() => deleteCompanion(comp.id)}
+                      className="text-slate-500 hover:text-rose-400 p-0.5"
+                      title="Remove companion"
                     >
-                      {comp.name}
-                    </span>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openEditCompanionModal(comp);
-                        }}
-                        className="text-slate-500 hover:text-cyan-500 p-0.5"
-                        title="Edit companion"
-                      >
-                        <Edit2 className="w-3 h-3" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteCompanion(comp.id);
-                        }}
-                        className="text-slate-500 hover:text-rose-500 p-0.5"
-                        title="Remove companion"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
+                      <Trash2 className="w-3 h-3" />
+                    </button>
                   </div>
 
                   <div className="flex items-center gap-1 text-[10px] font-mono">
-                    <span
-                      className={`px-1.5 py-0.5 rounded border ${
-                        isLightTheme
-                          ? 'bg-cyan-900/10 text-cyan-950 border-cyan-800/30 font-bold'
-                          : 'bg-cyan-950/60 text-cyan-300 border-cyan-800/40'
-                      }`}
-                    >
+                    <span className="px-1.5 py-0.5 rounded bg-cyan-950/60 text-cyan-300 border border-cyan-800/40">
                       {comp.type}
                     </span>
-                    <span className="opacity-75 truncate">• {comp.relation}</span>
+                    <span className="opacity-70 truncate">• {comp.relation}</span>
                   </div>
 
                   {comp.notes && (
-                    <p className="text-[11px] opacity-80 font-sans leading-snug pt-0.5">
+                    <p className="text-[11px] opacity-75 font-sans leading-snug pt-0.5">
                       {comp.notes}
                     </p>
                   )}
@@ -914,7 +591,7 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
 
               {companions.length === 0 && (
                 <div className="text-center py-6 text-xs opacity-50 font-mono">
-                  No companions or NPCs listed yet. Click &quot;+ New Companion&quot; to link your mount, familiar, or patron.
+                  No companions or NPCs listed yet. Click &quot;+ Add&quot; to link your mount, familiar, or patron.
                 </div>
               )}
             </div>
@@ -923,20 +600,10 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
           {/* Future Systems Roadmap (Ultimate Campaign) */}
           <div className={`rounded-xl border p-3 ${cardBg} space-y-2.5`}>
             <div className="flex items-center justify-between pb-1.5 border-b border-black/10 dark:border-white/10">
-              <span
-                className={`font-serif font-bold text-xs uppercase tracking-wider ${
-                  isLightTheme ? 'text-amber-950' : 'text-amber-400'
-                }`}
-              >
+              <span className="font-serif font-bold text-xs uppercase tracking-wider text-amber-400">
                 Future Systems
               </span>
-              <span
-                className={`text-[9px] font-mono px-1 py-0.5 rounded border ${
-                  isLightTheme
-                    ? 'bg-amber-900/10 text-amber-900 border-amber-800/30 font-bold'
-                    : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                }`}
-              >
+              <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
                 Reserved
               </span>
             </div>
@@ -946,44 +613,32 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
             </p>
 
             <div className="space-y-2">
-              <div className="p-2 rounded-lg bg-black/5 dark:bg-white/5 border border-dashed border-black/20 dark:border-white/20 space-y-1">
-                <div
-                  className={`flex items-center gap-1.5 text-xs font-bold ${
-                    isLightTheme ? 'text-stone-900' : 'text-slate-300'
-                  }`}
-                >
-                  <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              <div className="p-2 rounded-lg bg-black/10 dark:bg-white/5 border border-dashed border-black/20 dark:border-white/20 space-y-1">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-300">
+                  <Clock className="w-3.5 h-3.5 text-amber-400" />
                   <span>Downtime Activities</span>
                 </div>
-                <p className="text-[9px] opacity-70">
+                <p className="text-[9px] opacity-60">
                   Ultimate Campaign retraining, earning capital &amp; downtime days.
                 </p>
               </div>
 
-              <div className="p-2 rounded-lg bg-black/5 dark:bg-white/5 border border-dashed border-black/20 dark:border-white/20 space-y-1">
-                <div
-                  className={`flex items-center gap-1.5 text-xs font-bold ${
-                    isLightTheme ? 'text-stone-900' : 'text-slate-300'
-                  }`}
-                >
-                  <Building className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
+              <div className="p-2 rounded-lg bg-black/10 dark:bg-white/5 border border-dashed border-black/20 dark:border-white/20 space-y-1">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-300">
+                  <Building className="w-3.5 h-3.5 text-cyan-400" />
                   <span>Business &amp; Properties</span>
                 </div>
-                <p className="text-[9px] opacity-70">
+                <p className="text-[9px] opacity-60">
                   Rooms, teams, tavern/guildhall assets, and daily capital generation.
                 </p>
               </div>
 
-              <div className="p-2 rounded-lg bg-black/5 dark:bg-white/5 border border-dashed border-black/20 dark:border-white/20 space-y-1">
-                <div
-                  className={`flex items-center gap-1.5 text-xs font-bold ${
-                    isLightTheme ? 'text-stone-900' : 'text-slate-300'
-                  }`}
-                >
-                  <Crown className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+              <div className="p-2 rounded-lg bg-black/10 dark:bg-white/5 border border-dashed border-black/20 dark:border-white/20 space-y-1">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-300">
+                  <Crown className="w-3.5 h-3.5 text-purple-400" />
                   <span>Kingdom &amp; Crafting</span>
                 </div>
-                <p className="text-[9px] opacity-70">
+                <p className="text-[9px] opacity-60">
                   Kingdom Building (KB) hexes, unrest, settlement stats &amp; item craft bench.
                 </p>
               </div>
@@ -995,13 +650,12 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
         {/* RIGHT COLUMN (lg:col-span-8): Unified Storage & Inventory Module          */}
         {/* (Paper Doll, Categories, Bags, Items, 4-Quadrant Coinage, Load Breakdown) */}
         {/* ========================================================================= */}
-        <div className="lg:col-span-8 min-w-0">
+        <div className="lg:col-span-8">
           <StorageInventoryModule
             character={character}
             derived={derived}
             theme={theme}
             fontClass={fontClass}
-            glyphStyle={glyphStyle}
             onUpdateCharacter={onUpdateCharacter}
             onRollFormula={onRollFormula}
           />
@@ -1015,15 +669,10 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
           <div className={`w-full max-w-md rounded-2xl border p-6 space-y-4 shadow-2xl ${cardBg}`}>
             <div className="flex items-center justify-between border-b pb-3 border-black/10 dark:border-white/10">
-              <h3 className={`font-serif font-bold text-base ${isLightTheme ? 'text-cyan-900' : 'text-cyan-400'}`}>
-                {editingCompanionId ? 'Edit Companion or NPC' : 'New Companion or NPC'}
-              </h3>
+              <h3 className="font-serif font-bold text-base text-cyan-400">Add Companion or NPC</h3>
               <button
-                onClick={() => {
-                  setEditingCompanionId(null);
-                  setIsAddCompanionOpen(false);
-                }}
-                className="p-1 rounded opacity-70 hover:opacity-100"
+                onClick={() => setIsAddCompanionOpen(false)}
+                className="p-1 rounded text-slate-400 hover:text-white"
               >
                 ✕
               </button>
@@ -1108,15 +757,10 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
           <div className={`w-full max-w-md rounded-2xl border p-6 space-y-4 shadow-2xl ${cardBg}`}>
             <div className="flex items-center justify-between border-b pb-3 border-black/10 dark:border-white/10">
-              <h3 className={`font-serif font-bold text-base ${isLightTheme ? 'text-amber-900' : 'text-amber-400'}`}>
-                {editingSectionId ? 'Edit Bio Section' : 'New Bio Section'}
-              </h3>
+              <h3 className="font-serif font-bold text-base text-amber-400">Add Bio Section</h3>
               <button
-                onClick={() => {
-                  setEditingSectionId(null);
-                  setIsAddSectionOpen(false);
-                }}
-                className="p-1 rounded opacity-70 hover:opacity-100"
+                onClick={() => setIsAddSectionOpen(false)}
+                className="p-1 rounded text-slate-400 hover:text-white"
               >
                 ✕
               </button>
@@ -1157,7 +801,7 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
                 onClick={handleAddSection}
                 className="px-4 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs"
               >
-                {editingSectionId ? 'Save Changes' : 'Save Section'}
+                Add Section
               </button>
             </div>
           </div>
@@ -1220,16 +864,18 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
         onClose={() => setIsPortraitBrowserOpen(false)}
         targetType="portrait"
         title="Character Portrait File Browser"
-        subtitle="Upload portrait files from your computer, choose from generic portraits, or paste a web URL."
+        subtitle="Upload portrait files from your computer, choose from fantasy adventurer art, or paste a web URL."
         currentImageUrl={currentPortrait}
         onSelectImage={(url) => {
           if (!url) return;
-          const currentList = portraits;
+          const currentList = bioData.portraits || [];
           const updatedPortraits = [...currentList.filter((p) => p !== url), url];
-          syncPortraitSelection(updatedPortraits, updatedPortraits.length - 1);
+          updateBio({
+            portraits: updatedPortraits,
+            currentPortraitIndex: updatedPortraits.length - 1,
+          });
         }}
-        characterExistingImages={portraits}
-        glyphStyle={glyphStyle}
+        characterExistingImages={bioData.portraits || []}
       />
     </div>
   );

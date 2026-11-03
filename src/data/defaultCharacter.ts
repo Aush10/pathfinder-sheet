@@ -4,173 +4,6 @@
  */
 
 import { PF1Character, SkillItem } from '../types/character';
-import newAdventurerTemplate from '../../New_Adventurer_pf1e_sheet.json';
-import defaultSheetTemplate from '../../default_sheet.json';
-
-const isOneOf = <T extends readonly string[]>(value: string, options: T): value is T[number] =>
-  options.some((option) => option === value);
-
-const characterSizes = [
-  'Fine', 'Diminutive', 'Tiny', 'Small', 'Medium', 'Large', 'Huge', 'Gargantuan', 'Colossal',
-] as const;
-const babProgressions = ['full', 'threeQuarter', 'half'] as const;
-const hpCalcMethods = ['average', 'max', 'rolled'] as const;
-const abilityNames = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'] as const;
-const storageTabs = ['worn', 'stored', 'companion'] as const;
-const weaponCategories = ['Melee', 'Ranged'] as const;
-const armorTypes = ['Light', 'Medium', 'Heavy', 'Shield', 'Other'] as const;
-const inventoryCategories = [
-  'Weapons', 'Armor', 'Magic Items', 'Potions/Scrolls', 'Gear', 'Valuables',
-  'Bag/Sheathe', 'Garment', 'Consumable', 'General',
-] as const;
-const inventoryStorageTypes = ['worn', 'stored', 'companion'] as const;
-
-const size = newAdventurerTemplate.size;
-const calcMethod = newAdventurerTemplate.hpBreakdown.calcMethod;
-const spellKeyAbility = newAdventurerTemplate.spellKeyAbility;
-const activeStorageTab = newAdventurerTemplate.activeStorageTab;
-
-if (!isOneOf(size, characterSizes)) throw new Error(`Invalid starter character size: ${size}`);
-if (!isOneOf(calcMethod, hpCalcMethods)) throw new Error(`Invalid starter HP calculation method: ${calcMethod}`);
-if (!isOneOf(spellKeyAbility, abilityNames)) throw new Error(`Invalid starter spell ability: ${spellKeyAbility}`);
-if (!isOneOf(activeStorageTab, storageTabs)) {
-  throw new Error(`Invalid starter storage tab: ${activeStorageTab}`);
-}
-
-const classes = newAdventurerTemplate.classes.map((classEntry) => {
-  const { babProgression } = classEntry;
-  if (!isOneOf(babProgression, babProgressions)) {
-    throw new Error(`Invalid starter BAB progression: ${babProgression}`);
-  }
-  return { ...classEntry, babProgression };
-});
-
-const abilities: PF1Character['abilities'] = {
-  STR: { ...newAdventurerTemplate.abilities.STR, name: 'STR' },
-  DEX: { ...newAdventurerTemplate.abilities.DEX, name: 'DEX' },
-  CON: { ...newAdventurerTemplate.abilities.CON, name: 'CON' },
-  INT: { ...newAdventurerTemplate.abilities.INT, name: 'INT' },
-  WIS: { ...newAdventurerTemplate.abilities.WIS, name: 'WIS' },
-  CHA: { ...newAdventurerTemplate.abilities.CHA, name: 'CHA' },
-};
-const saves: PF1Character['saves'] = {
-  fortitude: { ...newAdventurerTemplate.saves.fortitude, name: 'Fortitude' },
-  reflex: { ...newAdventurerTemplate.saves.reflex, name: 'Reflex' },
-  will: { ...newAdventurerTemplate.saves.will, name: 'Will' },
-};
-const weapons: PF1Character['weapons'] = newAdventurerTemplate.weapons.map((weapon) => {
-  const { category } = weapon;
-  if (!isOneOf(category, weaponCategories)) {
-    throw new Error(`Invalid starter weapon category: ${category}`);
-  }
-  return { ...weapon, category };
-});
-const armor: PF1Character['armor'] = newAdventurerTemplate.armor.map((item) => {
-  const { type } = item;
-  if (!isOneOf(type, armorTypes)) throw new Error(`Invalid starter armor type: ${type}`);
-  return { ...item, type };
-});
-const inventory: PF1Character['inventory'] = newAdventurerTemplate.inventory.map((item) => {
-  const { category, storageType } = item;
-  if (category !== undefined && !isOneOf(category, inventoryCategories)) {
-    throw new Error(`Invalid starter inventory category: ${category}`);
-  }
-  if (storageType !== undefined && !isOneOf(storageType, inventoryStorageTypes)) {
-    throw new Error(`Invalid starter inventory storage type: ${storageType}`);
-  }
-  return { ...item, category, storageType };
-});
-const skills: SkillItem[] = newAdventurerTemplate.skills.map((skill) => {
-  const { keyAbility } = skill;
-  if (!isOneOf(keyAbility, abilityNames)) {
-    throw new Error(`Invalid starter skill ability: ${keyAbility}`);
-  }
-  return { ...skill, keyAbility };
-});
-
-if (
-  newAdventurerTemplate.deathSaves.length !== 3 ||
-  !newAdventurerTemplate.deathSaves.every((save) => typeof save === 'boolean')
-) {
-  throw new Error('Starter character must define exactly three boolean death saves');
-}
-const deathSaves: PF1Character['deathSaves'] = [
-  newAdventurerTemplate.deathSaves[0],
-  newAdventurerTemplate.deathSaves[1],
-  newAdventurerTemplate.deathSaves[2],
-];
-
-export const NEW_ADVENTURER_CHARACTER: PF1Character = {
-  ...newAdventurerTemplate,
-  size,
-  abilities,
-  saves,
-  deathSaves,
-  weapons,
-  armor,
-  inventory,
-  skills,
-  classes,
-  hpBreakdown: { ...newAdventurerTemplate.hpBreakdown, calcMethod },
-  spellKeyAbility,
-  activeStorageTab,
-};
-
-export function createNewAdventurerCharacter(): PF1Character {
-  return structuredClone(NEW_ADVENTURER_CHARACTER);
-}
-
-export function createDefaultSheetCharacter(): PF1Character {
-  const raw = structuredClone(defaultSheetTemplate) as unknown as PF1Character;
-  const avatar =
-    raw.profileData?.avatarUrl ||
-    raw.characterBio?.portraits?.[raw.characterBio?.currentPortraitIndex || 0] ||
-    '/character-sheet-icons/04-generic-portraits/generic-knight.png';
-  const existingPortraits = raw.characterBio?.portraits?.length
-    ? raw.characterBio.portraits
-    : [avatar];
-
-  return {
-    ...DEFAULT_CHARACTER,
-    ...raw,
-    profileData: {
-      avatarUrl: avatar,
-      customFields: raw.profileData?.customFields || DEFAULT_CHARACTER.profileData?.customFields || [],
-    },
-    characterBio: {
-      scratchpad:
-        raw.characterBio?.scratchpad ||
-        raw.rollupNotes?.content ||
-        DEFAULT_CHARACTER.characterBio?.scratchpad ||
-        '',
-      scratchpadPages: raw.characterBio?.scratchpadPages || [
-        {
-          id: 'page-1',
-          title: 'Page 1',
-          content:
-            raw.characterBio?.scratchpad ||
-            raw.rollupNotes?.content ||
-            DEFAULT_CHARACTER.characterBio?.scratchpad ||
-            '',
-        },
-      ],
-      currentScratchpadPageIndex: 0,
-      portraits: existingPortraits,
-      currentPortraitIndex: raw.characterBio?.currentPortraitIndex || 0,
-      bioSections:
-        raw.characterBio?.bioSections ||
-        raw.profileData?.customFields?.map((f) => ({
-          id: f.id,
-          title: f.title,
-          content: f.content,
-        })) ||
-        DEFAULT_CHARACTER.characterBio?.bioSections ||
-        [],
-      skin: raw.characterBio?.skin || DEFAULT_CHARACTER.characterBio?.skin || 'Sun-bronzed',
-    },
-    activeStorageTab: raw.activeStorageTab || 'worn',
-  };
-}
 
 export const INITIAL_SKILLS: SkillItem[] = [
   { id: 'sk-1', name: 'Acrobatics', keyAbility: 'DEX', isClassSkill: true, ranks: 5, miscMod: 0, hasArmorCheckPenalty: true, isTrainedOnly: false },
@@ -773,43 +606,93 @@ export const DEFAULT_CHARACTER: PF1Character = {
   },
 
   // Custom objects requested by the user:
-  // e.g. characters fire breath does 3d6 damage +5 per odd level -> 2d6+(5*round(level/2)+1)" fire"
-  // and ability combining main attack with fire -> mainattack+firebreath
+  // Categorized as logic, placeholder, action, step
   customObjects: [
     {
       id: 'obj-1',
       name: 'firebreath',
       description: 'Red dragon breath weapon scaling with odd levels',
       formula: '2d6 + (5 * floor(level / 2)) + " fire"',
-      category: 'Damage',
+      category: 'action',
     },
     {
       id: 'obj-2',
       name: 'mainattack',
       description: 'Primary greataxe strike attack text and base damage',
       formula: '"Greataxe +" + (bab + str_mod) + " to hit 1d12+" + round(str_mod * 1.5) + " slashing"',
-      category: 'Attack',
+      category: 'action',
     },
     {
       id: 'obj-3',
       name: 'mainattack_with_fire',
       description: 'Greataxe strike augmented by Dragon Disciple fire breath',
       formula: 'mainattack + " and " + firebreath',
-      category: 'Attack',
+      category: 'action',
     },
     {
       id: 'obj-4',
       name: 'power_attack_dmg',
       description: '2-handed Power Attack bonus scaling with BAB',
       formula: '6 + (3 * floor(bab / 4))',
-      category: 'Buff',
+      category: 'logic',
     },
     {
       id: 'obj-5',
       name: 'claws_full_attack',
       description: 'Full natural claw flurry with flaming bite',
       formula: '"2 Claws +" + (bab + str_mod) + " (1d6+" + str_mod + ") and Bite +" + (bab + str_mod) + " (1d8+" + str_mod + " + 1d6 fire)"',
-      category: 'Attack',
+      category: 'action',
+    },
+    {
+      id: 'obj-6',
+      name: 'rage_timer',
+      description: 'Self-altering rage round countdown tracker (! triggers step)',
+      formula: 'this: 10-1! | this=0 | $',
+      category: 'step',
+      stepCount: 1,
+    },
+    {
+      id: 'obj-7',
+      name: 'dragon_fury',
+      description: 'Multi-slot attack with Tag 11 Dragonfire alert',
+      formula: '[d20+#BAB+#STR] & <11"Dragonfire Critical Strike!"> & "fire" [2d6]',
+      category: 'placeholder',
+    },
+  ],
+
+  // Macaroni UI Make Presets (<TAG"message">)
+  uiMakePresets: [
+    {
+      tag: 1,
+      name: 'Default Tabletop Alert',
+      layout: 'floating_card',
+      font: 'serif',
+      theme: 'default_amber',
+      soundCue: 'bell',
+    },
+    {
+      tag: 11,
+      name: 'Dragonfire Critical',
+      layout: 'floating_card',
+      font: 'gothic',
+      theme: 'crimson_gold',
+      soundCue: 'critical',
+    },
+    {
+      tag: 20,
+      name: 'Natural 20 Fanfare',
+      layout: 'banner',
+      font: 'serif',
+      theme: 'celestial_cyan',
+      soundCue: 'fanfare',
+    },
+    {
+      tag: 13,
+      name: 'Necrotic Decay',
+      layout: 'toast',
+      font: 'mono',
+      theme: 'necrotic_slate',
+      soundCue: 'whisper',
     },
   ],
 
@@ -1194,6 +1077,67 @@ export const DEFAULT_CHARACTER: PF1Character = {
     skin: 'Sun-bronzed',
   },
   activeStorageTab: 'worn',
+
+  // Session Journal Entries with Recall Notes and Field Sketches
+  journal: [
+    {
+      id: 'journal-1',
+      title: 'The Siege of the Redoubt',
+      sessionDate: 'Session 14 - 4712 AR',
+      realDate: '2026-10-24',
+      location: 'Kenabres North Sally Port, Worldwound Border',
+      content:
+        'The horns blew before dawn. Shuddering screams of dretches echoed across the ruined battlements as the first wave assaulted the sally port.\n\nFlame leaped from my blade as my draconic blood surged. We held the breach until the high sun broke the siege. Althea tended the wounded while I inspected the broken palisade.\n\nWe found strange abyssal runes carved into the basalt beneath the gatehouse.',
+      characterVoiceUsed: 'Gruff, resolute, veteran crusader with concise battlefield prose',
+      recalledNotes: [
+        'Cultist leader carried an obsidian holy symbol of Deskari',
+        'High Priestess Althea requested 3 vials of demon bile before next new moon',
+        'Secret cache buried beneath the third flagstone of the chapel garden',
+      ],
+      images: [],
+      tags: ['Combat', 'Kenabres', 'Worldwound', 'Siege'],
+      createdAt: 1729756800000,
+      updatedAt: 1729756800000,
+    },
+    {
+      id: 'journal-2',
+      title: 'Reconnaissance at the Sunken Shrine',
+      sessionDate: 'Session 13 - 4712 AR',
+      realDate: '2026-10-17',
+      location: 'Sunken Shrine of Sarenrae, Kenabres Outskirts',
+      content:
+        'Heavy fog clung to the flooded sanctuary. Shadows stirred among the cracked marble pillars.\n\nDiscovered an intact holy font of blessed water and recovered ancient parchment scrolls detailing the first crusade’s garrison defenses.',
+      characterVoiceUsed: 'Gruff veteran',
+      recalledNotes: [
+        'Font water still possesses holy aura (+1 to saves for 1 hour when consumed)',
+        'Merchant in Defender’s Heart offered 150 gp for the recovered crusade scrolls',
+      ],
+      images: [],
+      tags: ['Exploration', 'Shrine', 'Loot'],
+      createdAt: 1729152000000,
+      updatedAt: 1729152000000,
+    },
+  ],
+
+  // Standalone AI Companion Module
+  installedModules: {
+    aiCompanion: true,
+    aiSettings: {
+      isInstalled: true,
+      allowedFields: {
+        hp: true,
+        conditions: true,
+        currency: true,
+        inventory: true,
+        notes: true,
+        journal: true,
+        customFormulas: true,
+      },
+      preferredVoice: 'Terse, serious, no-nonsense, short sentences, gruff veteran',
+    },
+  },
+
+  workspaceLibraryImages: [],
 };
 
 /**
@@ -1458,7 +1402,37 @@ export function createBlankCharacter(): PF1Character {
       kbp: 0,
     },
     activeStorageTab: 'worn',
+    journal: [],
+    installedModules: {
+      aiCompanion: false,
+      aiSettings: {
+        isInstalled: false,
+        allowedFields: {
+          hp: true,
+          conditions: true,
+          currency: true,
+          inventory: true,
+          notes: true,
+          journal: true,
+          customFormulas: true,
+        },
+        preferredVoice: 'Terse, serious, no-nonsense, short sentences, gruff veteran',
+      },
+    },
+    workspaceLibraryImages: [],
+    uiMakePresets: [
+      {
+        tag: 1,
+        name: 'Default Tabletop Alert',
+        layout: 'floating_card',
+        font: 'serif',
+        theme: 'default_amber',
+        soundCue: 'bell',
+      },
+    ],
   };
 }
 
 export const BLANK_CHARACTER = createBlankCharacter();
+
+

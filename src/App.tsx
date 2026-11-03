@@ -31,15 +31,12 @@ import {
   User,
   Image as ImageIcon,
   FileCode,
+  BookOpen,
+  Cpu,
 } from 'lucide-react';
 
 import { PF1Character, WorkspaceLayout, AbilityName } from './types/character';
-import {
-  DEFAULT_CHARACTER,
-  createBlankCharacter,
-  createNewAdventurerCharacter,
-  createDefaultSheetCharacter,
-} from './data/defaultCharacter';
+import { DEFAULT_CHARACTER, createBlankCharacter } from './data/defaultCharacter';
 import { computeDerivedCharacterStats } from './engine/pf1eMath';
 import { DiceRollOutcome } from './engine/formula';
 
@@ -63,98 +60,84 @@ import { AddClassModal } from './components/tools/AddClassModal';
 import { CMBTool } from './components/tools/CMBTool';
 import { NewSheetModal } from './components/tools/NewSheetModal';
 import { ImageFileBrowserModal } from './components/tools/ImageFileBrowserModal';
+import { JournalModal } from './components/tools/JournalModal';
+import { AICompanionModal } from './components/tools/AICompanionModal';
+import { FloatingAlertCard } from './components/common/FloatingAlertCard';
+import { InteractiveQueryModal } from './components/common/InteractiveQueryModal';
+import { FloatingAlertPayload, MacaroniQueryRequest } from './engine/macaroni';
 
-const LOCAL_STORAGE_KEY = 'pf1e_character_data_v3_default';
+const LOCAL_STORAGE_KEY = 'pf1e_character_data_v1';
 const LOCAL_STORAGE_LAYOUT_KEY = 'pf1e_workspace_layout_v1';
 
 export default function App() {
-  // Initialize character state from injected window object, localStorage, or default_sheet.json
+  // Initialize character state from injected window object, localStorage, or default
   const [character, setCharacter] = useState<PF1Character>(() => {
-    const baseDefault = createDefaultSheetCharacter();
     try {
       if (typeof window !== 'undefined' && (window as any).__INITIAL_CHARACTER__) {
         const injected = (window as any).__INITIAL_CHARACTER__;
         return {
-          ...baseDefault,
+          ...DEFAULT_CHARACTER,
           ...injected,
-          gender: injected.gender || baseDefault.gender || 'Male',
-          abilities: { ...baseDefault.abilities, ...(injected.abilities || {}) },
-          buffBox: injected.buffBox || baseDefault.buffBox,
-          currency: { ...baseDefault.currency, ...(injected.currency || {}) },
+          gender: injected.gender || DEFAULT_CHARACTER.gender || 'Male',
+          abilities: { ...DEFAULT_CHARACTER.abilities, ...(injected.abilities || {}) },
+          buffBox: injected.buffBox || DEFAULT_CHARACTER.buffBox,
+          currency: { ...DEFAULT_CHARACTER.currency, ...(injected.currency || {}) },
           hpBreakdown: {
-            ...baseDefault.hpBreakdown,
+            ...DEFAULT_CHARACTER.hpBreakdown,
             calcMethod: injected.hpBreakdown?.calcMethod || 'max',
             ...(injected.hpBreakdown || {}),
           },
-          characterBio: { ...baseDefault.characterBio, ...(injected.characterBio || {}) },
-          conditions: { ...baseDefault.conditions, ...(injected.conditions || {}) },
+          characterBio: { ...DEFAULT_CHARACTER.characterBio, ...(injected.characterBio || {}) },
+          conditions: { ...DEFAULT_CHARACTER.conditions, ...(injected.conditions || {}) },
           saves: {
-            fortitude: { ...baseDefault.saves.fortitude, ...(injected.saves?.fortitude || {}) },
-            reflex: { ...baseDefault.saves.reflex, ...(injected.saves?.reflex || {}) },
-            will: { ...baseDefault.saves.will, ...(injected.saves?.will || {}) },
+            fortitude: { ...DEFAULT_CHARACTER.saves.fortitude, ...(injected.saves?.fortitude || {}) },
+            reflex: { ...DEFAULT_CHARACTER.saves.reflex, ...(injected.saves?.reflex || {}) },
+            will: { ...DEFAULT_CHARACTER.saves.will, ...(injected.saves?.will || {}) },
           },
-          inventory: Array.isArray(injected.inventory) ? injected.inventory : baseDefault.inventory,
-          weapons: Array.isArray(injected.weapons) ? injected.weapons : baseDefault.weapons,
-          armor: Array.isArray(injected.armor) ? injected.armor : baseDefault.armor,
-          skills: Array.isArray(injected.skills) ? injected.skills : baseDefault.skills,
-          classes: Array.isArray(injected.classes) ? injected.classes : baseDefault.classes,
+          inventory: Array.isArray(injected.inventory) ? injected.inventory : DEFAULT_CHARACTER.inventory,
+          weapons: Array.isArray(injected.weapons) ? injected.weapons : DEFAULT_CHARACTER.weapons,
+          armor: Array.isArray(injected.armor) ? injected.armor : DEFAULT_CHARACTER.armor,
+          skills: Array.isArray(injected.skills) ? injected.skills : DEFAULT_CHARACTER.skills,
+          classes: Array.isArray(injected.classes) ? injected.classes : DEFAULT_CHARACTER.classes,
+          uiMakePresets: Array.isArray(injected.uiMakePresets) ? injected.uiMakePresets : DEFAULT_CHARACTER.uiMakePresets,
         };
       }
       const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed && typeof parsed === 'object') {
-          const syncedAvatar =
-            parsed.profileData?.avatarUrl ||
-            parsed.characterBio?.portraits?.[parsed.characterBio?.currentPortraitIndex || 0] ||
-            baseDefault.profileData?.avatarUrl ||
-            '';
-          const syncedPortraits =
-            parsed.characterBio?.portraits && parsed.characterBio.portraits.length > 0
-              ? parsed.characterBio.portraits
-              : syncedAvatar
-              ? [syncedAvatar]
-              : [];
           return {
-            ...baseDefault,
+            ...DEFAULT_CHARACTER,
             ...parsed,
-            gender: parsed.gender || baseDefault.gender || 'Male',
-            abilities: { ...baseDefault.abilities, ...(parsed.abilities || {}) },
-            buffBox: parsed.buffBox || baseDefault.buffBox,
-            currency: { ...baseDefault.currency, ...(parsed.currency || {}) },
+            gender: parsed.gender || DEFAULT_CHARACTER.gender || 'Male',
+            abilities: { ...DEFAULT_CHARACTER.abilities, ...(parsed.abilities || {}) },
+            buffBox: parsed.buffBox || DEFAULT_CHARACTER.buffBox,
+            currency: { ...DEFAULT_CHARACTER.currency, ...(parsed.currency || {}) },
             hpBreakdown: {
-              ...baseDefault.hpBreakdown,
+              ...DEFAULT_CHARACTER.hpBreakdown,
               calcMethod: parsed.hpBreakdown?.calcMethod || 'max',
               ...(parsed.hpBreakdown || {}),
             },
-            profileData: {
-              ...(baseDefault.profileData || { customFields: [] }),
-              ...(parsed.profileData || {}),
-              avatarUrl: syncedAvatar,
-            },
-            characterBio: {
-              ...baseDefault.characterBio,
-              ...(parsed.characterBio || {}),
-              portraits: syncedPortraits,
-            },
-            conditions: { ...baseDefault.conditions, ...(parsed.conditions || {}) },
+            characterBio: { ...DEFAULT_CHARACTER.characterBio, ...(parsed.characterBio || {}) },
+            conditions: { ...DEFAULT_CHARACTER.conditions, ...(parsed.conditions || {}) },
             saves: {
-              fortitude: { ...baseDefault.saves.fortitude, ...(parsed.saves?.fortitude || {}) },
-              reflex: { ...baseDefault.saves.reflex, ...(parsed.saves?.reflex || {}) },
-              will: { ...baseDefault.saves.will, ...(parsed.saves?.will || {}) },
+              fortitude: { ...DEFAULT_CHARACTER.saves.fortitude, ...(parsed.saves?.fortitude || {}) },
+              reflex: { ...DEFAULT_CHARACTER.saves.reflex, ...(parsed.saves?.reflex || {}) },
+              will: { ...DEFAULT_CHARACTER.saves.will, ...(parsed.saves?.will || {}) },
             },
-            inventory: Array.isArray(parsed.inventory) ? parsed.inventory : baseDefault.inventory,
-            weapons: Array.isArray(parsed.weapons) ? parsed.weapons : baseDefault.weapons,
-            armor: Array.isArray(parsed.armor) ? parsed.armor : baseDefault.armor,
-            skills: Array.isArray(parsed.skills) ? parsed.skills : baseDefault.skills,
-            classes: Array.isArray(parsed.classes) ? parsed.classes : baseDefault.classes,
+            inventory: Array.isArray(parsed.inventory) ? parsed.inventory : DEFAULT_CHARACTER.inventory,
+            weapons: Array.isArray(parsed.weapons) ? parsed.weapons : DEFAULT_CHARACTER.weapons,
+            armor: Array.isArray(parsed.armor) ? parsed.armor : DEFAULT_CHARACTER.armor,
+            skills: Array.isArray(parsed.skills) ? parsed.skills : DEFAULT_CHARACTER.skills,
+            classes: Array.isArray(parsed.classes) ? parsed.classes : DEFAULT_CHARACTER.classes,
+            uiMakePresets: Array.isArray(parsed.uiMakePresets) ? parsed.uiMakePresets : DEFAULT_CHARACTER.uiMakePresets,
           };
         }
       }
     } catch {
       // Fallback
     }
-    return baseDefault;
+    return DEFAULT_CHARACTER;
   });
 
   // Initialize workspace layout
@@ -170,7 +153,6 @@ export default function App() {
           return {
             theme: parsed.theme || 'parchment',
             font: parsed.font || 'times',
-            glyphStyle: parsed.glyphStyle || '01-flat-enamel',
             activeSheet: parsed.activeSheet >= 1 && parsed.activeSheet <= 4 ? parsed.activeSheet : 1,
             showAllSheets: Boolean(parsed.showAllSheets),
             visibleModules: {
@@ -206,7 +188,6 @@ export default function App() {
     return {
       theme: 'parchment', // Defaults to Parchment Tan per user instruction
       font: 'times', // Defaults to Times New Roman 12 per user instruction
-      glyphStyle: '01-flat-enamel',
       activeSheet: 1,
       showAllSheets: false,
       visibleModules: {
@@ -248,6 +229,9 @@ export default function App() {
   const [isLoadoutOpen, setIsLoadoutOpen] = useState(false);
   const [isAddClassOpen, setIsAddClassOpen] = useState(false);
   const [isCMBtOpen, setIsCMBtOpen] = useState(false);
+  const [isJournalOpen, setIsJournalOpen] = useState(false);
+  const [isAIToolOpen, setIsAIToolOpen] = useState(false);
+  const [aiToolInitialTab, setAiToolInitialTab] = useState<'macro' | 'journal' | 'sketch' | 'fields' | 'settings'>('macro');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   // New Sheet & Image File Browser state
@@ -265,6 +249,31 @@ export default function App() {
     title: 'Character Profile Picture Browser',
     currentUrl: '',
   });
+
+  // Macaroni Interactive Global Alerts (<TAG"message">) & Decision Queries (<?>)
+  const [floatingAlerts, setFloatingAlerts] = useState<FloatingAlertPayload[]>([]);
+  const [activeQuery, setActiveQuery] = useState<MacaroniQueryRequest | null>(null);
+
+  useEffect(() => {
+    const handleAlert = (e: any) => {
+      if (e.detail) {
+        setFloatingAlerts((prev) => [...prev, e.detail]);
+      }
+    };
+    const handleQuery = (e: any) => {
+      if (e.detail) {
+        setActiveQuery(e.detail);
+      }
+    };
+
+    window.addEventListener('macaroni:alert', handleAlert);
+    window.addEventListener('macaroni:query', handleQuery);
+
+    return () => {
+      window.removeEventListener('macaroni:alert', handleAlert);
+      window.removeEventListener('macaroni:query', handleQuery);
+    };
+  }, []);
 
   // Sync to localStorage
   useEffect(() => {
@@ -300,11 +309,30 @@ export default function App() {
         setIsCMBtOpen(false);
         setIsNewSheetOpen(false);
         setIsImageBrowserOpen(false);
+        setIsJournalOpen(false);
+        setIsAIToolOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  const handleOpenJournal = () => setIsJournalOpen(true);
+  const handleOpenAITool = (tab: 'macro' | 'journal' | 'sketch' | 'fields' | 'settings' = 'macro') => {
+    setAiToolInitialTab(tab);
+    setIsAIToolOpen(true);
+  };
+  const handleInstallAITool = () => {
+    setCharacter((prev) => ({
+      ...prev,
+      installedModules: {
+        ...prev.installedModules,
+        aiCompanion: true,
+      },
+    }));
+    setAiToolInitialTab('macro');
+    setIsAIToolOpen(true);
+  };
 
   // Compute all derived stats automatically
   const derived = computeDerivedCharacterStats(character);
@@ -337,16 +365,20 @@ export default function App() {
 
   // Callback when an image is chosen in Image File Browser
   const handleSelectImageFromBrowser = (url: string) => {
-    if (imageBrowserConfig.targetType === 'profile' || imageBrowserConfig.targetType === 'portrait') {
+    if (imageBrowserConfig.targetType === 'profile') {
+      setCharacter((prev) => ({
+        ...prev,
+        profileData: {
+          ...(prev.profileData || { customFields: [] }),
+          avatarUrl: url,
+        },
+      }));
+    } else if (imageBrowserConfig.targetType === 'portrait') {
       setCharacter((prev) => {
         const currentList = prev.characterBio?.portraits || [];
         const updated = url ? [...currentList.filter((p) => p !== url), url] : currentList;
         return {
           ...prev,
-          profileData: {
-            ...(prev.profileData || { customFields: [] }),
-            avatarUrl: url,
-          },
           characterBio: {
             ...(prev.characterBio || { scratchpad: '', bioSections: [] }),
             portraits: updated,
@@ -370,13 +402,9 @@ export default function App() {
     setCharacter(blank);
   };
 
-  const handleConfirmNewAdventurerSheet = () => {
-    setCharacter(createNewAdventurerCharacter());
-  };
-
-  // Reset to default sheet (default_sheet.json)
+  // Reset to default iconic Valerius
   const handleConfirmDefaultSheet = () => {
-    setCharacter(createDefaultSheetCharacter());
+    setCharacter(DEFAULT_CHARACTER);
   };
 
   // Apply point buy and Level ASI updates
@@ -502,31 +530,7 @@ export default function App() {
         try {
           const parsed = JSON.parse(event.target?.result as string);
           if (parsed.name && parsed.abilities) {
-            const baseDefault = createDefaultSheetCharacter();
-            const syncedAvatar =
-              parsed.profileData?.avatarUrl ||
-              parsed.characterBio?.portraits?.[parsed.characterBio?.currentPortraitIndex || 0] ||
-              '';
-            const syncedPortraits =
-              parsed.characterBio?.portraits && parsed.characterBio.portraits.length > 0
-                ? parsed.characterBio.portraits
-                : syncedAvatar
-                ? [syncedAvatar]
-                : [];
-            setCharacter({
-              ...baseDefault,
-              ...parsed,
-              profileData: {
-                ...(baseDefault.profileData || { customFields: [] }),
-                ...(parsed.profileData || {}),
-                avatarUrl: syncedAvatar,
-              },
-              characterBio: {
-                ...baseDefault.characterBio,
-                ...(parsed.characterBio || {}),
-                portraits: syncedPortraits,
-              },
-            });
+            setCharacter(parsed);
           } else {
             alert('Invalid character sheet format.');
           }
@@ -600,11 +604,11 @@ export default function App() {
   };
 
   return (
-    <div className={`h-screen w-full overflow-hidden flex flex-col font-sans ${layout.theme === 'blueprint' || layout.theme === 'mythweavers' ? 'dark' : ''}`}>
+    <div className={`min-h-screen flex flex-col font-sans ${layout.theme === 'blueprint' || layout.theme === 'mythweavers' ? 'dark' : ''}`}>
       {/* Top Bar Contract (1 row, 3 clean functional zones) */}
-      <header className="min-h-14 py-1.5 bg-slate-950 border-b border-slate-800 text-slate-100 px-3 md:px-5 flex flex-wrap items-center justify-between gap-2 xl:gap-4 shrink-0 z-20 print:hidden select-none">
+      <header className="h-14 bg-slate-950 border-b border-slate-800 text-slate-100 px-4 md:px-6 flex items-center justify-between gap-6 shrink-0 z-20 print:hidden select-none">
         {/* Zone 1: Wordmark & Core Identity */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2.5 shrink-0">
           <button
             onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
             className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-cyan-400 border border-slate-800 transition-colors"
@@ -616,20 +620,20 @@ export default function App() {
             Pathfinder 1e <span className="font-sans font-light text-slate-400 text-xs hidden sm:inline">| Modular Workspace</span>
           </span>
 
-          {/* Profile Picture thumbnail / button (smaller) */}
+          {/* Profile Picture thumbnail / button */}
           <button
             onClick={() =>
               handleOpenImageBrowser({
                 targetType: 'profile',
                 title: 'Character Profile Picture Browser',
-                subtitle: 'Choose an avatar from local files, generic portraits, or enter an image URL.',
+                subtitle: 'Choose an avatar from local files, fantasy portraits, or enter an image URL.',
                 currentUrl: character.profileData?.avatarUrl || character.characterBio?.portraits?.[0],
               })
             }
-            className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-cyan-500/50 text-slate-300 transition-all group"
+            className="flex items-center gap-1.5 p-1 pr-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-cyan-500/50 text-slate-300 transition-all group"
             title="Click to browse character profile picture"
           >
-            <div className="w-4 h-4 rounded-full overflow-hidden border border-cyan-500/50 bg-black/60 shrink-0 flex items-center justify-center">
+            <div className="w-6 h-6 rounded-full overflow-hidden border border-cyan-500/50 bg-black/60 shrink-0 flex items-center justify-center">
               {character.profileData?.avatarUrl || character.characterBio?.portraits?.[0] ? (
                 <img
                   src={character.profileData?.avatarUrl || character.characterBio?.portraits?.[0]}
@@ -637,21 +641,21 @@ export default function App() {
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <User className="w-2.5 h-2.5 text-cyan-400" />
+                <User className="w-3.5 h-3.5 text-cyan-400" />
               )}
             </div>
-            <span className="text-[10px] font-mono hidden md:inline-block group-hover:text-cyan-300 font-semibold truncate max-w-[110px]">
+            <span className="text-xs font-mono hidden md:inline-block group-hover:text-cyan-300 font-semibold truncate max-w-[130px]">
               {character.name || 'Unnamed'} (Lvl {character.level})
             </span>
           </button>
 
-          {/* Clear All / New Sheet Button (smaller) */}
+          {/* Clear All / New Sheet Button */}
           <button
             onClick={() => setIsNewSheetOpen(true)}
-            className="px-1.5 py-0.5 rounded bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/40 hover:border-rose-400 text-rose-300 text-[10px] font-mono font-bold flex items-center gap-1 transition-colors shadow-xs"
+            className="px-2.5 py-1 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/40 hover:border-rose-400 text-rose-300 text-xs font-mono font-bold flex items-center gap-1.5 transition-colors shadow-xs"
             title="Clear all / Start a fresh new character sheet"
           >
-            <FilePlus className="w-3 h-3 text-rose-400" />
+            <FilePlus className="w-3.5 h-3.5 text-rose-400" />
             <span className="hidden sm:inline">New Sheet</span>
           </button>
         </div>
@@ -759,18 +763,38 @@ export default function App() {
             </span>
           </button>
 
-          {/* Standalone HTML Export Button (hidden for now) */}
-          {false && (
+          {/* Session Journal & Chronicle Button */}
+          <button
+            onClick={handleOpenJournal}
+            className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-amber-300 text-xs font-mono flex items-center gap-1.5 transition-colors"
+            title="Open Session Journal, Notes & Field Sketches"
+          >
+            <BookOpen className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden sm:inline">Journal</span>
+          </button>
+
+          {/* AI Companion Quick Tool Button (shown if module installed) */}
+          {character.installedModules?.aiCompanion && (
             <button
-              onClick={handleExportStandaloneHTML}
-              disabled={isExportingHTML}
-              className="px-2.5 py-1.5 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-500/50 hover:border-emerald-400 text-emerald-300 text-xs font-mono font-bold flex items-center gap-1.5 transition-colors shadow-xs"
-              title="Export complete standalone single-file HTML sheet to share with friends or host anywhere"
+              onClick={() => handleOpenAITool('macro')}
+              className="px-2.5 py-1.5 rounded-lg bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/50 text-cyan-300 text-xs font-mono flex items-center gap-1.5 transition-colors shadow-xs"
+              title="Open AI Companion (DSL Macros, Voice Journal & Sketches)"
             >
-              <FileCode className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="hidden xl:inline">{isExportingHTML ? 'Packaging...' : 'Export HTML'}</span>
+              <Cpu className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="hidden sm:inline">AI Tool</span>
             </button>
           )}
+
+          {/* Standalone HTML Export Button */}
+          <button
+            onClick={handleExportStandaloneHTML}
+            disabled={isExportingHTML}
+            className="px-2.5 py-1.5 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-500/50 hover:border-emerald-400 text-emerald-300 text-xs font-mono font-bold flex items-center gap-1.5 transition-colors shadow-xs"
+            title="Export complete standalone single-file HTML sheet to share with friends or host anywhere"
+          >
+            <FileCode className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="hidden xl:inline">{isExportingHTML ? 'Packaging...' : 'Export HTML'}</span>
+          </button>
 
           <button
             onClick={() => window.print()}
@@ -801,6 +825,9 @@ export default function App() {
             onOpenLoadout={() => setIsLoadoutOpen(true)}
             onOpenAddClass={() => setIsAddClassOpen(true)}
             onOpenCMBt={() => setIsCMBtOpen(true)}
+            onOpenJournal={handleOpenJournal}
+            onOpenAITool={() => handleOpenAITool('macro')}
+            onInstallAITool={handleInstallAITool}
             onOpenNewSheet={() => setIsNewSheetOpen(true)}
             onOpenImageBrowser={() =>
               handleOpenImageBrowser({
@@ -819,8 +846,8 @@ export default function App() {
         )}
 
         {/* Center / Main Canvas Viewport */}
-        <main className={`flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-3 md:p-5 transition-colors duration-200 ${getCanvasBgClass()}`}>
-          <div className="w-full max-w-none space-y-6">
+        <main className={`flex-1 overflow-y-auto p-4 md:p-8 transition-colors duration-200 ${getCanvasBgClass()}`}>
+          <div className="max-w-6xl mx-auto space-y-6">
             {/* Quick condition debuff notification if active */}
             {isConditionsOpen && (
               <div className="mb-4">
@@ -849,7 +876,6 @@ export default function App() {
                     derived={derived}
                     theme={layout.theme}
                     fontClass={getFontClass()}
-                    glyphStyle={layout.glyphStyle || '01-flat-enamel'}
                     onUpdateCharacter={setCharacter}
                     onRollFormula={handleRollFormula}
                     visibleModules={layout.visibleModules}
@@ -869,7 +895,6 @@ export default function App() {
                     derived={derived}
                     theme={layout.theme}
                     fontClass={getFontClass()}
-                    glyphStyle={layout.glyphStyle || '01-flat-enamel'}
                     onUpdateCharacter={setCharacter}
                     onRollFormula={handleRollFormula}
                     visibleModules={layout.visibleModules}
@@ -886,7 +911,6 @@ export default function App() {
                     derived={derived}
                     theme={layout.theme}
                     fontClass={getFontClass()}
-                    glyphStyle={layout.glyphStyle || '01-flat-enamel'}
                     onUpdateCharacter={setCharacter}
                     onRollFormula={handleRollFormula}
                     visibleModules={layout.visibleModules}
@@ -902,7 +926,6 @@ export default function App() {
                     derived={derived}
                     theme={layout.theme}
                     fontClass={getFontClass()}
-                    glyphStyle={layout.glyphStyle || '01-flat-enamel'}
                     onUpdateCharacter={setCharacter}
                     onRollFormula={handleRollFormula}
                     visibleModules={layout.visibleModules}
@@ -918,7 +941,6 @@ export default function App() {
                     derived={derived}
                     theme={layout.theme}
                     fontClass={getFontClass()}
-                    glyphStyle={layout.glyphStyle || '01-flat-enamel'}
                     onUpdateCharacter={setCharacter}
                     onRollFormula={handleRollFormula}
                     visibleModules={layout.visibleModules}
@@ -931,7 +953,6 @@ export default function App() {
                     derived={derived}
                     theme={layout.theme}
                     fontClass={getFontClass()}
-                    glyphStyle={layout.glyphStyle || '01-flat-enamel'}
                     onUpdateCharacter={setCharacter}
                     onRollFormula={handleRollFormula}
                     visibleModules={layout.visibleModules}
@@ -1075,7 +1096,6 @@ export default function App() {
       <NewSheetModal
         isOpen={isNewSheetOpen}
         onClose={() => setIsNewSheetOpen(false)}
-        onConfirmNewAdventurer={handleConfirmNewAdventurerSheet}
         onConfirmBlank={handleConfirmBlankSheet}
         onConfirmDefault={handleConfirmDefaultSheet}
         onExportBackup={handleExportJSON}
@@ -1097,8 +1117,62 @@ export default function App() {
           ...(character.characterBio?.portraits || []),
           ...(character.inventory || []).map((i) => i.imageUrl || ''),
         ].filter(Boolean)}
-        glyphStyle={layout.glyphStyle || '01-flat-enamel'}
       />
+
+      {/* Session Journal & Chronicle Modal */}
+      <JournalModal
+        isOpen={isJournalOpen}
+        onClose={() => setIsJournalOpen(false)}
+        character={character}
+        onUpdateCharacter={(updater) => setCharacter((prev) => updater(prev))}
+        onOpenAITool={(tab) => handleOpenAITool(tab || 'journal')}
+        theme={layout.theme}
+      />
+
+      {/* Standalone AI Companion Module Modal */}
+      <AICompanionModal
+        isOpen={isAIToolOpen}
+        onClose={() => setIsAIToolOpen(false)}
+        character={character}
+        onUpdateCharacter={(updater) => setCharacter((prev) => updater(prev))}
+        onOpenJournal={() => setIsJournalOpen(true)}
+        onNavigateToDSLPage={() => {
+          setLayout((prev) => ({ ...prev, activeSheet: 4, showAllSheets: false }));
+        }}
+        initialTab={aiToolInitialTab}
+        theme={layout.theme}
+      />
+
+      {/* Macaroni Floating Alert Cards (<TAG"message">) */}
+      {floatingAlerts.map((alert) => (
+        <FloatingAlertCard
+          key={alert.id}
+          message={alert.message}
+          preset={alert.preset}
+          tag={alert.tag}
+          onDismiss={() => {
+            setFloatingAlerts((prev) => prev.filter((a) => a.id !== alert.id));
+          }}
+        />
+      ))}
+
+      {/* Macaroni Interactive Decision Query Modal (<?>) */}
+      {activeQuery && (
+        <InteractiveQueryModal
+          query={{
+            ...activeQuery,
+            onSelect: (val) => {
+              activeQuery.onSelect(val);
+              setActiveQuery(null);
+            },
+            onCancel: () => {
+              activeQuery.onCancel?.();
+              setActiveQuery(null);
+            },
+          }}
+        />
+      )}
     </div>
   );
 }
+
