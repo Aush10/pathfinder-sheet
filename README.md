@@ -29,8 +29,8 @@ git push origin v1.0.0
 ```
 
 GitHub Actions type-checks and builds the app, then attaches a runtime-only ZIP
-and SHA-256 checksum to the release. The ZIP contains only `index.html`,
-`chirpy.ico`, and `Start-PF1MW.ps1`.
+and SHA-256 checksum to the release. The ZIP contains the standalone app,
+launcher, app icon, and the character-sheet glyph and portrait images.
 
 Friends need only download `installer/Install-PF1MW.ps1` from the repository and
 run it in PowerShell:
@@ -41,7 +41,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Install-PF1MW.ps1
 ```
 
 The downloader fetches the latest stable release from GitHub, validates the
-checksum and archive contents, then installs the three runtime files into
+checksum and archive contents, then installs the runtime files into
 `%LOCALAPPDATA%\pf1mw` and creates a desktop shortcut. The app serves on loopback
 only (`127.0.0.1`) and opens in an Edge or Chrome app window. Node.js is not
 required on their computers. The execution-policy option applies only to that

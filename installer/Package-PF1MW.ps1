@@ -5,6 +5,7 @@ $runtimeFiles = @(
   @{ Source = Join-Path $repositoryDirectory 'public\chirpy.ico'; Name = 'chirpy.ico' },
   @{ Source = Join-Path $repositoryDirectory 'installer\Start-PF1MW.ps1'; Name = 'Start-PF1MW.ps1' }
 )
+$assetDirectory = Join-Path $repositoryDirectory 'public\character-sheet-icons'
 $outputDirectory = Join-Path $repositoryDirectory 'dist'
 $archivePath = Join-Path $outputDirectory 'pf1mw-runtime.zip'
 $checksumPath = "$archivePath.sha256"
@@ -17,6 +18,21 @@ foreach ($file in $runtimeFiles) {
     throw "Required runtime file is missing: $($file.Source)"
   }
 }
+if (-not (Test-Path -LiteralPath $assetDirectory -PathType Container) -or
+    -not (Get-ChildItem -LiteralPath $assetDirectory -Recurse -File -Filter '*.png')) {
+  throw "Required character sheet image assets are missing: $assetDirectory"
+}
+$expectedNames = @(
+  'Start-PF1MW.ps1',
+  'chirpy.ico',
+  'index.html'
+) + @(
+  Get-ChildItem -LiteralPath $assetDirectory -Recurse -File -Filter '*.png' |
+    ForEach-Object {
+      'character-sheet-icons/' + $_.FullName.Substring($assetDirectory.Length + 1).Replace('\', '/')
+    }
+)
+$expectedNames = @($expectedNames | Sort-Object)
 
 New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
 New-Item -ItemType Directory -Path $stageDirectory | Out-Null
@@ -24,6 +40,7 @@ try {
   foreach ($file in $runtimeFiles) {
     Copy-Item -LiteralPath $file.Source -Destination (Join-Path $stageDirectory $file.Name)
   }
+  Copy-Item -LiteralPath $assetDirectory -Destination $stageDirectory -Recurse
 
   Compress-Archive `
     -Path (Join-Path $stageDirectory '*') `
@@ -44,9 +61,12 @@ try {
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $archive = [System.IO.Compression.ZipFile]::OpenRead($archivePath)
 try {
-  $names = @($archive.Entries | ForEach-Object { $_.FullName } | Sort-Object)
-  $expected = @('Start-PF1MW.ps1', 'chirpy.ico', 'index.html') | Sort-Object
-  if (($names -join "`n") -ne ($expected -join "`n")) {
+  $names = @(
+    $archive.Entries |
+      ForEach-Object { $_.FullName.Replace('\', '/') } |
+      Sort-Object
+  )
+  if (($names -join "`n") -ne ($expectedNames -join "`n")) {
     throw "Runtime ZIP contains unexpected files: $($names -join ', ')"
   }
 } finally {

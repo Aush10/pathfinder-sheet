@@ -94,6 +94,23 @@ if ($Server) {
           $body = $iconBytes
           $contentType = 'image/x-icon'
           $sendBody = $Matches[1] -eq 'GET'
+        } elseif (
+          $requestLine -match '^(GET|HEAD) /character-sheet-icons/(01-flat-enamel|02-beveled-token|03-arcane-stamp|04-generic-portraits)/([a-z0-9-]+\.png)(?:\?[^ ]*)? HTTP/1\.[01]$'
+        ) {
+          $requestMethod = $Matches[1]
+          $assetStyle = $Matches[2]
+          $assetName = $Matches[3]
+          $assetPath = Join-Path `
+            (Join-Path $appDirectory 'character-sheet-icons') `
+            (Join-Path $assetStyle $assetName)
+          if (Test-Path -LiteralPath $assetPath -PathType Leaf) {
+            $status = '200 OK'
+            $body = [System.IO.File]::ReadAllBytes($assetPath)
+            $contentType = 'image/png'
+            $sendBody = $requestMethod -eq 'GET'
+          } else {
+            $body = [System.Text.Encoding]::UTF8.GetBytes('Not found')
+          }
         } elseif ($requestLine -match '^(GET|HEAD) /(?:index\.html)?(?:\?[^ ]*)? HTTP/1\.[01]$') {
           $status = '200 OK'
           $body = $htmlBytes

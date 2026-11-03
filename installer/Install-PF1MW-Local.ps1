@@ -8,6 +8,7 @@ $installerDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repositoryDirectory = Split-Path -Parent $installerDirectory
 $sourceHtml = Join-Path $repositoryDirectory 'public\pathfinder1e_standalone.html'
 $sourceIcon = Join-Path $repositoryDirectory 'public\chirpy.ico'
+$sourceAssets = Join-Path $repositoryDirectory 'public\character-sheet-icons'
 $sourceLauncher = Join-Path $installerDirectory 'Start-PF1MW.ps1'
 $desktopDirectory = [Environment]::GetFolderPath('DesktopDirectory')
 
@@ -23,6 +24,9 @@ if (-not (Test-Path -LiteralPath $sourceIcon -PathType Leaf)) {
 if (-not (Test-Path -LiteralPath $sourceLauncher -PathType Leaf)) {
   throw "The app launcher is missing: $sourceLauncher"
 }
+if (-not (Test-Path -LiteralPath $sourceAssets -PathType Container)) {
+  throw "The app image assets are missing: $sourceAssets"
+}
 if ((Get-Item -LiteralPath $sourceHtml).Length -lt 10000) {
   throw "The standalone app file looks incomplete: $sourceHtml"
 }
@@ -33,10 +37,19 @@ $appFiles = @(
   @{ Source = $sourceIcon; Name = 'chirpy.ico' },
   @{ Source = $sourceLauncher; Name = 'Start-PF1MW.ps1' }
 )
+$appFiles += @(
+  Get-ChildItem -LiteralPath $sourceAssets -Recurse -File -Filter '*.png' |
+    ForEach-Object {
+      @{
+        Source = $_.FullName
+        Name = $_.FullName.Substring($sourceAssets.Length + 1)
+      }
+    }
+)
 $existingFiles = @(
   $appFiles | ForEach-Object {
     $destination = Join-Path $resolvedInstallDirectory $_.Name
-    if (Test-Path -LiteralPath $destination -PathType Leaf) { $destination }
+    if (Test-Path -LiteralPath $destination -PathType Leaf) { $_.Name }
   }
 )
 $backupDirectory = $null
@@ -47,7 +60,11 @@ if ($existingFiles.Count -gt 0) {
   )
   New-Item -ItemType Directory -Path $backupDirectory -Force | Out-Null
   foreach ($existingFile in $existingFiles) {
-    Copy-Item -LiteralPath $existingFile -Destination $backupDirectory
+    $backupPath = Join-Path $backupDirectory $existingFile
+    New-Item -ItemType Directory -Path (Split-Path -Parent $backupPath) -Force | Out-Null
+    Copy-Item `
+      -LiteralPath (Join-Path $resolvedInstallDirectory $existingFile) `
+      -Destination $backupPath
   }
 }
 
@@ -57,14 +74,18 @@ $stagingDirectory = Join-Path ([System.IO.Path]::GetTempPath()) (
 New-Item -ItemType Directory -Path $stagingDirectory | Out-Null
 try {
   foreach ($file in $appFiles) {
-    Copy-Item -LiteralPath $file.Source -Destination (Join-Path $stagingDirectory $file.Name)
+    $stagedPath = Join-Path $stagingDirectory $file.Name
+    New-Item -ItemType Directory -Path (Split-Path -Parent $stagedPath) -Force | Out-Null
+    Copy-Item -LiteralPath $file.Source -Destination $stagedPath
   }
 
   New-Item -ItemType Directory -Path $resolvedInstallDirectory -Force | Out-Null
   foreach ($file in $appFiles) {
+    $destinationPath = Join-Path $resolvedInstallDirectory $file.Name
+    New-Item -ItemType Directory -Path (Split-Path -Parent $destinationPath) -Force | Out-Null
     Copy-Item `
       -LiteralPath (Join-Path $stagingDirectory $file.Name) `
-      -Destination (Join-Path $resolvedInstallDirectory $file.Name) `
+      -Destination $destinationPath `
       -Force
   }
 } finally {

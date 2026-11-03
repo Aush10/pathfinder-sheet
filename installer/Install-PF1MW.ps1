@@ -82,33 +82,52 @@ try {
   }
 
   Add-Type -AssemblyName System.IO.Compression.FileSystem
-  $allowedFiles = @('index.html', 'chirpy.ico', 'Start-PF1MW.ps1')
+  $requiredFiles = @('index.html', 'chirpy.ico', 'Start-PF1MW.ps1')
   $stageDirectory = Join-Path $temporaryDirectory 'runtime'
   New-Item -ItemType Directory -Path $stageDirectory | Out-Null
   $archive = [System.IO.Compression.ZipFile]::OpenRead($archivePath)
   try {
     $entries = @($archive.Entries)
-    if ($entries.Count -ne $allowedFiles.Count) {
-      throw 'The runtime archive has an unexpected number of files.'
-    }
-
-    $entryNames = @($entries | ForEach-Object { $_.FullName })
+    $entryNames = @($entries | ForEach-Object { $_.FullName.Replace('\', '/') })
     foreach ($entryName in $entryNames) {
-      if ($entryName -notin $allowedFiles) {
+      if (
+        $entryName -notin $requiredFiles -and
+        $entryName -notmatch '^character-sheet-icons/(01-flat-enamel|02-beveled-token|03-arcane-stamp|04-generic-portraits)/[a-z0-9-]+\.png$'
+      ) {
         throw "The runtime archive contains an unexpected path: $entryName"
       }
     }
-    foreach ($fileName in $allowedFiles) {
+    if (@($entryNames | Sort-Object -Unique).Count -ne $entryNames.Count) {
+      throw 'The runtime archive contains duplicate paths.'
+    }
+    foreach ($fileName in $requiredFiles) {
       $entry = @($entries | Where-Object { $_.FullName -ceq $fileName })
       if ($entry.Count -ne 1 -or $entry[0].Length -le 0) {
         throw "The runtime archive is missing a valid $fileName."
       }
-      if ($entry[0].Length -gt 10000000) {
+    }
+    $assetEntries = @(
+      $entries | Where-Object {
+        $_.FullName.Replace('\', '/') -match '^character-sheet-icons/(01-flat-enamel|02-beveled-token|03-arcane-stamp|04-generic-portraits)/[a-z0-9-]+\.png$'
+      }
+    )
+    if ($assetEntries.Count -eq 0) {
+      throw 'The runtime archive is missing the character sheet image assets.'
+    }
+    foreach ($entry in $entries) {
+      $fileName = $entry.FullName.Replace('\', '/')
+      if ($entry.Length -le 0) {
+        throw "The runtime archive contains an empty file: $fileName"
+      }
+      if ($entry.Length -gt 10000000) {
         throw "The runtime file is unexpectedly large: $fileName"
       }
+      $destinationPath = Join-Path $stageDirectory ($fileName.Replace('/', '\'))
+      $destinationParent = Split-Path -Parent $destinationPath
+      New-Item -ItemType Directory -Path $destinationParent -Force | Out-Null
       [System.IO.Compression.ZipFileExtensions]::ExtractToFile(
-        $entry[0],
-        (Join-Path $stageDirectory $fileName),
+        $entry,
+        $destinationPath,
         $false
       )
     }
@@ -123,10 +142,13 @@ try {
     throw "The Windows desktop folder was not found: $desktopDirectory"
   }
 
+  $runtimeFiles = @($requiredFiles) + @(
+    $assetEntries | ForEach-Object { $_.FullName.Replace('\', '/') }
+  )
   $existingFiles = @(
-    $allowedFiles | ForEach-Object {
-      $destination = Join-Path $resolvedInstallDirectory $_
-      if (Test-Path -LiteralPath $destination -PathType Leaf) { $destination }
+    $runtimeFiles | ForEach-Object {
+      $destination = Join-Path $resolvedInstallDirectory ($_.Replace('/', '\'))
+      if (Test-Path -LiteralPath $destination -PathType Leaf) { $_ }
     }
   )
   $backupDirectory = $null
@@ -136,15 +158,22 @@ try {
     )
     New-Item -ItemType Directory -Path $backupDirectory -Force | Out-Null
     foreach ($existingFile in $existingFiles) {
-      Copy-Item -LiteralPath $existingFile -Destination $backupDirectory
+      $backupPath = Join-Path $backupDirectory ($existingFile.Replace('/', '\'))
+      New-Item -ItemType Directory -Path (Split-Path -Parent $backupPath) -Force | Out-Null
+      Copy-Item `
+        -LiteralPath (Join-Path $resolvedInstallDirectory ($existingFile.Replace('/', '\'))) `
+        -Destination $backupPath
     }
   }
 
   New-Item -ItemType Directory -Path $resolvedInstallDirectory -Force | Out-Null
-  foreach ($fileName in $allowedFiles) {
+  foreach ($fileName in $runtimeFiles) {
+    $relativePath = $fileName.Replace('/', '\')
+    $destinationPath = Join-Path $resolvedInstallDirectory $relativePath
+    New-Item -ItemType Directory -Path (Split-Path -Parent $destinationPath) -Force | Out-Null
     Copy-Item `
-      -LiteralPath (Join-Path $stageDirectory $fileName) `
-      -Destination (Join-Path $resolvedInstallDirectory $fileName) `
+      -LiteralPath (Join-Path $stageDirectory $relativePath) `
+      -Destination $destinationPath `
       -Force
   }
 
