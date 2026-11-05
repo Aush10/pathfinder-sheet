@@ -10,7 +10,8 @@
     "dist:runtime": "npm run build:standalone && powershell -NoProfile -ExecutionPolicy Bypass -File .\\installer\\Package-PF1MW.ps1",
     "preview": "vite preview",
     "clean": "rm -rf dist dist-standalone server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test:storage": "tsx --test src/storage/fsAdapter.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
