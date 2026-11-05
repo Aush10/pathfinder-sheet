@@ -8,27 +8,36 @@ import {
   Edit3,
   Image as ImageIcon,
   CheckSquare,
-  Square,
   Search,
-  Tag,
-  Download,
-  Share2,
   X,
   Sparkles,
   MapPin,
-  ChevronRight,
   Bookmark,
-  Layers,
+  Settings,
+  RefreshCw,
+  FileText,
+  Check,
 } from 'lucide-react';
-import { PF1Character, JournalEntry, JournalImage, SketchDetailQuality, ThemeMode } from '../../types/character';
-import { generateProceduralPencilSketch } from '../../engine/sketchRenderer';
+import {
+  PF1Character,
+  JournalEntry,
+  JournalImage,
+  SketchDetailQuality,
+  ThemeMode,
+} from '../../types/character';
+import {
+  DEFAULT_AI_MODULE_SETTINGS,
+  generateJournalEntryInVoice,
+  generatePencilSketch,
+  getSessionApiKey,
+} from '../../engine/aiService';
 
 interface JournalModalProps {
   isOpen: boolean;
   onClose: () => void;
   character: PF1Character;
   onUpdateCharacter: (updater: (prev: PF1Character) => PF1Character) => void;
-  onOpenAITool?: (initialTab?: 'journal' | 'macro' | 'sketch') => void;
+  onOpenAITool?: (initialTab?: string) => void;
   theme?: ThemeMode;
 }
 
@@ -40,8 +49,6 @@ export const JournalModal: React.FC<JournalModalProps> = ({
   onOpenAITool,
   theme = 'parchment',
 }) => {
-  if (!isOpen) return null;
-
   const entries: JournalEntry[] = character.journal || [];
   const [selectedEntryId, setSelectedEntryId] = useState<string>(() => {
     return entries.length > 0 ? entries[0].id : '';
@@ -50,27 +57,56 @@ export const JournalModal: React.FC<JournalModalProps> = ({
   const [selectedTag, setSelectedTag] = useState<string>('all');
   const [isEditing, setIsEditing] = useState(false);
 
-  // New sketch inline form state
+  // Read AI Listener Module Permissions & Journal Settings
+  const aiSettings = character.installedModules?.aiSettings || DEFAULT_AI_MODULE_SETTINGS;
+  const allowedModules = {
+    ...DEFAULT_AI_MODULE_SETTINGS.allowedModules!,
+    ...(aiSettings.allowedModules || {}),
+  };
+
+  const isVoiceGeneratorEnabled = Boolean(allowedModules.journalVoice);
+  const isSketchGeneratorEnabled = Boolean(allowedModules.journalSketch);
+
+  const activeVoiceTone =
+    aiSettings.preferredVoice ||
+    DEFAULT_AI_MODULE_SETTINGS.preferredVoice ||
+    'Terse, serious, no-nonsense, gruff veteran';
+  const activeVoiceSample =
+    aiSettings.voiceSampleText || DEFAULT_AI_MODULE_SETTINGS.voiceSampleText || '';
+  const activeArtStylePrompt =
+    aiSettings.artStylePrompt ||
+    DEFAULT_AI_MODULE_SETTINGS.artStylePrompt ||
+    'Graphite cross-hatch on weathered parchment';
+
+  // Local In-Character Journal Entry Generator Drawer State (Hidden if journalVoice permission is off)
+  const [isVoiceDrawerOpen, setIsVoiceDrawerOpen] = useState(false);
+  const [voiceSessionPrompt, setVoiceSessionPrompt] = useState('');
+  const [isGeneratingVoice, setIsGeneratingVoice] = useState(false);
+
+  // Local Pencil Sketch Generator Drawer State (Hidden if journalSketch permission is off)
   const [isSketchDrawerOpen, setIsSketchDrawerOpen] = useState(false);
   const [sketchPrompt, setSketchPrompt] = useState('');
-  const [sketchQuality, setSketchQuality] = useState<SketchDetailQuality>('tasteful');
-
-  // Currently selected or fallback entry
-  const selectedEntry = entries.find((e) => e.id === selectedEntryId) || entries[0] || null;
+  const [sketchQuality, setSketchQuality] = useState<SketchDetailQuality>(
+    aiSettings.defaultSketchQuality || 'tasteful'
+  );
+  const [isGeneratingSketch, setIsGeneratingSketch] = useState(false);
 
   // New note input for recalled notes
   const [newRecalledNoteText, setNewRecalledNoteText] = useState('');
+  const [syncedToScratchpadNotice, setSyncedToScratchpadNotice] = useState(false);
 
-  // Collect all unique tags across entries
+  if (!isOpen) return null;
+
+  const selectedEntry = entries.find((e) => e.id === selectedEntryId) || entries[0] || null;
   const allTags = Array.from(new Set(entries.flatMap((e) => e.tags || [])));
 
-  // Filtered entries
   const filteredEntries = entries.filter((e) => {
     const matchesSearch =
       e.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       e.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (e.location && e.location.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (e.recalledNotes && e.recalledNotes.some((n) => n.toLowerCase().includes(searchQuery.toLowerCase())));
+      (e.recalledNotes &&
+        e.recalledNotes.some((n) => n.toLowerCase().includes(searchQuery.toLowerCase())));
 
     const matchesTag = selectedTag === 'all' || (e.tags && e.tags.includes(selectedTag));
     return matchesSearch && matchesTag;
@@ -83,7 +119,7 @@ export const JournalModal: React.FC<JournalModalProps> = ({
       title: `Session ${entries.length + 1} Record`,
       sessionDate: `Session ${entries.length + 1} - 4714 AR`,
       realDate: new Date().toISOString().split('T')[0],
-      location: character.campaign ? `${character.campaign} Camp` : 'Adventurers Camp',
+      location: character.campaign ? `${character.campaign} Camp` : 'Patrivia Marsh Camp',
       content: `The party gathered beneath the flickering lamplight as the session began...\n\n`,
       recalledNotes: ['Inspect perimeter and restock rations before morning'],
       images: [],
@@ -139,31 +175,122 @@ export const JournalModal: React.FC<JournalModalProps> = ({
     handleUpdateCurrentEntry({ recalledNotes: updated });
   };
 
-  const handleGeneratePencilSketch = () => {
+  // Sync current entry's recall notes & location to the Character Scratchpad
+  const handlePushNotesToScratchpad = () => {
+    if (!selectedEntry) return;
+    const noteLines = (selectedEntry.recalledNotes || []).map((n) => `- ${n}`).join('\n');
+    const memoBlock = `\n== Journal Reference: ${selectedEntry.title} (${
+      selectedEntry.location || 'Field'
+    }) ==\n${noteLines || selectedEntry.content.slice(0, 160)}`;
+
+    onUpdateCharacter((prev) => ({
+      ...prev,
+      characterBio: {
+        portraits: prev.characterBio?.portraits || [],
+        currentPortraitIndex: prev.characterBio?.currentPortraitIndex || 0,
+        bioSections: prev.characterBio?.bioSections || [],
+        skin: prev.characterBio?.skin || '',
+        ...prev.characterBio,
+        scratchpad: `${(prev.characterBio?.scratchpad || '').trim()}${memoBlock}`.trim(),
+      },
+      rollupNotes: {
+        isRolledUp: prev.rollupNotes?.isRolledUp ?? false,
+        content: `${(prev.rollupNotes?.content || '').trim()}${memoBlock}`.trim(),
+      },
+    }));
+    setSyncedToScratchpadNotice(true);
+    setTimeout(() => setSyncedToScratchpadNotice(false), 2500);
+  };
+
+  // Local AI Journal Entry Generator (uses voice behavior sample from Journal Settings)
+  const handleGenerateVoiceEntry = async (mode: 'new_entry' | 'append_current') => {
+    if (!voiceSessionPrompt.trim()) return;
+    setIsGeneratingVoice(true);
+    try {
+      const combinedVoiceInstruction = activeVoiceSample
+        ? `${activeVoiceTone}. Voice behavior sample: "${activeVoiceSample}"`
+        : activeVoiceTone;
+
+      const res = await generateJournalEntryInVoice(
+        voiceSessionPrompt.trim(),
+        combinedVoiceInstruction,
+        character,
+        getSessionApiKey()
+      );
+
+      if (mode === 'append_current' && selectedEntry) {
+        handleUpdateCurrentEntry({
+          content: `${selectedEntry.content.trim()}\n\n${res.content}`,
+          recalledNotes: [
+            ...(selectedEntry.recalledNotes || []),
+            ...(res.recalledNotes || []),
+          ],
+          characterVoiceUsed: activeVoiceTone,
+        });
+      } else {
+        const newId = `entry-ai-${Date.now()}`;
+        const newEntry: JournalEntry = {
+          id: newId,
+          title: res.title,
+          sessionDate: res.sessionDate,
+          realDate: new Date().toISOString().split('T')[0],
+          location: character.campaign || 'Patrivia Marsh',
+          content: res.content,
+          characterVoiceUsed: activeVoiceTone,
+          recalledNotes: res.recalledNotes || [],
+          images: [],
+          tags: ['In-Character', 'AI Chronicle'],
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+        onUpdateCharacter((prev) => ({
+          ...prev,
+          journal: [newEntry, ...(prev.journal || [])],
+        }));
+        setSelectedEntryId(newId);
+      }
+
+      setVoiceSessionPrompt('');
+      setIsVoiceDrawerOpen(false);
+    } finally {
+      setIsGeneratingVoice(false);
+    }
+  };
+
+  // Local Pencil Sketch Generator (uses artStylePrompt from Journal Settings)
+  const handleGeneratePencilSketch = async () => {
     if (!sketchPrompt.trim() || !selectedEntry) return;
-    const dataUrl = generateProceduralPencilSketch({
-      subject: sketchPrompt.trim(),
-      quality: sketchQuality,
-      width: 560,
-      height: 400,
-    });
+    setIsGeneratingSketch(true);
+    try {
+      const fullSubject = activeArtStylePrompt
+        ? `${sketchPrompt.trim()} (${activeArtStylePrompt})`
+        : sketchPrompt.trim();
 
-    const newImage: JournalImage = {
-      id: `sketch-${Date.now()}`,
-      url: dataUrl,
-      caption: `Field sketch: ${sketchPrompt.trim()}`,
-      style: 'sketch',
-      quality: sketchQuality,
-      prompt: sketchPrompt.trim(),
-      createdAt: Date.now(),
-    };
+      const res = await generatePencilSketch(
+        fullSubject,
+        sketchQuality,
+        getSessionApiKey()
+      );
 
-    handleUpdateCurrentEntry({
-      images: [...(selectedEntry.images || []), newImage],
-    });
+      const newImage: JournalImage = {
+        id: `sketch-${Date.now()}`,
+        url: res.imageUrl,
+        caption: res.caption || `Field sketch: ${sketchPrompt.trim()}`,
+        style: 'sketch',
+        quality: sketchQuality,
+        prompt: sketchPrompt.trim(),
+        createdAt: Date.now(),
+      };
 
-    setSketchPrompt('');
-    setIsSketchDrawerOpen(false);
+      handleUpdateCurrentEntry({
+        images: [...(selectedEntry.images || []), newImage],
+      });
+
+      setSketchPrompt('');
+      setIsSketchDrawerOpen(false);
+    } finally {
+      setIsGeneratingSketch(false);
+    }
   };
 
   const handleRemoveImage = (imgId: string) => {
@@ -193,7 +320,9 @@ export const JournalModal: React.FC<JournalModalProps> = ({
           <div className="flex items-center gap-3">
             <div
               className={`w-9 h-9 rounded-lg flex items-center justify-center border shadow-xs ${
-                isDark ? 'bg-cyan-950/80 border-cyan-400 text-cyan-300' : 'bg-amber-100 border-amber-700 text-amber-900'
+                isDark
+                  ? 'bg-cyan-950/80 border-cyan-400 text-cyan-300'
+                  : 'bg-amber-100 border-amber-700 text-amber-900'
               }`}
             >
               <BookOpen className="w-5 h-5" />
@@ -201,7 +330,7 @@ export const JournalModal: React.FC<JournalModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="font-serif font-bold text-lg tracking-wide">
-                  {character.name}’s Session Journal & Chronicle
+                  {character.name}’s Session Journal &amp; Chronicle
                 </h2>
                 <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-300 font-semibold">
                   {entries.length} Entries
@@ -213,18 +342,61 @@ export const JournalModal: React.FC<JournalModalProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Local Journal Entry Generator Trigger (Shown ONLY when journalVoice permission is enabled) */}
+            {isVoiceGeneratorEnabled && (
+              <button
+                onClick={() => {
+                  setIsVoiceDrawerOpen(!isVoiceDrawerOpen);
+                  setIsSketchDrawerOpen(false);
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold flex items-center gap-1.5 shadow-xs transition-colors ${
+                  isVoiceDrawerOpen
+                    ? 'bg-cyan-500 text-slate-950'
+                    : 'bg-cyan-700 hover:bg-cyan-600 text-white'
+                }`}
+                title="Generate an in-character journal entry using your preset voice behavior sample"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>AI Voice Entry</span>
+              </button>
+            )}
+
+            {/* Local Pencil Sketch Generator Trigger (Shown ONLY when journalSketch permission is enabled) */}
+            {isSketchGeneratorEnabled && selectedEntry && (
+              <button
+                onClick={() => {
+                  setIsSketchDrawerOpen(!isSketchDrawerOpen);
+                  setIsVoiceDrawerOpen(false);
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold flex items-center gap-1.5 border transition-colors ${
+                  isSketchDrawerOpen
+                    ? 'bg-amber-600 text-white border-amber-500'
+                    : 'border-amber-600/40 bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300'
+                }`}
+                title="Draw a graphite pencil sketch into this journal entry"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>Pencil Sketch</span>
+              </button>
+            )}
+
+            {/* Link to AI Companion Journal Settings / Module Permissions */}
             {onOpenAITool && (
               <button
                 onClick={() => {
                   onClose();
-                  onOpenAITool('journal');
+                  onOpenAITool(
+                    isVoiceGeneratorEnabled || isSketchGeneratorEnabled
+                      ? 'journal_settings'
+                      : 'permissions'
+                  );
                 }}
-                className="px-3 py-1.5 rounded-lg text-xs font-mono font-bold flex items-center gap-1.5 bg-cyan-600 hover:bg-cyan-500 text-white shadow-xs transition-colors"
-                title="Open AI Companion to write in character voice"
+                className="px-2.5 py-1.5 rounded-lg text-xs font-mono font-semibold border border-black/15 dark:border-white/15 hover:bg-black/5 dark:hover:bg-white/5 flex items-center gap-1.5 transition-colors"
+                title="Open AI Companion to configure Voice Behavior Sample, Art Style Prompt, or Module Permissions"
               >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>AI Voice Writer</span>
+                <Settings className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Voice &amp; Art Settings</span>
               </button>
             )}
 
@@ -245,7 +417,7 @@ export const JournalModal: React.FC<JournalModalProps> = ({
           </div>
         </div>
 
-        {/* Content Body: Two columns (List on Left, Detail/Editor on Right) */}
+        {/* Content Body */}
         <div className="flex-1 flex overflow-hidden">
           {/* Left Column: Entry List & Filters */}
           <div
@@ -274,7 +446,7 @@ export const JournalModal: React.FC<JournalModalProps> = ({
                 <div className="flex items-center gap-1 overflow-x-auto pb-1 text-[11px] font-mono scrollbar-none">
                   <button
                     onClick={() => setSelectedTag('all')}
-                    className={`px-2 py-0.5 rounded-full shrink-0 border transition-colors ${
+                    className={`px-2 py-0.5 rounded shrink-0 border transition-colors ${
                       selectedTag === 'all'
                         ? 'bg-amber-700 text-white border-amber-700'
                         : 'bg-black/5 dark:bg-white/5 border-transparent opacity-70 hover:opacity-100'
@@ -286,7 +458,7 @@ export const JournalModal: React.FC<JournalModalProps> = ({
                     <button
                       key={t}
                       onClick={() => setSelectedTag(t)}
-                      className={`px-2 py-0.5 rounded-full shrink-0 border transition-colors ${
+                      className={`px-2 py-0.5 rounded shrink-0 border transition-colors ${
                         selectedTag === t
                           ? 'bg-amber-700 text-white border-amber-700'
                           : 'bg-black/5 dark:bg-white/5 border-transparent opacity-70 hover:opacity-100'
@@ -299,7 +471,7 @@ export const JournalModal: React.FC<JournalModalProps> = ({
               )}
             </div>
 
-            {/* List */}
+            {/* Entry List */}
             <div className="flex-1 overflow-y-auto divide-y divide-inherit">
               {filteredEntries.length === 0 ? (
                 <div className="p-8 text-center text-xs opacity-50 font-serif">
@@ -366,8 +538,98 @@ export const JournalModal: React.FC<JournalModalProps> = ({
             </div>
           </div>
 
-          {/* Right Column: Entry Reader & Editor */}
+          {/* Right Column: Entry Reader, Local AI Generators & Editor */}
           <div className="flex-1 flex flex-col overflow-y-auto p-4 md:p-6 space-y-5">
+            {/* LOCAL IN-CHARACTER JOURNAL ENTRY GENERATOR (Visible only when journalVoice permission is enabled) */}
+            {isVoiceGeneratorEnabled && isVoiceDrawerOpen && (
+              <div
+                className={`p-4 rounded-xl border space-y-3 shadow-sm ${
+                  isDark ? 'bg-slate-950 border-cyan-500/50' : 'bg-amber-50/95 border-amber-800/35'
+                }`}
+              >
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-cyan-400" />
+                    <span className="font-serif font-bold text-sm">
+                      In-Character Journal Entry Generator
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px] font-mono">
+                    <span className="opacity-75 truncate max-w-xs">
+                      Active Voice: <strong>{activeVoiceTone}</strong>
+                    </span>
+                    {onOpenAITool && (
+                      <button
+                        onClick={() => {
+                          onClose();
+                          onOpenAITool('journal_settings');
+                        }}
+                        className="text-cyan-500 hover:underline font-bold"
+                      >
+                        Edit Voice Sample &rarr;
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {activeVoiceSample && (
+                  <div className="p-2 rounded bg-black/5 dark:bg-white/5 text-[11px] font-serif italic opacity-80">
+                    Voice Sample: &ldquo;{activeVoiceSample}&rdquo;
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-mono font-bold opacity-80 block">
+                    What happened in today&apos;s session?
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={voiceSessionPrompt}
+                    onChange={(e) => setVoiceSessionPrompt(e.target.value)}
+                    placeholder="e.g. Ambushed by rougarou enforcers in Patrivia Marsh, found an old brass key, rested at the ruined watchtower..."
+                    className={`w-full p-2.5 rounded-lg text-xs font-serif border outline-hidden resize-none ${
+                      isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-amber-300'
+                    }`}
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    onClick={() => setIsVoiceDrawerOpen(false)}
+                    className="px-3 py-1.5 rounded text-xs font-mono opacity-70 hover:opacity-100"
+                  >
+                    Cancel
+                  </button>
+                  {selectedEntry && (
+                    <button
+                      onClick={() => handleGenerateVoiceEntry('append_current')}
+                      disabled={isGeneratingVoice || !voiceSessionPrompt.trim()}
+                      className="px-3 py-1.5 rounded text-xs font-mono font-bold border border-cyan-500/50 text-cyan-500 hover:bg-cyan-500/10 disabled:opacity-50 transition-colors"
+                    >
+                      Append to Current Entry
+                    </button>
+                  )}
+                  <button
+                    onClick={() => handleGenerateVoiceEntry('new_entry')}
+                    disabled={isGeneratingVoice || !voiceSessionPrompt.trim()}
+                    className="px-4 py-1.5 rounded text-xs font-mono font-bold bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white shadow-xs transition-colors flex items-center gap-1.5"
+                  >
+                    {isGeneratingVoice ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Writing in Voice...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Write New Chronicle Entry</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+
             {selectedEntry ? (
               <>
                 {/* Entry Meta Header */}
@@ -396,7 +658,9 @@ export const JournalModal: React.FC<JournalModalProps> = ({
                             <input
                               type="text"
                               value={selectedEntry.sessionDate}
-                              onChange={(e) => handleUpdateCurrentEntry({ sessionDate: e.target.value })}
+                              onChange={(e) =>
+                                handleUpdateCurrentEntry({ sessionDate: e.target.value })
+                              }
                               className="px-1.5 py-0.5 rounded border text-xs bg-transparent border-slate-600"
                             />
                           </div>
@@ -405,7 +669,9 @@ export const JournalModal: React.FC<JournalModalProps> = ({
                             <input
                               type="text"
                               value={selectedEntry.location || ''}
-                              onChange={(e) => handleUpdateCurrentEntry({ location: e.target.value })}
+                              onChange={(e) =>
+                                handleUpdateCurrentEntry({ location: e.target.value })
+                              }
                               className="px-1.5 py-0.5 rounded border text-xs bg-transparent border-slate-600"
                             />
                           </div>
@@ -446,14 +712,16 @@ export const JournalModal: React.FC<JournalModalProps> = ({
                       <span>{isEditing ? 'Done Editing' : 'Edit Text'}</span>
                     </button>
 
-                    <button
-                      onClick={() => setIsSketchDrawerOpen(!isSketchDrawerOpen)}
-                      className="px-3 py-1.5 rounded text-xs font-mono font-semibold border border-amber-600/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 flex items-center gap-1.5 transition-colors"
-                      title="Generate a hand-drawn pencil sketch directly into this log"
-                    >
-                      <ImageIcon className="w-3.5 h-3.5" />
-                      <span>Pencil Sketch</span>
-                    </button>
+                    {isSketchGeneratorEnabled && (
+                      <button
+                        onClick={() => setIsSketchDrawerOpen(!isSketchDrawerOpen)}
+                        className="px-3 py-1.5 rounded text-xs font-mono font-semibold border border-amber-600/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 flex items-center gap-1.5 transition-colors"
+                        title="Generate a hand-drawn pencil sketch directly into this log"
+                      >
+                        <ImageIcon className="w-3.5 h-3.5" />
+                        <span>Pencil Sketch</span>
+                      </button>
+                    )}
 
                     <button
                       onClick={() => handleDeleteEntry(selectedEntry.id)}
@@ -465,29 +733,37 @@ export const JournalModal: React.FC<JournalModalProps> = ({
                   </div>
                 </div>
 
-                {/* Inline Pencil Sketch Generator Drawer */}
-                {isSketchDrawerOpen && (
+                {/* LOCAL PENCIL SKETCH GENERATOR DRAWER (Shown ONLY when journalSketch permission is enabled) */}
+                {isSketchGeneratorEnabled && isSketchDrawerOpen && (
                   <div
                     className={`p-4 rounded-xl border space-y-3 ${
                       isDark ? 'bg-slate-950 border-cyan-500/40' : 'bg-amber-50/90 border-amber-800/30'
                     }`}
                   >
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
                       <div className="flex items-center gap-2">
                         <Edit3 className="w-4 h-4 text-amber-600" />
                         <span className="font-serif font-bold text-sm">
-                          Pencil Sketch Studio for Session Log
+                          Pencil Sketch Prompt (Local Journal Studio)
                         </span>
                       </div>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300">
-                        Graphite on Parchment
-                      </span>
+                      <div className="flex items-center gap-2 text-[11px] font-mono">
+                        <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                          Style: {activeArtStylePrompt}
+                        </span>
+                        {onOpenAITool && (
+                          <button
+                            onClick={() => {
+                              onClose();
+                              onOpenAITool('journal_settings');
+                            }}
+                            className="text-cyan-500 hover:underline font-bold"
+                          >
+                            Edit Art Style &rarr;
+                          </button>
+                        )}
+                      </div>
                     </div>
-
-                    <p className="text-xs opacity-75 font-serif">
-                      Create a graphite pencil field sketch to preserve alongside this entry. Quality
-                      determines hatching density, paper grain, and shading refinement.
-                    </p>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                       <div className="md:col-span-2 space-y-1.5">
@@ -496,7 +772,7 @@ export const JournalModal: React.FC<JournalModalProps> = ({
                         </label>
                         <input
                           type="text"
-                          placeholder="e.g. Kenabres citadel watchtower, Dragon skull carved in basalt, Ancient longsword relic..."
+                          placeholder="e.g. Patrivia Marsh watchtower, Rougarou tracks in bog mud, Ancient longsword relic..."
                           value={sketchPrompt}
                           onChange={(e) => setSketchPrompt(e.target.value)}
                           className={`w-full px-3 py-1.5 rounded text-xs border outline-hidden ${
@@ -510,20 +786,22 @@ export const JournalModal: React.FC<JournalModalProps> = ({
                           Pencil Detail Quality:
                         </label>
                         <div className="grid grid-cols-2 gap-1 text-[11px] font-mono">
-                          {(['crude', 'passible', 'tasteful', 'astounding'] as SketchDetailQuality[]).map((q) => (
-                            <button
-                              key={q}
-                              type="button"
-                              onClick={() => setSketchQuality(q)}
-                              className={`px-2 py-1 rounded capitalize border transition-all text-center ${
-                                sketchQuality === q
-                                  ? 'bg-amber-700 text-white border-amber-700 font-bold shadow-xs'
-                                  : 'bg-black/5 dark:bg-white/5 border-inherit opacity-75 hover:opacity-100'
-                              }`}
-                            >
-                              {q}
-                            </button>
-                          ))}
+                          {(['crude', 'passible', 'tasteful', 'astounding'] as SketchDetailQuality[]).map(
+                            (q) => (
+                              <button
+                                key={q}
+                                type="button"
+                                onClick={() => setSketchQuality(q)}
+                                className={`px-2 py-1 rounded capitalize border transition-all text-center ${
+                                  sketchQuality === q
+                                    ? 'bg-amber-700 text-white border-amber-700 font-bold shadow-xs'
+                                    : 'bg-black/5 dark:bg-white/5 border-inherit opacity-75 hover:opacity-100'
+                                }`}
+                              >
+                                {q}
+                              </button>
+                            )
+                          )}
                         </div>
                       </div>
                     </div>
@@ -537,11 +815,20 @@ export const JournalModal: React.FC<JournalModalProps> = ({
                       </button>
                       <button
                         onClick={handleGeneratePencilSketch}
-                        disabled={!sketchPrompt.trim()}
+                        disabled={isGeneratingSketch || !sketchPrompt.trim()}
                         className="px-4 py-1.5 rounded text-xs font-mono font-bold bg-amber-700 hover:bg-amber-600 disabled:opacity-50 text-white shadow-xs transition-colors flex items-center gap-1.5"
                       >
-                        <Edit3 className="w-3.5 h-3.5" />
-                        <span>Draw & Attach Sketch</span>
+                        {isGeneratingSketch ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>Sketching...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Edit3 className="w-3.5 h-3.5" />
+                            <span>Draw &amp; Attach Sketch</span>
+                          </>
+                        )}
                       </button>
                     </div>
                   </div>
@@ -561,13 +848,17 @@ export const JournalModal: React.FC<JournalModalProps> = ({
                       onChange={(e) => handleUpdateCurrentEntry({ content: e.target.value })}
                       placeholder="Write your session chronicles here..."
                       className={`w-full p-4 rounded-xl font-serif text-sm leading-relaxed border outline-hidden shadow-inner resize-y ${
-                        isDark ? 'bg-slate-950 border-slate-700 text-slate-100' : 'bg-white border-amber-300 text-stone-900'
+                        isDark
+                          ? 'bg-slate-950 border-slate-700 text-slate-100'
+                          : 'bg-white border-amber-300 text-stone-900'
                       }`}
                     />
                   ) : (
                     <div
                       className={`p-5 rounded-xl font-serif text-sm leading-relaxed whitespace-pre-wrap border shadow-xs ${
-                        isDark ? 'bg-slate-950/60 border-cyan-500/20' : 'bg-white/90 border-amber-900/15'
+                        isDark
+                          ? 'bg-slate-950/60 border-cyan-500/20'
+                          : 'bg-white/90 border-amber-900/15'
                       }`}
                     >
                       {selectedEntry.content}
@@ -575,20 +866,35 @@ export const JournalModal: React.FC<JournalModalProps> = ({
                   )}
                 </div>
 
-                {/* Recalled Notes Section (Checklist & Reminders) */}
+                {/* Recalled Notes Section + Sync to Scratchpad */}
                 <div
                   className={`p-4 rounded-xl border space-y-3 ${
                     isDark ? 'bg-slate-950/40 border-cyan-500/20' : 'bg-[#f4efe4] border-amber-900/20'
                   }`}
                 >
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-2">
                       <Bookmark className="w-4 h-4 text-amber-600" />
-                      <h4 className="font-serif font-bold text-sm">Recalled Notes & Campaign Clues</h4>
+                      <h4 className="font-serif font-bold text-sm">
+                        Recalled Notes &amp; Scratchpad Cross-Reference
+                      </h4>
                     </div>
-                    <span className="text-[10px] font-mono opacity-70">
-                      Unresolved leads, NPC names & promises
-                    </span>
+
+                    <div className="flex items-center gap-2">
+                      {syncedToScratchpadNotice && (
+                        <span className="text-[11px] font-mono text-emerald-500 flex items-center gap-1">
+                          <Check className="w-3 h-3" /> Referenced in Scratchpad!
+                        </span>
+                      )}
+                      <button
+                        onClick={handlePushNotesToScratchpad}
+                        className="px-2.5 py-1 rounded text-[11px] font-mono font-bold bg-amber-700/20 hover:bg-amber-700/30 text-amber-700 dark:text-amber-300 border border-amber-600/30 flex items-center gap-1 transition-colors"
+                        title="Send these session clues to your character Scratchpad"
+                      >
+                        <FileText className="w-3 h-3" />
+                        <span>Reference in Scratchpad</span>
+                      </button>
+                    </div>
                   </div>
 
                   {/* Note List */}
@@ -623,7 +929,7 @@ export const JournalModal: React.FC<JournalModalProps> = ({
                   <div className="flex items-center gap-2 pt-1">
                     <input
                       type="text"
-                      placeholder="Add clue, debt, NPC contact or item to remember..."
+                      placeholder="Add clue, setting detail, NPC contact or item to remember..."
                       value={newRecalledNoteText}
                       onChange={(e) => setNewRecalledNoteText(e.target.value)}
                       onKeyDown={(e) => {
@@ -649,19 +955,20 @@ export const JournalModal: React.FC<JournalModalProps> = ({
                     <div className="flex items-center gap-2">
                       <ImageIcon className="w-4 h-4 text-amber-600" />
                       <h4 className="font-serif font-bold text-sm">
-                        Session Field Sketches & Imagery ({selectedEntry.images?.length || 0})
+                        Session Field Sketches &amp; Imagery ({selectedEntry.images?.length || 0})
                       </h4>
                     </div>
                   </div>
 
-                  {(!selectedEntry.images || selectedEntry.images.length === 0) ? (
+                  {!selectedEntry.images || selectedEntry.images.length === 0 ? (
                     <div
                       className={`p-6 rounded-xl border border-dashed text-center font-serif text-xs opacity-60 ${
                         isDark ? 'border-slate-800' : 'border-amber-900/20'
                       }`}
                     >
-                      No illustrations attached to this record yet. Click &quot;Pencil Sketch&quot; above to
-                      draw an authentic graphite sketch!
+                      {isSketchGeneratorEnabled
+                        ? 'No illustrations attached yet. Click "Pencil Sketch" above to draw an authentic graphite sketch!'
+                        : 'No illustrations attached yet. (Enable Pencil Sketch Prompt in AI Companion -> Module Permissions to draw sketches here.)'}
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

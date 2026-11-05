@@ -22,6 +22,7 @@ import {
   CustomFormulaObject,
   UiMakePreset,
   MacaroniCategory,
+  SOTMacaroniSuggestion,
 } from '../../types/character';
 import {
   evaluateFormula,
@@ -36,6 +37,13 @@ import {
   BUFF_MATRIX_COLUMNS,
   BUFF_MATRIX_ROWS,
 } from '../../engine/macaroni';
+import {
+  executeScratchpadAIMacro,
+  DEFAULT_AI_MODULE_SETTINGS,
+  DEFAULT_SOT_CATALOGUE,
+} from '../../engine/aiService';
+import { extractMacaroniSuggestionsFromSrd } from '../../engine/sotEngine';
+import { AppleEyeIcon } from '../common/AppleEyeIcon';
 
 interface SheetPage4FormulaStudioProps {
   character: PF1Character;
@@ -62,11 +70,23 @@ export const SheetPage4FormulaStudio: React.FC<SheetPage4FormulaStudioProps> = (
     `# Valerius Combat Notes & Macaroni Vocabulary
 - Primary Strike: [d20 + #BAB + #STR] & [1d12 + round(#STR * 1.5)] "slashing"
 - Sustained Buff: MageArmor:|<^{7:2}+4>|$
+- Build Planner: What should I make for this game>>#AI$
 - Dragon breath: {firebreath}
 - Combined combo: {mainattack_with_fire}
 - Stepper countdown: this: 10-1! | this=0 | $
 - UI Make Trigger: <11"Dragonfire Critical!">\n- Decision query: <? "Proceed?" | yes / no / #HP / [] >`
   );
+
+  const handleRunScratchpadAI = async () => {
+    const aiSettings = character.installedModules?.aiSettings || DEFAULT_AI_MODULE_SETTINGS;
+    if (!(aiSettings.allowedModules?.scratchpad ?? true)) {
+      setLastQuirkyNote('Enable Scratchpad AI in AI Listener -> Module Permissions first.');
+      return;
+    }
+    const res = await executeScratchpadAIMacro(scratchpadText, character);
+    setScratchpadText(res.updatedText);
+    if (res.generatedReply) setLastQuirkyNote(res.generatedReply);
+  };
 
   const isParchment = theme === 'parchment';
   const isBlueprint = theme === 'blueprint';
@@ -129,6 +149,86 @@ export const SheetPage4FormulaStudio: React.FC<SheetPage4FormulaStudioProps> = (
       'customObjects',
       character.customObjects.map((o) => (o.id === id ? { ...o, ...updates } : o))
     );
+  };
+
+  // Macaroni Suggestions derived from SOT SRD mathematical breakdowns
+  const macaroniSuggestions: SOTMacaroniSuggestion[] =
+    character.sotCatalogue?.macaroniSuggestions &&
+    character.sotCatalogue.macaroniSuggestions.length > 0
+      ? character.sotCatalogue.macaroniSuggestions
+      : DEFAULT_SOT_CATALOGUE.macaroniSuggestions || [];
+
+  const handleInsertSuggestionToScratchpad = (sugg: SOTMacaroniSuggestion) => {
+    const line = `- ${sugg.abilityName} (${sugg.sourceDocTitle}): ${sugg.suggestedFormula}`;
+    setScratchpadText((prev) => `${prev.trim()}\n${line}`);
+    setLastQuirkyNote(`Inserted "${sugg.abilityName}" macro into Macaroni Scratchpad!`);
+  };
+
+  const handleAddSuggestionToDslStudio = (sugg: SOTMacaroniSuggestion) => {
+    const cleanName = sugg.abilityName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+    const newObj: CustomFormulaObject = {
+      id: `obj-srd-${Date.now()}`,
+      name: cleanName || 'srd_macro',
+      description: `${sugg.abilityName} — ${sugg.mathBreakdownText}`,
+      formula: sugg.suggestedFormula,
+      category: sugg.category || 'action',
+      stepCount: 0,
+    };
+    onUpdateCharacter((prev) => ({
+      ...prev,
+      customObjects: [newObj, ...(prev.customObjects || [])],
+    }));
+    setLastQuirkyNote(
+      `Populated DSL Studio with {${newObj.name}} from SRD math breakdown ("${sugg.abilityName}")!`
+    );
+  };
+
+  const handleScanSotDocsForMacaroni = () => {
+    const currentSot = character.sotCatalogue || DEFAULT_SOT_CATALOGUE;
+    const docs = currentSot.overridePages || [];
+    const merged = [...macaroniSuggestions];
+    let newlyFound = 0;
+
+    for (const doc of docs) {
+      const extracted = extractMacaroniSuggestionsFromSrd(doc.id, doc.title, doc.plainText);
+      for (const s of extracted) {
+        if (!merged.some((m) => m.abilityName.toLowerCase() === s.abilityName.toLowerCase())) {
+          merged.unshift(s);
+          newlyFound++;
+        }
+      }
+    }
+
+    onUpdateCharacter((prev) => ({
+      ...prev,
+      sotCatalogue: {
+        ...(prev.sotCatalogue || DEFAULT_SOT_CATALOGUE),
+        macaroniSuggestions: merged,
+      },
+    }));
+    setLastQuirkyNote(
+      `Scanned ${docs.length} SOT SRD document(s) for mathematical breakdowns (${newlyFound} new suggestion(s), ${merged.length} total).`
+    );
+  };
+
+  const handleDismissSuggestion = (id: string) => {
+    onUpdateCharacter((prev) => {
+      const currentSot = prev.sotCatalogue || DEFAULT_SOT_CATALOGUE;
+      const baseSuggs =
+        currentSot.macaroniSuggestions && currentSot.macaroniSuggestions.length > 0
+          ? currentSot.macaroniSuggestions
+          : DEFAULT_SOT_CATALOGUE.macaroniSuggestions || [];
+      return {
+        ...prev,
+        sotCatalogue: {
+          ...currentSot,
+          macaroniSuggestions: baseSuggs.filter((m) => m.id !== id),
+        },
+      };
+    });
   };
 
   // UI Make Presets State & Handlers
@@ -1182,14 +1282,27 @@ export const SheetPage4FormulaStudio: React.FC<SheetPage4FormulaStudioProps> = (
 
             {/* Dynamic Scratchpad Notepad */}
             <div className={`border rounded-lg overflow-hidden ${cardBg}`}>
-              <div className={`px-4 py-2 border-b flex items-center justify-between ${headerBg}`}>
+              <div className={`px-4 py-2 border-b flex items-center justify-between gap-2 ${headerBg}`}>
                 <div className="flex items-center gap-2">
                   <HelpCircle className="w-4 h-4 text-amber-400" />
                   <span className="font-bold text-xs uppercase tracking-wider">
                     Macaroni Scratchpad
                   </span>
                 </div>
-                <span className="text-[10px] font-mono opacity-70">Interpolates &#123;object&#125;</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono opacity-70 hidden sm:inline">
+                    Interpolates &#123;object&#125; &amp; &gt;&gt;#AI$
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleRunScratchpadAI}
+                    className="px-2.5 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-mono font-bold text-[10px] flex items-center gap-1 transition-colors"
+                    title="Execute >>#AI$, >>AI$, and >>#ai! lines in scratchpad"
+                  >
+                    <Play className="w-2.5 h-2.5 fill-current" />
+                    <span>Run &gt;&gt;#AI$</span>
+                  </button>
+                </div>
               </div>
 
               <div className="p-3 space-y-3">
@@ -1209,6 +1322,128 @@ export const SheetPage4FormulaStudio: React.FC<SheetPage4FormulaStudioProps> = (
                     {renderInterpolatedScratchpad(scratchpadText)}
                   </pre>
                 </div>
+              </div>
+            </div>
+
+            {/* Macaroni Suggestions (Synthesized from SRD Mathematical Breakdowns) */}
+            <div className={`border rounded-lg overflow-hidden ${cardBg}`}>
+              <div className={`px-4 py-2 border-b flex items-center justify-between gap-2 ${headerBg}`}>
+                <div className="flex items-center gap-2">
+                  <AppleEyeIcon className="w-4 h-4 text-emerald-400" />
+                  <span className="font-bold text-xs uppercase tracking-wider">
+                    Macaroni Suggestions (From SRD Math Breakdowns)
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleScanSotDocsForMacaroni}
+                  className="px-2 py-0.5 rounded bg-cyan-600 hover:bg-cyan-500 text-white font-mono font-bold text-[10px] flex items-center gap-1 transition-colors"
+                  title="Scan all loaded SOT SRD documents for mathematical ability calculations"
+                >
+                  <Sparkles className="w-2.5 h-2.5" />
+                  <span>Scan SRDs ({macaroniSuggestions.length})</span>
+                </button>
+              </div>
+
+              <div className="p-3 space-y-2.5 max-h-[420px] overflow-y-auto">
+                <p className="text-[11px] opacity-80 leading-relaxed">
+                  When an ability is added to a Source of Truth (SOT) SRD and describes a mathematical
+                  breakdown of its calculation, the AI synthesizes a ready-to-use Macaroni macro below
+                  to populate the DSL Studio or Scratchpad.
+                </p>
+
+                {macaroniSuggestions.length === 0 ? (
+                  <div className="p-3 rounded-lg border border-dashed border-slate-700 text-center text-xs font-mono opacity-70">
+                    No SRD mathematical breakdowns queued. Load an SRD in SOT Catalogue or click
+                    &quot;Scan SRDs&quot; above.
+                  </div>
+                ) : (
+                  macaroniSuggestions.map((sugg) => {
+                    const cleanKey = sugg.abilityName
+                      .toLowerCase()
+                      .replace(/[^a-z0-9]+/g, '_')
+                      .replace(/^_+|_+$/g, '');
+                    const alreadyInDsl = (character.customObjects || []).some(
+                      (o) => o.name.toLowerCase() === cleanKey
+                    );
+                    return (
+                      <div
+                        key={sugg.id}
+                        className="p-2.5 rounded-lg bg-black/15 dark:bg-black/40 border border-black/15 dark:border-white/10 space-y-1.5"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-bold text-xs text-amber-400">
+                                {sugg.abilityName}
+                              </span>
+                              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                                &#123;{cleanKey}&#125;
+                              </span>
+                              <span className="text-[10px] font-mono opacity-65">
+                                from {sugg.sourceDocTitle}
+                              </span>
+                            </div>
+                            <p className="text-[11px] italic opacity-80 mt-0.5">
+                              &ldquo;{sugg.mathBreakdownText}&rdquo;
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleDismissSuggestion(sugg.id)}
+                            className="p-1 text-slate-400 hover:text-rose-400"
+                            title="Dismiss suggestion"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+
+                        <div className="p-1.5 rounded bg-slate-950/90 border border-slate-800 font-mono text-[11px] text-emerald-300 break-all">
+                          {sugg.suggestedFormula}
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-end gap-1.5 pt-0.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTestExpression(sugg.suggestedFormula);
+                              setLastQuirkyNote(
+                                `Loaded "${sugg.abilityName}" formula into Live Macaroni Console!`
+                              );
+                            }}
+                            className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 font-mono text-[10px] font-bold"
+                          >
+                            Test in Console
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleInsertSuggestionToScratchpad(sugg)}
+                            className="px-2 py-0.5 rounded bg-amber-600/90 hover:bg-amber-500 text-slate-950 font-mono text-[10px] font-bold"
+                          >
+                            + To Scratchpad
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAddSuggestionToDslStudio(sugg)}
+                            className="px-2.5 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-mono text-[10px] font-bold flex items-center gap-1"
+                          >
+                            {alreadyInDsl ? (
+                              <>
+                                <Check className="w-3 h-3" />
+                                <span>Added to DSL Studio</span>
+                              </>
+                            ) : (
+                              <>
+                                <Plus className="w-3 h-3" />
+                                <span>Populate DSL Studio</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
           </div>

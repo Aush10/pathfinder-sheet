@@ -555,6 +555,15 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
               <Download className="w-3.5 h-3.5 text-cyan-400 group-hover:scale-110 transition-transform" />
               <span>Download Full Source Code (.zip)</span>
             </a>
+            <a
+              href="/sot-ai-complete-sheet.bundle"
+              download="sot-ai-complete-sheet.bundle"
+              className="py-1.5 px-2 rounded-lg bg-indigo-950/70 hover:bg-indigo-900 border border-indigo-500/50 hover:border-indigo-400 text-indigo-300 font-bold flex items-center justify-center gap-1.5 transition-colors col-span-2 shadow-xs group text-center"
+              title="Download verified Git bundle to pull directly into your local Git repository"
+            >
+              <Download className="w-3.5 h-3.5 text-indigo-400 group-hover:scale-110 transition-transform" />
+              <span>Download Git Bundle (.bundle)</span>
+            </a>
             <button
               onClick={onExportJSON}
               className="py-1 px-1.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-800 text-cyan-400 hover:text-cyan-300 flex items-center justify-center gap-1 transition-colors"

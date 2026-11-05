@@ -231,6 +231,29 @@ export function buildFormulaContext(
     }
   }
 
+  // Also register unified Action Directory resource pools (e.g. #SMITE, #LAY_ON_HANDS)
+  if (character.characterActions) {
+    for (const act of character.characterActions) {
+      if (act.hasResourcePool && typeof act.resourceCurrent === 'number') {
+        if (act.name) {
+          const cleanName = act.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+          context[cleanName] = act.resourceCurrent;
+          context[`#${cleanName}`] = act.resourceCurrent;
+          context[`@${cleanName}`] = act.resourceCurrent;
+          context[`{${cleanName}}`] = act.resourceCurrent;
+        }
+        if (act.macroKey) {
+          const cleanKey = act.macroKey.toLowerCase().replace(/[^a-z0-9]/g, '_');
+          context[cleanKey] = act.resourceCurrent;
+          context[act.macroKey] = act.resourceCurrent;
+          context[`#${cleanKey}`] = act.resourceCurrent;
+          context[`@${cleanKey}`] = act.resourceCurrent;
+          context[`{${cleanKey}}`] = act.resourceCurrent;
+        }
+      }
+    }
+  }
+
   return context;
 }
 

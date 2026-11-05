@@ -8,8 +8,11 @@ import {
   Check,
   Trash2,
   Maximize2,
+  Play,
+  Sparkles,
 } from 'lucide-react';
 import { PF1Character, RollupNotesData } from '../../types/character';
+import { executeScratchpadAIMacro, DEFAULT_AI_MODULE_SETTINGS } from '../../engine/aiService';
 
 interface NotesModuleProps {
   character: PF1Character;
@@ -25,6 +28,9 @@ export const NotesModule: React.FC<NotesModuleProps> = ({
   onUpdateCharacter,
 }) => {
   const [copied, setCopied] = useState(false);
+  const [aiStatusNote, setAiStatusNote] = useState<string | null>(null);
+  const aiSettings = character.installedModules?.aiSettings || DEFAULT_AI_MODULE_SETTINGS;
+  const isScratchpadAiAllowed = aiSettings.allowedModules?.scratchpad ?? true;
 
   const isParchment = theme === 'parchment';
   const isBlueprint = theme === 'blueprint';
@@ -98,6 +104,22 @@ export const NotesModule: React.FC<NotesModuleProps> = ({
     }
   };
 
+  const handleRunScratchpadMacros = async () => {
+    if (!isScratchpadAiAllowed) {
+      setAiStatusNote('Scratchpad AI is disabled in AI Listener -> Module Permissions.');
+      return;
+    }
+    const res = await executeScratchpadAIMacro(rollupNotes.content || '', character);
+    handleContentChange(res.updatedText);
+    setAiStatusNote(res.generatedReply || 'Executed scratchpad AI macro.');
+  };
+
+  const handleInsertBuildPrompt = () => {
+    const cur = rollupNotes.content || '';
+    const sep = cur && !cur.endsWith('\n') ? '\n' : '';
+    handleContentChange(`${cur}${sep}What should I make for this game>>#AI$`);
+  };
+
   const wordCount = rollupNotes.content.trim() ? rollupNotes.content.trim().split(/\s+/).length : 0;
   const lineCount = rollupNotes.content.split('\n').length;
 
@@ -141,18 +163,38 @@ export const NotesModule: React.FC<NotesModuleProps> = ({
       {!isRolledUp && (
         <div className="p-3 space-y-2">
           {/* Quick Actions Toolbar */}
-          <div className="flex items-center justify-between text-xs font-mono">
-            <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
+            <div className="flex flex-wrap items-center gap-1.5">
               <button
-                onClick={handleInsertTimestamp}
-                className="px-2 py-1 rounded border border-slate-700/60 hover:border-cyan-400 text-cyan-300 flex items-center gap-1 transition-colors text-[11px]"
+                type="button"
+                onClick={handleRunScratchpadMacros}
+                className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold flex items-center gap-1 transition-colors text-[11px] shadow-xs"
+                title="Execute macro-sensitive AI lines (>>#AI$, >>AI$, >>#ai!)"
               >
-                <Clock className="w-3 h-3 text-cyan-400" />
+                <Play className="w-3 h-3 fill-current" />
+                <span>Run</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleInsertBuildPrompt}
+                className="px-2 py-1 rounded border border-cyan-500/40 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 flex items-center gap-1 transition-colors text-[11px]"
+                title="Insert conversational build planning prompt"
+              >
+                <Sparkles className="w-3 h-3 text-cyan-500" />
+                <span>+&gt;&gt;#AI$</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleInsertTimestamp}
+                className="px-2 py-1 rounded border border-slate-700/60 hover:border-cyan-400 text-cyan-700 dark:text-cyan-300 flex items-center gap-1 transition-colors text-[11px]"
+              >
+                <Clock className="w-3 h-3 text-cyan-500" />
                 <span>Timestamp</span>
               </button>
               <button
+                type="button"
                 onClick={handleCopyNotes}
-                className="px-2 py-1 rounded border border-slate-700/60 hover:border-cyan-400 text-slate-300 flex items-center gap-1 transition-colors text-[11px]"
+                className="px-2 py-1 rounded border border-slate-700/60 hover:border-cyan-400 text-stone-700 dark:text-slate-300 flex items-center gap-1 transition-colors text-[11px]"
               >
                 {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
                 <span>{copied ? 'Copied!' : 'Copy'}</span>
@@ -160,19 +202,33 @@ export const NotesModule: React.FC<NotesModuleProps> = ({
             </div>
 
             <button
+              type="button"
               onClick={handleClearNotes}
-              className="px-2 py-1 rounded border border-slate-700/60 hover:border-rose-500 text-rose-400 flex items-center gap-1 transition-colors text-[11px]"
+              className="px-2 py-1 rounded border border-slate-700/60 hover:border-rose-500 text-rose-600 dark:text-rose-400 flex items-center gap-1 transition-colors text-[11px]"
             >
               <Trash2 className="w-3 h-3" />
               <span>Clear</span>
             </button>
           </div>
 
+          {aiStatusNote && (
+            <div className="px-2.5 py-1.5 rounded bg-cyan-950/15 dark:bg-cyan-950/60 border border-cyan-500/30 text-[11px] font-mono text-cyan-800 dark:text-cyan-200 flex items-center justify-between gap-2">
+              <span>{aiStatusNote}</span>
+              <button
+                type="button"
+                onClick={() => setAiStatusNote(null)}
+                className="text-[10px] opacity-60 hover:opacity-100"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           {/* Resizable Scratchpad Textarea */}
           <textarea
             value={rollupNotes.content}
             onChange={(e) => handleContentChange(e.target.value)}
-            placeholder="Type session logs, GM clues, monster notes, or equations here... This area auto-saves and can roll up into a single bar whenever needed."
+            placeholder="Type session logs, GM clues, or build planning macros (e.g. What should I make for this game>>#AI$, It's in my journal >>#AI$, Na something more human make a couple suggestions>>AI$, Backstory for flinn>>#ai!)..."
             rows={8}
             className={`w-full p-2.5 rounded-lg text-xs leading-relaxed resize-y min-h-[160px] font-mono ${inputStyle}`}
           />

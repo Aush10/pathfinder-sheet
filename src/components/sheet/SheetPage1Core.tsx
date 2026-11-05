@@ -28,6 +28,7 @@ import { evaluateFormula } from '../../engine/formula';
 import { BuffBoxModule } from './BuffBoxModule';
 import { QuickModularTools } from '../workspace/QuickModularTools';
 import { FieldCallTooltip } from '../common/FieldCallTooltip';
+import { IdentityLoadFields } from '../storage/IdentityLoadFields';
 
 interface SheetPage1CoreProps {
   character: PF1Character;
@@ -300,54 +301,23 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-          <div className="col-span-2">
-            <label className="block text-[11px] font-semibold uppercase tracking-wider opacity-75">
-              Character Name
-            </label>
-            <div className="flex items-center gap-2 mt-0.5">
-              <div
-                onClick={() =>
-                  onOpenImageBrowser?.({
-                    targetType: 'profile',
-                    currentUrl: character.profileData?.avatarUrl || character.characterBio?.portraits?.[0],
-                  })
-                }
-                className="w-8 h-8 rounded-lg overflow-hidden border border-black/20 dark:border-white/20 bg-black/40 flex items-center justify-center shrink-0 cursor-pointer relative group"
-                title="Click to browse profile picture"
-              >
-                {character.profileData?.avatarUrl || character.characterBio?.portraits?.[0] ? (
-                  <img
-                    src={character.profileData?.avatarUrl || character.characterBio?.portraits?.[0]}
-                    alt={character.name}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <User className="w-4 h-4 text-amber-500/70" />
-                )}
-                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-amber-300 transition-opacity">
-                  <Camera className="w-3 h-3" />
-                </div>
-              </div>
-              <input
-                type="text"
-                value={character.name}
-                onChange={(e) => setField('name', e.target.value)}
-                className={`flex-1 font-bold text-base px-2 py-1 rounded border ${inputStyle}`}
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-semibold uppercase tracking-wider opacity-75">
-              Player
-            </label>
-            <input
-              type="text"
-              value={character.player}
-              onChange={(e) => setField('player', e.target.value)}
-              className={`w-full text-xs px-2 py-1 rounded border ${inputStyle}`}
-            />
-          </div>
+          <IdentityLoadFields
+            character={character}
+            inputStyle={inputStyle}
+            onChangeName={(val) => setField('name', val)}
+            onChangePlayer={(val) => setField('player', val)}
+            onCharacterLoaded={(loaded) => onUpdateCharacter(() => loaded)}
+            onOpenImageBrowser={
+              onOpenImageBrowser
+                ? () =>
+                    onOpenImageBrowser({
+                      targetType: 'profile',
+                      currentUrl:
+                        character.profileData?.avatarUrl || character.characterBio?.portraits?.[0],
+                    })
+                : undefined
+            }
+          />
 
           <div>
             <label className="block text-[11px] font-semibold uppercase tracking-wider opacity-75">
@@ -1744,44 +1714,125 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
         </div>
       )}
 
-      {/* 6. Feats & Special Abilities */}
+      {/* 6. Feats & Special Abilities (Auto-generates odd-level feats + add/delete) */}
       {visibleModules.feats && (
         <div className={`border rounded-lg overflow-hidden ${cardBg}`}>
-          <div className={`px-4 py-2 border-b flex items-center justify-between ${headerBg}`}>
-            <span className="font-bold text-xs uppercase tracking-wider">Feats & Special Abilities</span>
-            <button
-              onClick={() => {
-                const item = prompt('Enter new feat or special ability:');
-                if (item?.trim()) setField('featsAndAbilities', [...character.featsAndAbilities, item.trim()]);
-              }}
-              className="px-2 py-0.5 rounded bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs flex items-center gap-1 transition-colors"
-            >
-              <Plus className="w-3 h-3" />
-              <span>Add Feat</span>
-            </button>
+          <div className={`px-4 py-2 border-b flex items-center justify-between flex-wrap gap-2 ${headerBg}`}>
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-xs uppercase tracking-wider">
+                Feats (Every Odd Level) &amp; Special Abilities
+              </span>
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                {(character.characterFeats || []).length} Feats
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  onUpdateCharacter((prev) => {
+                    const nextFeat = {
+                      id: `feat-${Date.now()}`,
+                      name: 'New Bonus Feat',
+                      type: 'General',
+                      prerequisites: 'None',
+                      summary: 'Custom or bonus feat...',
+                    };
+                    return {
+                      ...prev,
+                      characterFeats: [...(prev.characterFeats || []), nextFeat],
+                    };
+                  });
+                }}
+                className="px-2.5 py-0.5 rounded bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs flex items-center gap-1 transition-colors"
+              >
+                <Plus className="w-3 h-3" />
+                <span>+ Add Feat</span>
+              </button>
+            </div>
           </div>
-          <div className="p-3">
+          <div className="p-3 space-y-3">
+            {/* Structured Odd-Level & Bonus Feats */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-              {character.featsAndAbilities.map((feat, idx) => (
+              {(character.characterFeats || []).map((feat) => (
                 <div
-                  key={idx}
-                  className="p-2 rounded bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 flex items-center justify-between group"
+                  key={feat.id}
+                  className="p-2 rounded bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 flex items-center justify-between gap-2 group"
                 >
-                  <span className="font-medium">• {feat}</span>
+                  <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                    {feat.levelGranted ? (
+                      <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 shrink-0">
+                        Lvl {feat.levelGranted}
+                      </span>
+                    ) : (
+                      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 opacity-70 shrink-0">
+                        Bonus
+                      </span>
+                    )}
+                    <input
+                      type="text"
+                      value={feat.name}
+                      onChange={(e) => {
+                        const newName = e.target.value;
+                        onUpdateCharacter((prev) => ({
+                          ...prev,
+                          characterFeats: (prev.characterFeats || []).map((f) =>
+                            f.id === feat.id ? { ...f, name: newName } : f
+                          ),
+                        }));
+                      }}
+                      className={`w-full font-semibold text-xs px-1.5 py-0.5 rounded border border-transparent hover:border-black/20 dark:hover:border-white/20 focus:border-amber-500 bg-transparent`}
+                      title={feat.summary || 'Click to rename feat'}
+                    />
+                  </div>
                   <button
+                    type="button"
                     onClick={() =>
-                      setField(
-                        'featsAndAbilities',
-                        character.featsAndAbilities.filter((_, i) => i !== idx)
-                      )
+                      onUpdateCharacter((prev) => ({
+                        ...prev,
+                        characterFeats: (prev.characterFeats || []).filter((f) => f.id !== feat.id),
+                      }))
                     }
-                    className="opacity-0 group-hover:opacity-100 p-0.5 text-red-500 hover:bg-red-500/20 rounded transition-all"
+                    className="p-1 text-red-500 hover:bg-red-500/20 rounded transition-all shrink-0"
+                    title="Delete feat"
                   >
-                    <Trash2 className="w-3 h-3" />
+                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
               ))}
             </div>
+
+            {/* Class Features & Proficiencies List */}
+            {character.featsAndAbilities.length > 0 && (
+              <div className="pt-2 border-t border-black/10 dark:border-white/10">
+                <div className="text-[10px] font-mono uppercase opacity-65 mb-1.5">
+                  Class Features, Proficiencies &amp; Special Abilities
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5 text-xs">
+                  {character.featsAndAbilities.map((feat, idx) => (
+                    <div
+                      key={idx}
+                      className="px-2 py-1.5 rounded bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 flex items-center justify-between group"
+                    >
+                      <span className="font-medium truncate">• {feat}</span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setField(
+                            'featsAndAbilities',
+                            character.featsAndAbilities.filter((_, i) => i !== idx)
+                          )
+                        }
+                        className="opacity-60 group-hover:opacity-100 p-0.5 text-red-500 hover:bg-red-500/20 rounded transition-all shrink-0"
+                        title="Delete ability"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

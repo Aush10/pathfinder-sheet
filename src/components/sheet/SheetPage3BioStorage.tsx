@@ -21,6 +21,7 @@ import {
   Scale,
   Edit2,
   ExternalLink,
+  Play,
 } from 'lucide-react';
 import {
   PF1Character,
@@ -33,6 +34,7 @@ import {
 import { DerivedCombatStats } from '../../engine/pf1eMath';
 import { StorageInventoryModule } from './StorageInventoryModule';
 import { ImageFileBrowserModal } from '../tools/ImageFileBrowserModal';
+import { executeScratchpadAIMacro, DEFAULT_AI_MODULE_SETTINGS } from '../../engine/aiService';
 
 interface SheetPage3BioStorageProps {
   character: PF1Character;
@@ -119,6 +121,21 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
 
   const updateBio = (updates: Partial<CharacterBioData>) => {
     setField('characterBio', { ...bioData, ...updates });
+  };
+
+  const [scratchpadFeedback, setScratchpadFeedback] = useState<string | null>(null);
+  const aiSettings = character.installedModules?.aiSettings || DEFAULT_AI_MODULE_SETTINGS;
+  const isScratchpadAiAllowed = aiSettings.allowedModules?.scratchpad ?? true;
+
+  const handleRunBioScratchpad = async () => {
+    if (!isScratchpadAiAllowed) {
+      setScratchpadFeedback('Enable Scratchpad AI in AI Listener -> Module Permissions first.');
+      return;
+    }
+    const currentText = bioData.scratchpad || '';
+    const res = await executeScratchpadAIMacro(currentText, character);
+    updateBio({ scratchpad: res.updatedText });
+    setScratchpadFeedback(res.generatedReply || 'Executed scratchpad AI macro.');
   };
 
   // Portrait navigation
@@ -221,23 +238,61 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
       {/* TOP ROW: Scratchpad, Bio Sections, Core Descriptors & Portrait (Image 2) */}
       {/* ========================================================================= */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-stretch">
-        {/* BOX 1 (md:col-span-3): Scratchpad with Pen/Notebook Icon */}
+        {/* BOX 1 (md:col-span-3): Macro-Sensitive Build & Memo Scratchpad */}
         <div className={`md:col-span-3 rounded-xl border p-3 flex flex-col ${cardBg}`}>
-          <div className="flex items-center justify-between pb-2 mb-2 border-b border-black/10 dark:border-white/10">
-            <div className="flex items-center gap-2">
-              <FileText className="w-4 h-4 text-amber-500" />
-              <span className="font-serif font-bold text-xs uppercase tracking-wider text-amber-300">
+          <div className="flex items-center justify-between gap-1 pb-2 mb-1.5 border-b border-black/10 dark:border-white/10">
+            <div className="flex items-center gap-1.5">
+              <FileText className="w-4 h-4 text-amber-500 shrink-0" />
+              <span className="font-serif font-bold text-xs uppercase tracking-wider text-amber-600 dark:text-amber-300">
                 Scratchpad
               </span>
             </div>
-            <span className="text-[10px] font-mono opacity-50">Auto-saved</span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  const cur = bioData.scratchpad || '';
+                  const sep = cur && !cur.endsWith('\n') ? '\n' : '';
+                  updateBio({ scratchpad: `${cur}${sep}What should I make for this game>>#AI$` });
+                }}
+                className="px-1.5 py-0.5 rounded bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/40 text-cyan-700 dark:text-cyan-300 font-mono text-[9px] font-bold transition-colors"
+                title="Insert conversational build planning prompt"
+              >
+                +&gt;&gt;#AI$
+              </button>
+              <button
+                type="button"
+                onClick={handleRunBioScratchpad}
+                className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-mono font-bold text-[10px] flex items-center gap-1 transition-colors shadow-xs"
+                title="Run macro-sensitive AI lines (>>#AI$, >>AI$, >>#ai!)"
+              >
+                <Play className="w-2.5 h-2.5 fill-current" />
+                <span>Run</span>
+              </button>
+            </div>
+          </div>
+          <div className="text-[9px] font-mono opacity-65 mb-1.5 flex items-center justify-between">
+            <span>Syntax: prompt&gt;&gt;#AI$ | &gt;&gt;AI$ | &gt;&gt;#ai!</span>
+            <span>Auto-saved</span>
           </div>
           <textarea
             value={bioData.scratchpad || ''}
             onChange={(e) => updateBio({ scratchpad: e.target.value })}
-            placeholder="Quick notes, watch order, temporary loot, GM clues, initiative scratch..."
+            placeholder={`Build planner & memo scratchpad:\nWhat should I make for this game>>#AI$\nIt's in my journal >>#AI$\nNa something more human make a couple suggestions>>AI$\nBackstory for flinn>>#ai!`}
             className={`w-full flex-1 min-h-[140px] p-2 rounded-lg border font-mono text-xs resize-none leading-relaxed ${inputStyle}`}
           />
+          {scratchpadFeedback && (
+            <div className="mt-1.5 px-2 py-1 rounded bg-cyan-950/20 dark:bg-cyan-950/60 border border-cyan-500/30 text-[10px] font-mono text-cyan-800 dark:text-cyan-200 flex items-center justify-between gap-1">
+              <span className="truncate">{scratchpadFeedback}</span>
+              <button
+                type="button"
+                onClick={() => setScratchpadFeedback(null)}
+                className="text-[9px] opacity-60 hover:opacity-100 shrink-0"
+              >
+                ✕
+              </button>
+            </div>
+          )}
         </div>
 
         {/* BOX 2 (md:col-span-4): Bio Info, Background, Appearance, Goals (+Add Section) */}

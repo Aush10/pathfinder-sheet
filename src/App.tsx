@@ -36,7 +36,7 @@ import {
 } from 'lucide-react';
 
 import { PF1Character, WorkspaceLayout, AbilityName } from './types/character';
-import { DEFAULT_CHARACTER, createBlankCharacter } from './data/defaultCharacter';
+import { DEFAULT_CHARACTER, createBlankCharacter, syncOddLevelFeats } from './data/defaultCharacter';
 import { computeDerivedCharacterStats } from './engine/pf1eMath';
 import { DiceRollOutcome } from './engine/formula';
 
@@ -62,14 +62,30 @@ import { NewSheetModal } from './components/tools/NewSheetModal';
 import { ImageFileBrowserModal } from './components/tools/ImageFileBrowserModal';
 import { JournalModal } from './components/tools/JournalModal';
 import { AICompanionModal } from './components/tools/AICompanionModal';
+import { CompleteSheetChatWindow } from './components/tools/CompleteSheetChatWindow';
+import { AppleEyeIcon } from './components/common/AppleEyeIcon';
 import { FloatingAlertCard } from './components/common/FloatingAlertCard';
 import { InteractiveQueryModal } from './components/common/InteractiveQueryModal';
 import { FloatingAlertPayload, MacaroniQueryRequest } from './engine/macaroni';
+import { useStorage } from './storage/StorageContext';
+import { useAutosave } from './storage/useAutosave';
+import { SaveButton } from './components/storage/SaveButton';
+import { CrashRecoveryBanner } from './components/storage/CrashRecoveryBanner';
+import { PrintSheet } from './components/sheet/PrintSheet';
 
 const LOCAL_STORAGE_KEY = 'pf1e_character_data_v1';
 const LOCAL_STORAGE_LAYOUT_KEY = 'pf1e_workspace_layout_v1';
 
-export default function App() {
+export interface AppProps {
+  readOnly?: boolean;
+}
+
+export default function App({ readOnly: propReadOnly }: AppProps = {}) {
+  const storage = useStorage();
+  const isReadOnlyMode =
+    Boolean(propReadOnly) ||
+    (typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('readonly') === '1');
   // Initialize character state from injected window object, localStorage, or default
   const [character, setCharacter] = useState<PF1Character>(() => {
     try {
@@ -231,8 +247,33 @@ export default function App() {
   const [isCMBtOpen, setIsCMBtOpen] = useState(false);
   const [isJournalOpen, setIsJournalOpen] = useState(false);
   const [isAIToolOpen, setIsAIToolOpen] = useState(false);
-  const [aiToolInitialTab, setAiToolInitialTab] = useState<'macro' | 'journal' | 'sketch' | 'fields' | 'settings'>('macro');
+  const [isCompleteSheetOpen, setIsCompleteSheetOpen] = useState(false);
+  const [aiToolInitialTab, setAiToolInitialTab] = useState<string>('permissions');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isPrintViewOpen, setIsPrintViewOpen] = useState(false);
+  const [showCrashRecoveredBanner, setShowCrashRecoveredBanner] = useState(false);
+
+  // Debounced Crash Autosave (~1 second after character changes)
+  const autosaveState = useAutosave(character, !isReadOnlyMode);
+
+  // On startup, check loadCrash() and use it as initial sheet if present
+  useEffect(() => {
+    let mounted = true;
+    storage
+      .loadCrash()
+      .then((res) => {
+        if (mounted && res.ok && res.character?.character) {
+          setCharacter(res.character.character);
+          setShowCrashRecoveredBanner(true);
+        }
+      })
+      .catch(() => {
+        // ignore startup crash check errors
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [storage]);
 
   // New Sheet & Image File Browser state
   const [isNewSheetOpen, setIsNewSheetOpen] = useState(false);
@@ -274,6 +315,11 @@ export default function App() {
       window.removeEventListener('macaroni:query', handleQuery);
     };
   }, []);
+
+  // Automatically generate a new Feat entry for every odd level (1, 3, 5, 7...) reached
+  useEffect(() => {
+    setCharacter((prev) => syncOddLevelFeats(prev));
+  }, [character.level]);
 
   // Sync to localStorage
   useEffect(() => {
@@ -318,7 +364,7 @@ export default function App() {
   }, []);
 
   const handleOpenJournal = () => setIsJournalOpen(true);
-  const handleOpenAITool = (tab: 'macro' | 'journal' | 'sketch' | 'fields' | 'settings' = 'macro') => {
+  const handleOpenAITool = (tab: string = 'permissions') => {
     setAiToolInitialTab(tab);
     setIsAIToolOpen(true);
   };
@@ -330,12 +376,35 @@ export default function App() {
         aiCompanion: true,
       },
     }));
-    setAiToolInitialTab('macro');
+    setAiToolInitialTab('permissions');
     setIsAIToolOpen(true);
   };
 
   // Compute all derived stats automatically
   const derived = computeDerivedCharacterStats(character);
+
+  // Read-only snapshot mode (?readonly=1 or readOnly prop): render PrintSheet-style view with all editing disabled and no save UI
+  if (isReadOnlyMode) {
+    return (
+      <PrintSheet
+        character={character}
+        derived={derived}
+        isReadOnlySnapshot={true}
+      />
+    );
+  }
+
+  // Dedicated Print View mode (replaces single-page clipped print behavior)
+  if (isPrintViewOpen) {
+    return (
+      <PrintSheet
+        character={character}
+        derived={derived}
+        isReadOnlySnapshot={false}
+        onExitPrintView={() => setIsPrintViewOpen(false)}
+      />
+    );
+  }
 
   // Trigger a dice roll with a preset formula
   const handleRollFormula = (formula: string, label?: string) => {
@@ -591,15 +660,15 @@ export default function App() {
   // Determine background style of workspace canvas
   const getCanvasBgClass = () => {
     switch (layout.theme) {
-      case 'parchment':
-        return 'bg-[#f4efe4] text-[#1c1917]'; // Authentic warm parchment tan
       case 'blueprint':
         return 'bg-[#08121f] text-cyan-50 bg-[radial-gradient(#1e3a5f_1px,transparent_1px)] [background-size:24px_24px]'; // Blueprint grid
       case 'mythweavers':
         return 'bg-[#0d0f12] text-slate-100'; // Dark Myth-Weavers
       case 'print':
+        return 'bg-[#faf7f0] text-stone-900 print:bg-white print:text-black';
+      case 'parchment':
       default:
-        return 'bg-white text-black';
+        return 'bg-[#f4efe4] text-[#1c1917]'; // Authentic warm parchment tan
     }
   };
 
@@ -775,14 +844,29 @@ export default function App() {
 
           {/* AI Companion Quick Tool Button (shown if module installed) */}
           {character.installedModules?.aiCompanion && (
-            <button
-              onClick={() => handleOpenAITool('macro')}
-              className="px-2.5 py-1.5 rounded-lg bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/50 text-cyan-300 text-xs font-mono flex items-center gap-1.5 transition-colors shadow-xs"
-              title="Open AI Companion (DSL Macros, Voice Journal & Sketches)"
-            >
-              <Cpu className="w-3.5 h-3.5 text-cyan-400" />
-              <span className="hidden sm:inline">AI Tool</span>
-            </button>
+            <>
+              <button
+                onClick={() => setIsCompleteSheetOpen((prev) => !prev)}
+                className={`px-2.5 py-1.5 rounded-lg border text-xs font-mono flex items-center gap-1.5 transition-colors shadow-xs ${
+                  isCompleteSheetOpen
+                    ? 'bg-cyan-600 border-cyan-300 text-white shadow-cyan-500/20'
+                    : 'bg-gradient-to-r from-emerald-950/80 to-cyan-950/80 hover:from-emerald-900 hover:to-cyan-900 border-emerald-500/50 text-emerald-300'
+                }`}
+                title="Toggle AI Complete Sheet (Conversational Build from Concept mini-window)"
+              >
+                <AppleEyeIcon className="w-3.5 h-3.5 text-cyan-300" />
+                <span className="hidden sm:inline">Complete Sheet</span>
+              </button>
+
+              <button
+                onClick={() => handleOpenAITool('permissions')}
+                className="px-2.5 py-1.5 rounded-lg bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/50 text-cyan-300 text-xs font-mono flex items-center gap-1.5 transition-colors shadow-xs"
+                title="Open AI Companion Listener Settings & Module Permissions"
+              >
+                <Cpu className="w-3.5 h-3.5 text-cyan-400" />
+                <span className="hidden sm:inline">AI Tool</span>
+              </button>
+            </>
           )}
 
           {/* Standalone HTML Export Button */}
@@ -796,18 +880,38 @@ export default function App() {
             <span className="hidden xl:inline">{isExportingHTML ? 'Packaging...' : 'Export HTML'}</span>
           </button>
 
+          {/* Print / Download PDF View Button */}
           <button
-            onClick={() => window.print()}
-            className="p-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold transition-colors"
-            title="Print / PDF Export"
+            onClick={() => setIsPrintViewOpen(true)}
+            className="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-slate-950 text-xs font-mono font-bold flex items-center gap-1.5 transition-colors"
+            title="Open 3-Section Print View & Download PDF"
           >
             <Printer className="w-4 h-4" />
+            <span className="hidden xl:inline">Download PDF</span>
           </button>
+
+          {/* Save CD/Disc Button + Connection Status Dot + Connect Folder + Crash Autosave Label */}
+          <SaveButton
+            character={character}
+            autosaveState={autosaveState}
+            onCharacterLoaded={(loaded) => setCharacter(loaded)}
+          />
         </div>
       </header>
 
+      {/* Startup Crash Recovery Banner */}
+      <CrashRecoveryBanner
+        visible={showCrashRecoveredBanner}
+        onDismiss={() => setShowCrashRecoveredBanner(false)}
+      />
+
+      {/* Hidden PrintSheet rendered automatically if user triggers native Ctrl+P from workspace */}
+      <div className="hidden print:block">
+        <PrintSheet character={character} derived={derived} isReadOnlySnapshot={true} />
+      </div>
+
       {/* Main Workspace Body */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="no-print print:hidden flex-1 flex overflow-hidden">
         {/* Left Modular Blueprint Sidebar (Matches user's wireframe) */}
         {!isSidebarCollapsed && (
           <BlueprintSidebar
@@ -826,7 +930,7 @@ export default function App() {
             onOpenAddClass={() => setIsAddClassOpen(true)}
             onOpenCMBt={() => setIsCMBtOpen(true)}
             onOpenJournal={handleOpenJournal}
-            onOpenAITool={() => handleOpenAITool('macro')}
+            onOpenAITool={() => handleOpenAITool('permissions')}
             onInstallAITool={handleInstallAITool}
             onOpenNewSheet={() => setIsNewSheetOpen(true)}
             onOpenImageBrowser={() =>
@@ -841,7 +945,7 @@ export default function App() {
             onExportJSON={handleExportJSON}
             onImportJSON={handleImportJSON}
             onExportCSV={handleExportCSV}
-            onPrint={() => window.print()}
+            onPrint={() => setIsPrintViewOpen(true)}
           />
         )}
 
@@ -1068,7 +1172,10 @@ export default function App() {
         character={character}
         onUpdateCharacter={setCharacter}
         onExportCSV={handleExportCSV}
-        onPrint={() => window.print()}
+        onPrint={() => {
+          setIsLoadoutOpen(false);
+          setIsPrintViewOpen(true);
+        }}
         theme={layout.theme}
       />
 
@@ -1078,6 +1185,7 @@ export default function App() {
         onClose={() => setIsAddClassOpen(false)}
         character={character}
         onUpdateCharacter={setCharacter}
+        onOpenAITool={(tab) => handleOpenAITool(tab || 'permissions')}
         theme={layout.theme}
       />
 
@@ -1125,7 +1233,7 @@ export default function App() {
         onClose={() => setIsJournalOpen(false)}
         character={character}
         onUpdateCharacter={(updater) => setCharacter((prev) => updater(prev))}
-        onOpenAITool={(tab) => handleOpenAITool(tab || 'journal')}
+        onOpenAITool={(tab) => handleOpenAITool(tab || 'journal_settings')}
         theme={layout.theme}
       />
 
@@ -1136,10 +1244,24 @@ export default function App() {
         character={character}
         onUpdateCharacter={(updater) => setCharacter((prev) => updater(prev))}
         onOpenJournal={() => setIsJournalOpen(true)}
+        onOpenAddClass={() => setIsAddClassOpen(true)}
+        onOpenBuffBox={() => setIsBuffBoxOpen(true)}
+        onOpenStepper={() => setIsStepperOpen(true)}
         onNavigateToDSLPage={() => {
           setLayout((prev) => ({ ...prev, activeSheet: 4, showAllSheets: false }));
         }}
-        initialTab={aiToolInitialTab}
+        onOpenCompleteSheet={() => setIsCompleteSheetOpen(true)}
+        initialTab={aiToolInitialTab as any}
+        theme={layout.theme}
+      />
+
+      {/* Floating Draggable AI Complete Sheet Mini-Window */}
+      <CompleteSheetChatWindow
+        isOpen={isCompleteSheetOpen}
+        onClose={() => setIsCompleteSheetOpen(false)}
+        character={character}
+        onUpdateCharacter={(updater) => setCharacter((prev) => updater(prev))}
+        onOpenSOTCatalogue={() => handleOpenAITool('lookup_sot')}
         theme={layout.theme}
       />
 

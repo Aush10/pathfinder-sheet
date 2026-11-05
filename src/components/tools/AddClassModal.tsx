@@ -36,12 +36,25 @@ import {
   VMC_SCHEDULES,
   CalculatedCareerResult,
 } from '../../engine/multiclassCalculator';
+import {
+  parseSrdSkillsAndProficiencies,
+  adaptArchetypeIntoGrid,
+  DEFAULT_AI_MODULE_SETTINGS,
+  DEFAULT_SOT_CATALOGUE,
+  getSessionApiKey,
+} from '../../engine/aiService';
+import {
+  extractClassFromSrdDoc,
+  loadAllHostDeviceSrdDocs,
+} from '../../engine/sotEngine';
+import { AppleEyeIcon } from '../common/AppleEyeIcon';
 
 interface AddClassModalProps {
   isOpen: boolean;
   onClose: () => void;
   character: PF1Character;
   onUpdateCharacter: (updater: (prev: PF1Character) => PF1Character) => void;
+  onOpenAITool?: (initialTab?: string) => void;
   theme: string;
 }
 
@@ -182,9 +195,40 @@ export const AddClassModal: React.FC<AddClassModalProps> = ({
   onClose,
   character,
   onUpdateCharacter,
+  onOpenAITool,
   theme,
 }) => {
   const [modalTab, setModalTab] = useState<'grids' | 'career' | 'variants'>('career');
+
+  // Check if AI Listener is active for Add Class
+  const aiSettings = character.installedModules?.aiSettings || DEFAULT_AI_MODULE_SETTINGS;
+  const isAIAddClassActive = aiSettings.allowedModules?.addClass !== false;
+
+  // Archetype Description Adapter & SRD Language Parser state
+  const [archetypeDescriptionInput, setArchetypeDescriptionInput] = useState('');
+  const [isAdaptingArchetype, setIsAdaptingArchetype] = useState(false);
+  const [srdFilterNotice, setSrdFilterNotice] = useState<string | null>(null);
+
+  // Loaded SOT SRD Documents (merges character SOT docs + host device SRDs)
+  const sotDocs = useMemo(() => {
+    const baseDocs =
+      character.sotCatalogue?.overridePages || DEFAULT_SOT_CATALOGUE.overridePages || [];
+    const hostDocs = loadAllHostDeviceSrdDocs();
+    const combined = [...baseDocs];
+    for (const h of hostDocs) {
+      if (!combined.some((b) => b.id === h.id)) {
+        combined.push(h);
+      }
+    }
+    return combined;
+  }, [character.sotCatalogue?.overridePages]);
+
+  const [selectedSrdDocId, setSelectedSrdDocId] = useState<string>(() => {
+    const docs =
+      character.sotCatalogue?.overridePages || DEFAULT_SOT_CATALOGUE.overridePages || [];
+    const fullClassDoc = docs.find((d) => d.category === 'Full Class SRD') || docs[0];
+    return fullClassDoc?.id || '';
+  });
 
   // Existing class grids or defaults
   const classGrids = character.customClassGrids || {
@@ -384,31 +428,198 @@ export const AddClassModal: React.FC<AddClassModalProps> = ({
     );
   };
 
+  // Smart AI SRD Language Recognizer for Skills & Proficiencies
+  const handleRecognizeSrdSkillsAndProfs = () => {
+    const combinedText = `${currentClass.proficiencies || ''}\n${currentClass.classSkillsText || ''}`;
+    const parsed = parseSrdSkillsAndProficiencies(combinedText);
+
+    const updates: Partial<CustomClassGrid> = {};
+    if (parsed.cleanedSkillsList.length > 0) {
+      updates.classSkillsText = parsed.cleanedSkillsText;
+    }
+    if (parsed.cleanedProficiencies) {
+      updates.proficiencies = parsed.cleanedProficiencies;
+    }
+    if (parsed.detectedHitDie) {
+      updates.hitDie = parsed.detectedHitDie;
+    }
+    if (parsed.detectedSkillRanksPerLevel) {
+      updates.skillPointsPerLevel = parsed.detectedSkillRanksPerLevel;
+    }
+
+    updateCurrentClass(updates);
+    setSrdFilterNotice(
+      `AI Language Recognition recognized ${parsed.cleanedSkillsList.length} canonical PF1e class skill(s)${
+        parsed.detectedSkillRanksPerLevel ? `, ${parsed.detectedSkillRanksPerLevel} + INT skill ranks` : ''
+      }${parsed.detectedHitDie ? `, d${parsed.detectedHitDie} Hit Die` : ''}, and stripped non-field SRD rules text.`
+    );
+  };
+
+  // Populate Class Fields from a Loaded SOT SRD Document (Browser Page Dump)
+  const handlePopulateClassFromSotSrd = (docIdOverride?: string) => {
+    if (!isAIAddClassActive) {
+      setSrdFilterNotice(
+        'Blocked by AI Blind Spot: Enable "Add Class & Archetype Studio" in AI Listener -> Module Permissions first.'
+      );
+      return;
+    }
+
+    // Find matching SRD doc either by selected ID or by matching className in SOT docs
+    const nameQuery = currentClass.className.trim().toLowerCase();
+    const targetDoc =
+      (docIdOverride && sotDocs.find((d) => d.id === docIdOverride)) ||
+      (nameQuery &&
+        nameQuery !== 'new class' &&
+        sotDocs.find(
+          (d) =>
+            d.title.toLowerCase().includes(nameQuery) ||
+            (d.tags || []).some((t) => t.toLowerCase().includes(nameQuery)) ||
+            d.plainText.toLowerCase().includes(`class skills`) &&
+              d.plainText.toLowerCase().includes(nameQuery)
+        )) ||
+      sotDocs.find((d) => d.id === selectedSrdDocId) ||
+      sotDocs[0];
+
+    if (!targetDoc) {
+      setSrdFilterNotice('No SRD documents found in SOT Catalogue. Load an SRD doc first.');
+      return;
+    }
+
+    const extracted = extractClassFromSrdDoc(targetDoc, currentClass.className);
+    const parsedRows =
+      extracted.rows.length > 0
+        ? extracted.rows
+        : extracted.rawGridText
+        ? parseClassProgressionGrid(extracted.rawGridText)
+        : currentClass.rows;
+
+    onUpdateCharacter((prev) => {
+      const existingGrids = prev.customClassGrids || classGrids;
+      const updatedClass: CustomClassGrid = {
+        ...currentClass,
+        className: extracted.className || currentClass.className,
+        hitDie: extracted.hitDie || currentClass.hitDie,
+        skillPointsPerLevel: extracted.skillPointsPerLevel || currentClass.skillPointsPerLevel,
+        proficiencies: extracted.proficiencies || currentClass.proficiencies,
+        classSkillsText: extracted.classSkillsText || currentClass.classSkillsText,
+        rawText: extracted.rawGridText || currentClass.rawText,
+        rows: parsedRows,
+      };
+
+      const currentSot = prev.sotCatalogue || DEFAULT_SOT_CATALOGUE;
+      const existingSuggs = currentSot.macaroniSuggestions || [];
+      const mergedSuggs = [...existingSuggs];
+      for (const s of extracted.macaroniSuggestions) {
+        if (!mergedSuggs.some((m) => m.abilityName.toLowerCase() === s.abilityName.toLowerCase())) {
+          mergedSuggs.unshift(s);
+        }
+      }
+
+      return {
+        ...prev,
+        customClassGrids: {
+          ...existingGrids,
+          [activeClassId]: updatedClass,
+        },
+        sotCatalogue: {
+          ...currentSot,
+          macaroniSuggestions: mergedSuggs,
+        },
+      };
+    });
+
+    setSuccessMessage(
+      `Populated "${extracted.className}" from SOT SRD "${targetDoc.title}" (d${extracted.hitDie} HD, ${extracted.skillPointsPerLevel} + INT skill ranks, ${parsedRows.length} progression rows, and ${extracted.macaroniSuggestions.length} Macaroni math suggestion(s) sent to DSL Studio)!`
+    );
+  };
+
+  // Adapt Archetype Description into Progression Grid
+  const handleAdaptArchetypeDescription = async () => {
+    if (!archetypeDescriptionInput.trim()) return;
+    setIsAdaptingArchetype(true);
+    try {
+      const result = await adaptArchetypeIntoGrid(
+        archetypeDescriptionInput,
+        currentClass.className,
+        currentClass.rows,
+        getSessionApiKey()
+      );
+
+      // Update current class progression grid rows & rawText with adapted features
+      const updatedRaw = result.adaptedRows
+        .map(
+          (r) =>
+            `${r.level}\t${r.babString || `+${r.bab}`}\t+${r.fort}\t+${r.ref}\t+${r.will}\t${r.special}`
+        )
+        .join('\n');
+
+      updateCurrentClass({
+        rows: result.adaptedRows,
+        rawText: updatedRaw,
+      });
+
+      // Also register or update in careerData.archetypes
+      const newArch: ArchetypeConfig = {
+        id: `arch-ai-${Date.now()}`,
+        name: result.archetypeName,
+        targetClassId: currentClass.id,
+        targetClassName: currentClass.className,
+        lostFeatures: result.lostFeatures,
+        levelAbilities: result.levelAbilities,
+        isActive: true,
+      };
+      updateCareerData({
+        archetypes: [...(careerData.archetypes || []), newArch],
+      });
+
+      setSuccessMessage(result.summary);
+      setArchetypeDescriptionInput('');
+    } finally {
+      setIsAdaptingArchetype(false);
+    }
+  };
+
   // Add Kit: Apply class stat block, proficiencies, multi-HD expansion, INT into skills, and class skills unlock
   const handleAddKit = () => {
+    // If AI language recognition is active, automatically filter out non-field rules chatter from skills & proficiencies
+    const autoParsed = isAIAddClassActive
+      ? parseSrdSkillsAndProficiencies(
+          `${currentClass.proficiencies || ''}\n${currentClass.classSkillsText || ''}`
+        )
+      : null;
+
+    const effectiveProfs =
+      autoParsed && autoParsed.cleanedProficiencies
+        ? autoParsed.cleanedProficiencies
+        : currentClass.proficiencies;
+
+    const effectiveSkillsRaw =
+      autoParsed && autoParsed.cleanedSkillsList.length > 0
+        ? autoParsed.cleanedSkillsText
+        : currentClass.classSkillsText || '';
+
     onUpdateCharacter((prev) => {
       // 1. Proficiencies -> Feats and Abilities
       const updatedFeats = [...prev.featsAndAbilities];
-      if (currentClass.proficiencies && currentClass.proficiencies.trim()) {
-        const profTitle = `[${currentClass.className} Proficiencies] ${currentClass.proficiencies.trim()}`;
+      if (effectiveProfs && effectiveProfs.trim()) {
+        const profTitle = `[${currentClass.className} Proficiencies] ${effectiveProfs.trim()}`;
         if (!updatedFeats.some((f) => f.toLowerCase().includes(currentClass.className.toLowerCase() + ' proficiencies'))) {
           updatedFeats.push(profTitle);
         }
       }
 
       // 2. Class Skills -> Mark isClassSkill = true for all matching skills
-      const rawSkills = currentClass.classSkillsText || '';
+      const rawSkills = effectiveSkillsRaw;
       const skillTokens = rawSkills
         .split(/[,\n;]+/)
-        .map((s) => s.trim().toLowerCase())
-        .filter(Boolean);
+        .map((s) => s.replace(/\([a-zA-Z]+\)/g, '').trim().toLowerCase())
+        .filter((s) => s.length >= 3);
 
       let newlyUnlockedCount = 0;
       const updatedSkills = prev.skills.map((sk) => {
         const sName = sk.name.toLowerCase();
         const matches = skillTokens.some((tok) => {
-          if (tok.length <= 2) return sName === tok;
-          return sName === tok || sName.startsWith(tok) || sName.includes(tok) || tok.includes(sName);
+          return sName === tok || sName.startsWith(tok) || tok === sName.replace(/\s*\([^)]+\)/, '');
         });
         if (matches) {
           if (!sk.isClassSkill) newlyUnlockedCount++;
@@ -868,72 +1079,191 @@ export const AddClassModal: React.FC<AddClassModalProps> = ({
               </button>
             </div>
 
-            {/* Left: Class Identity & Grid Paste */}
+            {/* Left: Class Identity, SOT SRD Class Populator, SRD Grid Paste & AI Archetype Adapter */}
             <div className="md:col-span-7 space-y-3">
-              <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-2">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[10px] font-mono text-slate-400 uppercase">Class Name</label>
-                    <input
-                      type="text"
-                      value={currentClass.className}
-                      onChange={(e) => updateCurrentClass({ className: e.target.value })}
-                      className="w-full px-2.5 py-1.5 rounded bg-slate-900 border border-slate-700 text-xs text-white focus:border-cyan-400 font-semibold"
-                    />
+              {/* Populate Class from Loaded SOT SRDs Bar */}
+              <div className="p-3 rounded-lg bg-emerald-950/30 border border-emerald-500/40 space-y-2">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-1.5 text-xs font-mono font-bold text-emerald-300">
+                    <AppleEyeIcon className="w-4 h-4 text-emerald-400" />
+                    <span>Build Character Class from Loaded SOT SRD Docs</span>
                   </div>
-                  <div>
-                    <label className="text-[10px] font-mono text-slate-400 uppercase">Starter Template</label>
-                    <div className="flex gap-1">
+                  {onOpenAITool && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenAITool('lookup_sot')}
+                      className="text-[10px] font-mono text-cyan-300 hover:underline flex items-center gap-1"
+                    >
+                      <span>Open SOT Catalogue ({sotDocs.length} SRDs)</span>
+                      <ArrowRight className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  Select a read-only SRD document (such as a full copied browser class page) or type a
+                  Class Name below and press the Apple-Eye button to automatically extract Hit Die,
+                  Skill Ranks, Proficiencies, Class Skills, 1–20 Progression Grid, and DSL Macaroni Suggestions.
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={selectedSrdDocId}
+                    onChange={(e) => setSelectedSrdDocId(e.target.value)}
+                    className="flex-1 min-w-[200px] px-2.5 py-1.5 rounded bg-slate-950 border border-emerald-500/40 text-xs font-mono text-emerald-200"
+                  >
+                    {sotDocs.map((doc) => (
+                      <option key={doc.id} value={doc.id}>
+                        [{doc.category}] {doc.title}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => handlePopulateClassFromSotSrd(selectedSrdDocId)}
+                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-mono font-bold text-xs flex items-center gap-1.5 shadow-sm"
+                    title="Parse selected SOT SRD doc and populate Class Name, Hit Die, Skills, Proficiencies, and 1-20 Grid"
+                  >
+                    <AppleEyeIcon className="w-4 h-4" />
+                    <span>Populate Class from SOT SRD</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex-1">
+                    <label className="text-[10px] font-mono text-slate-400 uppercase block mb-0.5">
+                      Class Name (Or Seek in Loaded SOT SRDs via Apple-Eye)
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        value={currentClass.className}
+                        onChange={(e) => updateCurrentClass({ className: e.target.value })}
+                        placeholder="e.g. Slayer, Bard, Warpriest, Investigator, Barbarian..."
+                        className="flex-1 px-2.5 py-1.5 rounded bg-slate-900 border border-slate-700 text-xs text-white focus:border-cyan-400 font-semibold"
+                      />
                       <button
-                        onClick={() => handleRawTextChange(CAVALIER_DEFAULT_RAW)}
-                        className="px-2 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[10px] font-mono text-cyan-300"
+                        type="button"
+                        onClick={() => handlePopulateClassFromSotSrd()}
+                        className="px-2.5 py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-slate-950 font-mono font-bold text-xs flex items-center gap-1 shrink-0"
+                        title="Seek this Class Name across loaded SOT SRD documents and populate fields"
                       >
-                        Cavalier
-                      </button>
-                      <button
-                        onClick={() => handleRawTextChange(WIZARD_DEFAULT_RAW)}
-                        className="px-2 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[10px] font-mono text-purple-300"
-                      >
-                        Wizard
+                        <AppleEyeIcon className="w-4 h-4" />
+                        <span>AI Seek SRD</span>
                       </button>
                     </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span
+                      className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono font-bold border ${
+                        isAIAddClassActive
+                          ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
+                          : 'bg-slate-900 border-slate-700 text-slate-400'
+                      }`}
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      <span>{isAIAddClassActive ? 'AI SRD Recognition Active' : 'AI Recognition Off'}</span>
+                    </span>
                   </div>
                 </div>
 
                 <div>
                   <label className="text-[10px] font-mono text-cyan-300 uppercase font-bold">
-                    Paste Progression Grid (Level | BAB | Fort | Ref | Will | Special):
+                    Paste SRD Progression Grid (Level | BAB | Fort | Ref | Will | Special):
                   </label>
                   <textarea
                     value={currentClass.rawText}
                     onChange={(e) => handleRawTextChange(e.target.value)}
                     rows={8}
+                    placeholder="Copy and paste a 1-20 progression table directly from d20pfsrd or Archives of Nethys..."
                     className="w-full p-2.5 rounded-lg bg-slate-900 border border-slate-700 text-cyan-100 font-mono text-xs focus:border-cyan-400 resize-y leading-relaxed"
                   />
                   <div className="text-[11px] font-mono text-slate-500 flex items-center justify-between">
                     <span>{currentClass.rows.length} valid progression rows parsed</span>
+                    <button
+                      onClick={() => handleRawTextChange('')}
+                      className="text-[10px] text-slate-400 hover:text-rose-400"
+                    >
+                      Clear Grid
+                    </button>
                   </div>
                 </div>
+
+                {/* AI Archetype Grid Adapter (Active when AI is enabled for Add Class) */}
+                {isAIAddClassActive && (
+                  <div className="p-2.5 rounded-lg bg-cyan-950/30 border border-cyan-500/40 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-mono font-bold text-cyan-300 flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>AI Archetype Grid Adapter (Describe or Paste Archetype)</span>
+                      </span>
+                      <span className="text-[10px] font-mono text-cyan-400/80">
+                        Swaps features directly in grid
+                      </span>
+                    </div>
+                    <textarea
+                      rows={2}
+                      value={archetypeDescriptionInput}
+                      onChange={(e) => setArchetypeDescriptionInput(e.target.value)}
+                      placeholder="Describe the archetype or paste SRD text (e.g. 'Bard Fencer / Arcane Duelist: Replaces bardic knowledge and versatile performance with Arcane Strike at 1st, Combat Casting at 2nd, Bladethirst at 6th')..."
+                      className="w-full p-2 rounded bg-slate-950 border border-cyan-500/30 text-xs text-slate-100 font-mono focus:border-cyan-400 resize-none"
+                    />
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-mono text-slate-400">
+                        Automatically removes replaced features &amp; inserts archetype powers at each level
+                      </span>
+                      <button
+                        onClick={handleAdaptArchetypeDescription}
+                        disabled={isAdaptingArchetype || !archetypeDescriptionInput.trim()}
+                        className="px-3 py-1 rounded bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-slate-950 font-mono font-bold text-xs flex items-center gap-1 transition-colors shrink-0"
+                      >
+                        <Zap className="w-3 h-3" />
+                        <span>{isAdaptingArchetype ? 'Adapting...' : 'Adapt Archetype into Grid'}</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Right: Get Kit Section (Class Stat Block) */}
+            {/* Right: Get Kit Section (Class Stat Block with Smart SRD Recognition) */}
             <div className="md:col-span-5 space-y-3">
               <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-1.5 font-bold text-xs font-mono text-amber-300">
                     <Package className="w-4 h-4 text-amber-400" />
                     <span>Class Kit Stat Block</span>
                   </div>
-                  <button
-                    onClick={handleAddKit}
-                    className="px-3 py-1 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 font-mono font-bold text-xs flex items-center gap-1 shadow-sm"
-                    title="Add kit stat block to character: expands multiclass HD/HP, proficiencies, and marks class skills"
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                    <span>Add Kit</span>
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    {isAIAddClassActive && (
+                      <button
+                        onClick={handleRecognizeSrdSkillsAndProfs}
+                        className="px-2.5 py-1 rounded bg-cyan-950 hover:bg-cyan-900 border border-cyan-500/50 text-cyan-300 font-mono font-bold text-[11px] flex items-center gap-1 transition-colors"
+                        title="Filter out non-field SRD sentences, ability tags like (Dex), and auto-detect skills & proficiencies"
+                      >
+                        <Sparkles className="w-3 h-3 text-cyan-400" />
+                        <span>AI Clean SRD Text</span>
+                      </button>
+                    )}
+                    <button
+                      onClick={handleAddKit}
+                      className="px-3 py-1 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 font-mono font-bold text-xs flex items-center gap-1 shadow-sm"
+                      title="Add kit stat block to character: expands multiclass HD/HP, proficiencies, and marks class skills"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Add Kit</span>
+                    </button>
+                  </div>
                 </div>
+
+                {srdFilterNotice && (
+                  <div className="p-2 rounded bg-cyan-950/70 border border-cyan-500/40 text-cyan-200 text-[11px] font-mono flex items-center justify-between gap-2">
+                    <span>{srdFilterNotice}</span>
+                    <button onClick={() => setSrdFilterNotice(null)} className="text-cyan-400 hover:text-white">
+                      ✕
+                    </button>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div>
@@ -965,31 +1295,40 @@ export const AddClassModal: React.FC<AddClassModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-mono text-slate-400">Proficiencies</label>
+                  <div className="flex items-center justify-between mb-0.5">
+                    <label className="text-[10px] font-mono text-slate-400">Proficiencies</label>
+                    {isAIAddClassActive && (
+                      <span className="text-[9px] text-emerald-400 font-mono">
+                        Ignores non-proficiency SRD prose
+                      </span>
+                    )}
+                  </div>
                   <textarea
                     rows={2}
                     value={currentClass.proficiencies}
                     onChange={(e) => updateCurrentClass({ proficiencies: e.target.value })}
                     className="w-full px-2 py-1.5 rounded bg-slate-900 border border-slate-700 text-xs text-slate-200 focus:border-cyan-400 font-mono"
-                    placeholder="Armor, weapon, and shield proficiencies..."
+                    placeholder="Paste full SRD Weapon and Armor Proficiency paragraph..."
                   />
                 </div>
 
                 {/* Class Skills Copy-Paste Textarea */}
                 <div>
                   <div className="flex items-center justify-between mb-0.5">
-                    <label className="text-[10px] font-mono text-slate-400">Class Skills (copy-paste list)</label>
-                    <span className="text-[9px] text-slate-500 font-mono">Comma or newline separated</span>
+                    <label className="text-[10px] font-mono text-slate-400">Class Skills (copy-paste SRD block)</label>
+                    <span className="text-[9px] text-emerald-400 font-mono">
+                      {isAIAddClassActive ? 'Recognizes skills from messy SRD text' : 'Comma or newline separated'}
+                    </span>
                   </div>
                   <textarea
                     rows={3}
                     value={currentClass.classSkillsText || ''}
                     onChange={(e) => updateCurrentClass({ classSkillsText: e.target.value })}
-                    placeholder="e.g. Climb, Craft, Handle Animal, Intimidate, Ride, Survival, Swim..."
+                    placeholder="Paste raw SRD text e.g. 'The bard's class skills are Acrobatics (Dex), Bluff (Cha), Climb (Str)... Skill Ranks per Level: 6 + Int modifier.'"
                     className="w-full px-2 py-1.5 rounded bg-slate-900 border border-slate-700 text-xs text-slate-200 focus:border-cyan-400 font-mono"
                   />
                   <div className="text-[10px] text-slate-400 pt-0.5">
-                    Clicking &ldquo;Add Kit&rdquo; registers proficiencies into feats/abilities, expands Hit Dice/HP, and marks these as class skills.
+                    Clicking &ldquo;Add Kit&rdquo; automatically filters out non-skill words, registers proficiencies, expands Hit Dice/HP, and marks class skills.
                   </div>
                 </div>
               </div>

@@ -208,8 +208,25 @@ export interface ResourceTracker {
 export interface CharacterActionItem {
   id: string;
   name: string;
-  category: 'Spells' | 'SLA' | 'Class Ability' | 'Feats' | 'Racial' | 'Combat' | 'Other';
-  actionType?: 'Standard' | 'Move' | 'Swift' | 'Immediate' | 'Free' | 'Full-Round' | '1 Round';
+  category:
+    | 'Spells'
+    | 'SLA'
+    | 'Class Ability'
+    | 'Class Resource'
+    | 'Resource Pool'
+    | 'Feats'
+    | 'Racial'
+    | 'Combat'
+    | 'Other';
+  actionType?:
+    | 'Standard'
+    | 'Move'
+    | 'Swift'
+    | 'Immediate'
+    | 'Free'
+    | 'Full-Round'
+    | '1 Round'
+    | 'Passive / Pool';
   macroFormula?: string; // e.g. "2d6+CHA"
   macroKey?: string;
   icon?: string;
@@ -220,15 +237,22 @@ export interface CharacterActionItem {
   range?: string;
   target?: string;
   duration?: string;
+  // Unified Class Resource & Pool tracking inside Action Directory
+  hasResourcePool?: boolean;
+  resourceCurrent?: number;
+  resourceMax?: number;
+  linkedResourceId?: string;
 }
 
 export interface FeatItem {
   id: string;
   name: string;
-  type?: string; // General, Combat, Metamagic, Racial, Item Creation
+  type?: string; // General, Combat, Metamagic, Racial, Item Creation, Bonus
   prerequisites?: string;
   summary: string;
   description?: string;
+  levelGranted?: number; // Odd character level (1, 3, 5, 7, 9, 11, 13, 15, 17, 19) or bonus level
+  isOddLevelSlot?: boolean;
 }
 
 export interface DowntimeCapital {
@@ -665,6 +689,7 @@ export interface PF1Character {
   resourceTrackers?: ResourceTracker[];
   characterActions?: CharacterActionItem[];
   characterFeats?: FeatItem[];
+  generatedOddFeatLevels?: number[];
 
   // Bio, Storage, Downtime Capital & Companions (Image 2)
   downtimeCapital?: DowntimeCapital;
@@ -693,6 +718,84 @@ export interface PF1Character {
 
   // Macaroni UI Make Presets (<11"message">)
   uiMakePresets?: UiMakePreset[];
+
+  // Source of Truth (SOT) Catalogue (Weblinks & Rich-Text Override Pages)
+  sotCatalogue?: SOTCatalogueData;
+}
+
+export type SOTCategory =
+  | 'Full Class SRD'
+  | 'Feat'
+  | 'Class Ability'
+  | 'Spell'
+  | 'Power'
+  | 'Archetype'
+  | 'General Rule';
+
+export interface SOTIncidentalLink {
+  url: string;
+  label: string;
+  isWebhookOrSuspicious?: boolean;
+  promotedToSOT?: boolean;
+}
+
+export interface SOTSecurityAudit {
+  isReadOnly: true;
+  strippedScriptsCount: number;
+  strippedWebhooksCount: number;
+  strippedCodeSnipsCount: number;
+  incidentalLinksCount: number;
+  sanitizedAt: number;
+}
+
+export interface SOTMacaroniSuggestion {
+  id: string;
+  sourceDocId?: string;
+  sourceDocTitle: string;
+  abilityName: string;
+  mathBreakdownText: string;
+  suggestedFormula: string;
+  category: MacaroniCategory;
+  explanation: string;
+  createdAt: number;
+}
+
+export interface SOTWeblinkItem {
+  id: string;
+  title: string;
+  url: string;
+  category: SOTCategory;
+  notes?: string;
+  isActive: boolean;
+  createdAt: number;
+  readOnlySnapshot?: {
+    fetchedAt: number;
+    haltedSinglePageOnly: true;
+    sanitizedText: string;
+    incidentalLinks: SOTIncidentalLink[];
+    securityAudit: SOTSecurityAudit;
+  };
+}
+
+export interface SOTRichTextPage {
+  id: string;
+  title: string;
+  category: SOTCategory;
+  htmlContent: string;
+  plainText: string;
+  isOverride: boolean;
+  isReadOnly?: boolean;
+  tags: string[];
+  updatedAt: number;
+  incidentalLinks?: SOTIncidentalLink[];
+  securityAudit?: SOTSecurityAudit;
+  hostSavedKey?: string;
+}
+
+export interface SOTCatalogueData {
+  weblinks: SOTWeblinkItem[];
+  overridePages: SOTRichTextPage[];
+  macaroniSuggestions?: SOTMacaroniSuggestion[];
 }
 
 export type SketchDetailQuality = 'crude' | 'passible' | 'tasteful' | 'astounding';
@@ -732,8 +835,41 @@ export interface AIModuleSettings {
     notes: boolean;
     journal: boolean;
     customFormulas: boolean;
+    // Expanded broader sheet authority & blind spot controls
+    coreIdentity?: boolean;
+    abilities?: boolean;
+    armorClass?: boolean;
+    saves?: boolean;
+    attacksAndWeapons?: boolean;
+    armorAndGear?: boolean;
+    actionsAndResources?: boolean;
+    feats?: boolean;
+    skills?: boolean;
+    spellsAndMagic?: boolean;
+    companionsAndMount?: boolean;
+    bioAndProfile?: boolean;
+  };
+  allowedModules?: {
+    stepper: boolean;
+    buffBox: boolean;
+    dslStudio: boolean;
+    addClass: boolean;
+    journalVoice: boolean;
+    journalSketch: boolean;
+    scratchpad: boolean;
+    // Additional tools that can be added to AI Blind Spots
+    sotCatalogue?: boolean;
+    deckTool?: boolean;
+    xdxTool?: boolean;
+    cmbTool?: boolean;
+    pointBuy?: boolean;
+    loadoutTool?: boolean;
+    imageBrowser?: boolean;
   };
   preferredVoice?: string;
+  voiceSampleText?: string;
+  artStylePrompt?: string;
+  defaultSketchQuality?: SketchDetailQuality;
 }
 
 export interface StepperRule {

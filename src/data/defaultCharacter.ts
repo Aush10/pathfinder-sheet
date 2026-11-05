@@ -909,21 +909,73 @@ export const DEFAULT_CHARACTER: PF1Character = {
     },
   ],
 
-  // Action Directory (Image 1)
+  // Action & Class Resource Directory (Unified Module)
   characterActions: [
     {
       id: 'act-smite',
       name: 'Smite Evil!',
-      category: 'Class Ability',
+      category: 'Class Resource',
       actionType: 'Swift',
       macroFormula: '2d6+CHA',
-      macroKey: 'SMITE_EVIL',
+      macroKey: 'SMITE',
       icon: 'sparkles',
       description: 'Adds CHA mod (+4) to attack rolls and level (+12) to damage against evil targets. On the first successful hit against evil dragons, undead, or fiends, damage increases to 2 per level (+24). Bypasses DR and grants +4 deflection AC vs target.',
       shortSummary: 'Swift action. +4 attack, +12 dmg, bypass DR',
-      usesPerDay: '1/3 used',
+      usesPerDay: '1/3 remaining',
       range: 'Line of sight',
       target: 'One evil creature',
+      hasResourcePool: true,
+      resourceCurrent: 1,
+      resourceMax: 3,
+      linkedResourceId: 'res-smite',
+    },
+    {
+      id: 'act-challenge',
+      name: "Cavalier's Challenge",
+      category: 'Class Resource',
+      actionType: 'Swift',
+      macroFormula: '1d20+12',
+      macroKey: 'CHALLENGE',
+      icon: 'crosshair',
+      description: 'Issue a formal combat challenge to a single foe in sight. Melee attacks deal +12 damage to the target, but you suffer a -2 AC penalty against all other attacks.',
+      shortSummary: '+12 damage to challenged target, -2 AC to others',
+      usesPerDay: '2/4 remaining',
+      hasResourcePool: true,
+      resourceCurrent: 2,
+      resourceMax: 4,
+      linkedResourceId: 'res-challenge',
+    },
+    {
+      id: 'act-lay-hands',
+      name: 'Lay on Hands / Healing',
+      category: 'Resource Pool',
+      actionType: 'Swift',
+      macroFormula: '6d6',
+      macroKey: 'LAY_ON_HANDS',
+      icon: 'sparkles',
+      description: 'Heals 6d6 hit points as a standard action when touching an ally, or as a swift action when healing yourself.',
+      shortSummary: 'Heals 6d6 HP (Swift on self, Standard on ally)',
+      usesPerDay: '4/6 remaining',
+      range: 'Touch',
+      hasResourcePool: true,
+      resourceCurrent: 4,
+      resourceMax: 6,
+      linkedResourceId: 'res-lay-hands',
+    },
+    {
+      id: 'act-spells-1',
+      name: '1st-Level Spell Slots',
+      category: 'Spells',
+      actionType: 'Standard',
+      macroKey: 'SPELL_SLOT_1',
+      icon: 'book',
+      description: 'Paladin / Cleric 1st-circle daily spell slots pool. Spend a slot when casting a 1st-level prepared or spontaneous spell.',
+      shortSummary: 'Daily 1st-circle spell pool',
+      usesPerDay: '3/3 remaining',
+      hasResourcePool: true,
+      resourceCurrent: 3,
+      resourceMax: 3,
+      linkedResourceId: 'res-spells-1',
     },
     {
       id: 'act-breath',
@@ -937,6 +989,9 @@ export const DEFAULT_CHARACTER: PF1Character = {
       shortSummary: '30-ft cone, 2d6+5 fire, Reflex DC 17 half',
       saveDC: 'DC 17 Reflex',
       range: '30 ft cone',
+      hasResourcePool: true,
+      resourceCurrent: 1,
+      resourceMax: 1,
     },
     {
       id: 'act-power-atk',
@@ -962,28 +1017,18 @@ export const DEFAULT_CHARACTER: PF1Character = {
       duration: '120 min',
       range: 'Touch',
     },
-    {
-      id: 'act-challenge',
-      name: "Cavalier's Challenge",
-      category: 'Class Ability',
-      actionType: 'Swift',
-      macroFormula: '1d20+12',
-      macroKey: 'CHALLENGE',
-      icon: 'crosshair',
-      description: 'Issue a formal combat challenge to a single foe in sight. Melee attacks deal +12 damage to the target, but you suffer a -2 AC penalty against all other attacks.',
-      shortSummary: '+12 damage to challenged target, -2 AC to others',
-    },
   ],
 
-  // Character Feats List (Image 1)
+  // Character Feats List (Auto-generated for every odd level: 1, 3, 5, 7, 9, 11 at Level 12)
   characterFeats: [
-    { id: 'feat-1', name: 'Power Attack', type: 'Combat', prerequisites: 'Str 13, BAB +1', summary: 'Trade melee attack bonus for extra damage (-3 to hit / +9 damage two-handed).' },
-    { id: 'feat-2', name: 'Furious Focus', type: 'Combat', prerequisites: 'Str 13, Power Attack, BAB +1', summary: 'No penalty on first melee attack when two-handing with Power Attack.' },
-    { id: 'feat-3', name: 'Weapon Focus (Greataxe)', type: 'Combat', prerequisites: 'Proficiency with weapon, BAB +1', summary: '+1 bonus on all attack rolls with greataxe.' },
-    { id: 'feat-4', name: 'Toughness', type: 'General', prerequisites: 'None', summary: '+3 hit points, +1 per Hit Die beyond 3rd (+12 HP total).' },
-    { id: 'feat-5', name: 'Iron Will', type: 'General', prerequisites: 'None', summary: '+2 bonus on all Will saving throws.' },
-    { id: 'feat-6', name: 'Combat Reflexes', type: 'Combat', prerequisites: 'None', summary: 'Make additional attacks of opportunity equal to Dex bonus (+3 AoOs/round).' },
+    { id: 'feat-1', name: 'Power Attack', type: 'Combat', prerequisites: 'Str 13, BAB +1', summary: 'Trade melee attack bonus for extra damage (-3 to hit / +9 damage two-handed).', levelGranted: 1, isOddLevelSlot: true },
+    { id: 'feat-2', name: 'Furious Focus', type: 'Combat', prerequisites: 'Str 13, Power Attack, BAB +1', summary: 'No penalty on first melee attack when two-handing with Power Attack.', levelGranted: 3, isOddLevelSlot: true },
+    { id: 'feat-3', name: 'Weapon Focus (Greataxe)', type: 'Combat', prerequisites: 'Proficiency with weapon, BAB +1', summary: '+1 bonus on all attack rolls with greataxe.', levelGranted: 5, isOddLevelSlot: true },
+    { id: 'feat-4', name: 'Toughness', type: 'General', prerequisites: 'None', summary: '+3 hit points, +1 per Hit Die beyond 3rd (+12 HP total).', levelGranted: 7, isOddLevelSlot: true },
+    { id: 'feat-5', name: 'Iron Will', type: 'General', prerequisites: 'None', summary: '+2 bonus on all Will saving throws.', levelGranted: 9, isOddLevelSlot: true },
+    { id: 'feat-6', name: 'Combat Reflexes', type: 'Combat', prerequisites: 'None', summary: 'Make additional attacks of opportunity equal to Dex bonus (+3 AoOs/round).', levelGranted: 11, isOddLevelSlot: true },
   ],
+  generatedOddFeatLevels: [1, 3, 5, 7, 9, 11],
 
   // Downtime Capital & Wealth (Image 2)
   downtimeCapital: {
@@ -1272,8 +1317,25 @@ export function createBlankCharacter(): PF1Character {
       },
     ],
     featsAndAbilities: ['Power Attack', 'Weapon Focus (Longsword)'],
-    skills: INITIAL_SKILLS.map((s) => ({ ...s, ranks: 0, miscMod: 0 })),
-    favoredClassSkillRanks: 1,
+    characterFeats: [
+      {
+        id: 'feat-odd-1',
+        name: 'Power Attack',
+        type: 'Combat',
+        prerequisites: 'Str 13, BAB +1',
+        summary: 'Trade melee attack bonus for extra damage.',
+        levelGranted: 1,
+        isOddLevelSlot: true,
+      },
+    ],
+    generatedOddFeatLevels: [1],
+    skills: INITIAL_SKILLS.map((s) => ({
+      ...s,
+      isClassSkill: false,
+      ranks: 0,
+      miscMod: 0,
+    })),
+    favoredClassSkillRanks: 0,
     inventory: [
       {
         id: `inv-${Date.now()}-1`,
@@ -1404,9 +1466,9 @@ export function createBlankCharacter(): PF1Character {
     activeStorageTab: 'worn',
     journal: [],
     installedModules: {
-      aiCompanion: false,
+      aiCompanion: true,
       aiSettings: {
-        isInstalled: false,
+        isInstalled: true,
         allowedFields: {
           hp: true,
           conditions: true,
@@ -1415,6 +1477,34 @@ export function createBlankCharacter(): PF1Character {
           notes: true,
           journal: true,
           customFormulas: true,
+          coreIdentity: true,
+          abilities: true,
+          armorClass: true,
+          saves: true,
+          attacksAndWeapons: true,
+          armorAndGear: true,
+          actionsAndResources: true,
+          feats: true,
+          skills: true,
+          spellsAndMagic: true,
+          companionsAndMount: true,
+          bioAndProfile: true,
+        },
+        allowedModules: {
+          stepper: true,
+          buffBox: true,
+          dslStudio: true,
+          addClass: true,
+          journalVoice: true,
+          journalSketch: true,
+          scratchpad: true,
+          sotCatalogue: true,
+          deckTool: true,
+          xdxTool: true,
+          cmbTool: true,
+          pointBuy: true,
+          loadoutTool: true,
+          imageBrowser: true,
         },
         preferredVoice: 'Terse, serious, no-nonsense, short sentences, gruff veteran',
       },
@@ -1434,5 +1524,90 @@ export function createBlankCharacter(): PF1Character {
 }
 
 export const BLANK_CHARACTER = createBlankCharacter();
+
+/**
+ * Automatically generates a Feat entry for every odd character level (1, 3, 5, 7, ..., <= character.level)
+ * that has not yet been generated. Leaves user additions and deletions intact unless forceRestoreMissing is true.
+ */
+export function syncOddLevelFeats(
+  char: PF1Character,
+  forceRestoreMissing: boolean = false
+): PF1Character {
+  const targetLevel = Math.max(1, Math.min(20, char.level || 1));
+  const oddLevelsUpToCurrent: number[] = [];
+  for (let lvl = 1; lvl <= targetLevel; lvl += 2) {
+    oddLevelsUpToCurrent.push(lvl);
+  }
+
+  let existingFeats = [...(char.characterFeats || [])];
+  let trackedOddLevels = Array.isArray(char.generatedOddFeatLevels)
+    ? [...char.generatedOddFeatLevels]
+    : [];
+
+  // Backward compatibility: if existing feats have no levelGranted and trackedOddLevels is empty,
+  // tag existing feats sequentially with odd levels 1, 3, 5...
+  if (trackedOddLevels.length === 0 && existingFeats.length > 0) {
+    existingFeats = existingFeats.map((feat, idx) => {
+      const oddLvl = idx * 2 + 1;
+      if (!feat.levelGranted && oddLvl <= 19) {
+        trackedOddLevels.push(oddLvl);
+        return { ...feat, levelGranted: oddLvl, isOddLevelSlot: true };
+      }
+      if (feat.levelGranted && feat.levelGranted % 2 === 1) {
+        trackedOddLevels.push(feat.levelGranted);
+      }
+      return feat;
+    });
+  }
+
+  let changed = false;
+  const updatedFeats = [...existingFeats];
+  const updatedTracked = new Set<number>(trackedOddLevels);
+
+  for (const oddLvl of oddLevelsUpToCurrent) {
+    const alreadyHasFeatAtLevel = updatedFeats.some((f) => f.levelGranted === oddLvl);
+    const wasAlreadyGenerated = updatedTracked.has(oddLvl);
+
+    if (!alreadyHasFeatAtLevel && (!wasAlreadyGenerated || forceRestoreMissing)) {
+      updatedFeats.push({
+        id: `feat-odd-lvl-${oddLvl}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        name: `Level ${oddLvl} Feat (Select Feat)`,
+        type: 'General',
+        prerequisites: `Character Level ${oddLvl}`,
+        summary: `Odd-level progression feat gained at Level ${oddLvl}. Click Edit to customize or Delete to remove.`,
+        levelGranted: oddLvl,
+        isOddLevelSlot: true,
+      });
+      updatedTracked.add(oddLvl);
+      changed = true;
+    } else if (alreadyHasFeatAtLevel && !wasAlreadyGenerated) {
+      updatedTracked.add(oddLvl);
+      changed = true;
+    }
+  }
+
+  if (!changed && char.generatedOddFeatLevels) {
+    return char;
+  }
+
+  // Also keep legacy featsAndAbilities string list in sync for newly generated odd-level slots
+  const updatedFeatsAndAbilities = [...(char.featsAndAbilities || [])];
+  updatedFeats.forEach((f) => {
+    if (
+      f.name &&
+      !updatedFeatsAndAbilities.some((s) => s.toLowerCase() === f.name.toLowerCase())
+    ) {
+      updatedFeatsAndAbilities.push(f.name);
+    }
+  });
+
+  return {
+    ...char,
+    characterFeats: updatedFeats,
+    generatedOddFeatLevels: Array.from(updatedTracked).sort((a, b) => a - b),
+    featsAndAbilities: updatedFeatsAndAbilities,
+  };
+}
+
 
 
