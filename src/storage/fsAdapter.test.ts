@@ -246,6 +246,20 @@ test('creates the requested fake-handle tree, sanitizes names, round-trips data,
   assert.equal(saved.player, 'Alice');
   assert.equal(saved.name, 'Hero');
 
+  const active = await adapter.getActiveCharacter();
+  assert.equal(active.ok, true);
+  if (active.ok) {
+    assert.equal(active.activeCharacter?.player, 'Alice');
+    assert.equal(active.activeCharacter?.name, 'Hero');
+    assert.equal(active.activeCharacter?.characterId, saved.characterId);
+  }
+
+  for (const reserved of ['backups', 'settings', 'dsl']) {
+    const rejected = await adapter.saveCharacter('Alice', sampleCharacter(reserved, 'Alice'));
+    assert.equal(rejected.ok, false, `${reserved} must be reserved`);
+    if (!rejected.ok) assert.equal(rejected.error.code, 'RESERVED_NAME');
+  }
+
   for (const path of [
     ['AIgamesheet', 'pfmusers', 'Crash'],
     ['AIgamesheet', 'pfmusers', 'Alice', 'settings'],
@@ -323,6 +337,20 @@ test('creates the requested fake-handle tree, sanitizes names, round-trips data,
   const crash = await adapter.loadCrash();
   assert.equal(crash.ok, true);
   if (crash.ok) assert.equal(crash.character?.character.name, 'Crash recovery');
+  const activeAfterCrash = await adapter.getActiveCharacter();
+  assert.equal(activeAfterCrash.ok, true);
+  if (activeAfterCrash.ok) assert.equal(activeAfterCrash.activeCharacter?.name, 'Hero');
+
+  const dismissed = await adapter.dismissCrash();
+  assert.equal(dismissed.ok, true);
+  const crashAfterDismiss = await adapter.loadCrash();
+  assert.equal(crashAfterDismiss.ok, true);
+  if (crashAfterDismiss.ok) assert.equal(crashAfterDismiss.character, null);
+  const crashBackups = await memoryDirectory(root, 'AIgamesheet', 'pfmusers', 'Crash', 'backups');
+  assert.ok(
+    [...crashBackups.children.keys()].some((name) => name.startsWith('character.json.') && name.endsWith('.bak')),
+    'dismissing crash recovery must archive character.json',
+  );
 
   characterFile.content = '{ definitely not JSON';
   const corrupted = await adapter.loadCharacter('Alice', 'Hero');

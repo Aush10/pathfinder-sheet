@@ -4,7 +4,6 @@ import {
   Type,
   LayoutGrid,
   Calculator,
-  Dices,
   Heart,
   Shield,
   Code,
@@ -30,13 +29,15 @@ import {
   Cpu,
 } from 'lucide-react';
 import { ThemeMode, SheetFont, WorkspaceLayout, PF1Character } from '../../types/character';
+import { GLYPH_STYLE_OPTIONS, getGlyphUrl, type GlyphStyle } from '../../data/glyphs';
+import { AppleEyeIcon } from '../common/AppleEyeIcon';
 
 interface BlueprintSidebarProps {
   layout: WorkspaceLayout;
   onUpdateLayout: (updates: Partial<WorkspaceLayout>) => void;
   character: PF1Character;
   onOpenPointBuy: () => void;
-  onOpenDiceRoller: () => void;
+  onOpenDiceRoller?: () => void;
   onOpenQuickHP: () => void;
   onOpenBuffBox: () => void;
   onOpenConditions: () => void;
@@ -48,6 +49,7 @@ interface BlueprintSidebarProps {
   onOpenCMBt: () => void;
   onOpenJournal?: () => void;
   onOpenAITool?: () => void;
+  onOpenCompleteSheet?: () => void;
   onInstallAITool?: () => void;
   onOpenNewSheet?: () => void;
   onOpenImageBrowser?: () => void;
@@ -75,6 +77,7 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
   onOpenCMBt,
   onOpenJournal,
   onOpenAITool,
+  onOpenCompleteSheet,
   onInstallAITool,
   onOpenNewSheet,
   onOpenImageBrowser,
@@ -84,6 +87,7 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
   onExportCSV,
   onPrint,
 }) => {
+  const activeGlyphStyle: GlyphStyle = layout.glyphStyle ?? '01-flat-enamel';
   const toggleModule = (key: keyof WorkspaceLayout['visibleModules']) => {
     onUpdateLayout({
       visibleModules: {
@@ -216,6 +220,39 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
             ))}
           </div>
         </div>
+
+        {/* Bundled Icon Style Selector */}
+        <div className="space-y-1.5 mt-3 pt-3 border-t border-slate-800">
+          <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
+            <span className="flex items-center gap-1.5">
+              <ImageIcon className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Bundled Icon Style:</span>
+            </span>
+            <span className="w-5 h-5 rounded overflow-hidden bg-slate-900 border border-slate-700 flex items-center justify-center">
+              {getGlyphUrl('blue-sword', activeGlyphStyle) ? (
+                <img
+                  src={getGlyphUrl('blue-sword', activeGlyphStyle) || undefined}
+                  alt=""
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span className="text-[9px] text-slate-500">—</span>
+              )}
+            </span>
+          </div>
+          <select
+            value={activeGlyphStyle}
+            onChange={(event) => onUpdateLayout({ glyphStyle: event.target.value as GlyphStyle })}
+            className="w-full px-2 py-1.5 rounded bg-slate-950 border border-slate-800 text-slate-200 text-xs font-mono focus:outline-none focus:border-cyan-500/60"
+            title="Choose the locally bundled icon family used by new visual selections"
+          >
+            {GLYPH_STYLE_OPTIONS.map((style) => (
+              <option key={style.id} value={style.id}>
+                {style.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Sheet Page Navigation Tabs */}
@@ -226,23 +263,25 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
             onClick={() => onUpdateLayout({ showAllSheets: !layout.showAllSheets })}
             className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
               layout.showAllSheets
-                ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400'
+                ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400 font-bold'
                 : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
             }`}
+            title="Toggle between viewing all 3 main pages combined or a single selected page"
           >
             {layout.showAllSheets ? 'All 3 Pages' : 'Single Page'}
           </button>
         </div>
         <div className="grid grid-cols-4 gap-1">
           {[
-            { id: 1, label: '1. Core' },
-            { id: 2, label: '2. Actions' },
-            { id: 3, label: '3. Bio/Gear' },
-            { id: 4, label: '4. DSL' },
+            { id: 1, label: '1. Core', full: 'Page 1: Core Combat & Attributes' },
+            { id: 2, label: '2. Actions', full: 'Page 2: Actions & Skills' },
+            { id: 3, label: '3. Bio/Gear', full: 'Page 3: Bio, Storage & Downtime' },
+            { id: 4, label: '4. DSL', full: 'Page 4: Custom Formula Studio (DSL)' },
           ].map((p) => (
             <button
               key={p.id}
               onClick={() => onUpdateLayout({ activeSheet: p.id as 1 | 2 | 3 | 4, showAllSheets: false })}
+              title={p.full}
               className={`py-1.5 px-1 rounded text-xs font-mono text-center border transition-all ${
                 layout.activeSheet === p.id && !layout.showAllSheets
                   ? 'bg-cyan-500/20 text-cyan-200 border-cyan-400 font-bold'
@@ -362,27 +401,20 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
           </button>
 
           <button
-            onClick={onOpenDiceRoller}
-            className="p-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-amber-500/50 text-left transition-colors flex items-center gap-2"
-          >
-            <Dices className="w-4 h-4 text-amber-400 shrink-0" />
-            <div className="min-w-0">
-              <div className="text-xs font-semibold text-slate-200 truncate">Dice RNG</div>
-              <div className="text-[10px] font-mono text-amber-400/80">Tray & Rolls</div>
-            </div>
-          </button>
-
-          <button
             onClick={onOpenQuickHP}
-            className="p-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-rose-500/50 text-left transition-colors flex items-center gap-2"
+            className="p-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-rose-500/50 text-left transition-colors flex items-center justify-between col-span-2"
+            title="HP Tracker: Adjust current HP, non-lethal damage, and temporary HP"
           >
-            <Heart className="w-4 h-4 text-rose-500 shrink-0" />
-            <div className="min-w-0">
-              <div className="text-xs font-semibold text-slate-200 truncate">HP Tracker</div>
-              <div className="text-[10px] font-mono text-rose-400/80">
-                {character.hpCurrent}/{character.hpTotalMax}
+            <div className="flex items-center gap-2 min-w-0">
+              <Heart className="w-4 h-4 text-rose-500 shrink-0" />
+              <div>
+                <div className="text-xs font-semibold text-slate-200">HP Tracker</div>
+                <div className="text-[10px] font-mono text-rose-400/80">Quick Adjust & Healing</div>
               </div>
             </div>
+            <span className="text-xs font-mono font-bold text-rose-300 px-2 py-0.5 rounded bg-rose-950/60 border border-rose-500/30">
+              {character.hpCurrent}/{character.hpTotalMax} HP
+            </span>
           </button>
 
           <button
@@ -420,16 +452,18 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
 
           {/* Standalone AI Companion Module Tool */}
           {character.installedModules?.aiCompanion ? (
-            onOpenAITool && (
-              <button
+            <div className="p-2.5 rounded-lg bg-gradient-to-r from-cyan-950/90 to-blue-950/90 border border-cyan-400/80 shadow-md col-span-2 space-y-2">
+              <div
                 onClick={onOpenAITool}
-                className="p-2.5 rounded-lg bg-gradient-to-r from-cyan-950/90 to-blue-950/90 hover:from-cyan-900 hover:to-blue-900 border border-cyan-400/80 hover:border-cyan-300 text-left transition-all shadow-md flex items-center gap-2.5 col-span-2 group"
-                title="AI Companion Tool: Plain English to DSL macros, in-character voice journal, pencil sketches & bounded sheet actions"
+                className="flex items-center gap-2.5 cursor-pointer group"
+                title="AI Companion Tool: Plain English to DSL macros, in-character voice journal, pencil sketches & module permissions"
               >
                 <Cpu className="w-4 h-4 text-cyan-400 group-hover:scale-110 transition-transform shrink-0" />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold font-mono text-cyan-200">AI Companion Tool</span>
+                    <span className="text-xs font-bold font-mono text-cyan-200 group-hover:text-cyan-100">
+                      AI Companion Tool
+                    </span>
                     <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
                       ACTIVE
                     </span>
@@ -438,8 +472,19 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
                     DSL Macros • Voice • Pencil Sketches
                   </div>
                 </div>
-              </button>
-            )
+              </div>
+
+              {onOpenCompleteSheet && (
+                <button
+                  onClick={onOpenCompleteSheet}
+                  className="w-full py-1.5 px-2 rounded-md bg-cyan-600/80 hover:bg-cyan-500 text-white text-xs font-mono font-bold flex items-center justify-center gap-1.5 transition-colors shadow-xs"
+                  title="Toggle AI Complete Sheet (Conversational Build from Concept mini-window)"
+                >
+                  <AppleEyeIcon className="w-3.5 h-3.5 text-cyan-200" />
+                  <span>Open Complete Sheet AI</span>
+                </button>
+              )}
+            </div>
           ) : (
             onInstallAITool && (
               <button
@@ -554,15 +599,6 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
             >
               <Download className="w-3.5 h-3.5 text-cyan-400 group-hover:scale-110 transition-transform" />
               <span>Download Full Source Code (.zip)</span>
-            </a>
-            <a
-              href="/sot-ai-complete-sheet.bundle"
-              download="sot-ai-complete-sheet.bundle"
-              className="py-1.5 px-2 rounded-lg bg-indigo-950/70 hover:bg-indigo-900 border border-indigo-500/50 hover:border-indigo-400 text-indigo-300 font-bold flex items-center justify-center gap-1.5 transition-colors col-span-2 shadow-xs group text-center"
-              title="Download verified Git bundle to pull directly into your local Git repository"
-            >
-              <Download className="w-3.5 h-3.5 text-indigo-400 group-hover:scale-110 transition-transform" />
-              <span>Download Git Bundle (.bundle)</span>
             </a>
             <button
               onClick={onExportJSON}

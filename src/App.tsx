@@ -12,27 +12,8 @@
 import React, { useState, useEffect } from 'react';
 import {
   Layers,
-  Dices,
-  Calculator,
-  Heart,
-  Shield,
-  FileSpreadsheet,
-  Download,
-  Upload,
-  Printer,
-  Sparkles,
-  Palette,
-  Maximize2,
-  Scroll,
-  Clock,
-  Terminal,
   FilePlus,
-  FolderOpen,
   User,
-  Image as ImageIcon,
-  FileCode,
-  BookOpen,
-  Cpu,
 } from 'lucide-react';
 
 import { PF1Character, WorkspaceLayout, AbilityName } from './types/character';
@@ -63,12 +44,12 @@ import { ImageFileBrowserModal } from './components/tools/ImageFileBrowserModal'
 import { JournalModal } from './components/tools/JournalModal';
 import { AICompanionModal } from './components/tools/AICompanionModal';
 import { CompleteSheetChatWindow } from './components/tools/CompleteSheetChatWindow';
-import { AppleEyeIcon } from './components/common/AppleEyeIcon';
 import { FloatingAlertCard } from './components/common/FloatingAlertCard';
 import { InteractiveQueryModal } from './components/common/InteractiveQueryModal';
 import { FloatingAlertPayload, MacaroniQueryRequest } from './engine/macaroni';
 import { useStorage } from './storage/StorageContext';
 import { useAutosave } from './storage/useAutosave';
+import { normalizeCharacter, restoreSheetFromStorage } from './storage/characterState';
 import { SaveButton } from './components/storage/SaveButton';
 import { CrashRecoveryBanner } from './components/storage/CrashRecoveryBanner';
 import { PrintSheet } from './components/sheet/PrintSheet';
@@ -90,64 +71,13 @@ export default function App({ readOnly: propReadOnly }: AppProps = {}) {
   const [character, setCharacter] = useState<PF1Character>(() => {
     try {
       if (typeof window !== 'undefined' && (window as any).__INITIAL_CHARACTER__) {
-        const injected = (window as any).__INITIAL_CHARACTER__;
-        return {
-          ...DEFAULT_CHARACTER,
-          ...injected,
-          gender: injected.gender || DEFAULT_CHARACTER.gender || 'Male',
-          abilities: { ...DEFAULT_CHARACTER.abilities, ...(injected.abilities || {}) },
-          buffBox: injected.buffBox || DEFAULT_CHARACTER.buffBox,
-          currency: { ...DEFAULT_CHARACTER.currency, ...(injected.currency || {}) },
-          hpBreakdown: {
-            ...DEFAULT_CHARACTER.hpBreakdown,
-            calcMethod: injected.hpBreakdown?.calcMethod || 'max',
-            ...(injected.hpBreakdown || {}),
-          },
-          characterBio: { ...DEFAULT_CHARACTER.characterBio, ...(injected.characterBio || {}) },
-          conditions: { ...DEFAULT_CHARACTER.conditions, ...(injected.conditions || {}) },
-          saves: {
-            fortitude: { ...DEFAULT_CHARACTER.saves.fortitude, ...(injected.saves?.fortitude || {}) },
-            reflex: { ...DEFAULT_CHARACTER.saves.reflex, ...(injected.saves?.reflex || {}) },
-            will: { ...DEFAULT_CHARACTER.saves.will, ...(injected.saves?.will || {}) },
-          },
-          inventory: Array.isArray(injected.inventory) ? injected.inventory : DEFAULT_CHARACTER.inventory,
-          weapons: Array.isArray(injected.weapons) ? injected.weapons : DEFAULT_CHARACTER.weapons,
-          armor: Array.isArray(injected.armor) ? injected.armor : DEFAULT_CHARACTER.armor,
-          skills: Array.isArray(injected.skills) ? injected.skills : DEFAULT_CHARACTER.skills,
-          classes: Array.isArray(injected.classes) ? injected.classes : DEFAULT_CHARACTER.classes,
-          uiMakePresets: Array.isArray(injected.uiMakePresets) ? injected.uiMakePresets : DEFAULT_CHARACTER.uiMakePresets,
-        };
+        return normalizeCharacter((window as any).__INITIAL_CHARACTER__);
       }
       const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed && typeof parsed === 'object') {
-          return {
-            ...DEFAULT_CHARACTER,
-            ...parsed,
-            gender: parsed.gender || DEFAULT_CHARACTER.gender || 'Male',
-            abilities: { ...DEFAULT_CHARACTER.abilities, ...(parsed.abilities || {}) },
-            buffBox: parsed.buffBox || DEFAULT_CHARACTER.buffBox,
-            currency: { ...DEFAULT_CHARACTER.currency, ...(parsed.currency || {}) },
-            hpBreakdown: {
-              ...DEFAULT_CHARACTER.hpBreakdown,
-              calcMethod: parsed.hpBreakdown?.calcMethod || 'max',
-              ...(parsed.hpBreakdown || {}),
-            },
-            characterBio: { ...DEFAULT_CHARACTER.characterBio, ...(parsed.characterBio || {}) },
-            conditions: { ...DEFAULT_CHARACTER.conditions, ...(parsed.conditions || {}) },
-            saves: {
-              fortitude: { ...DEFAULT_CHARACTER.saves.fortitude, ...(parsed.saves?.fortitude || {}) },
-              reflex: { ...DEFAULT_CHARACTER.saves.reflex, ...(parsed.saves?.reflex || {}) },
-              will: { ...DEFAULT_CHARACTER.saves.will, ...(parsed.saves?.will || {}) },
-            },
-            inventory: Array.isArray(parsed.inventory) ? parsed.inventory : DEFAULT_CHARACTER.inventory,
-            weapons: Array.isArray(parsed.weapons) ? parsed.weapons : DEFAULT_CHARACTER.weapons,
-            armor: Array.isArray(parsed.armor) ? parsed.armor : DEFAULT_CHARACTER.armor,
-            skills: Array.isArray(parsed.skills) ? parsed.skills : DEFAULT_CHARACTER.skills,
-            classes: Array.isArray(parsed.classes) ? parsed.classes : DEFAULT_CHARACTER.classes,
-            uiMakePresets: Array.isArray(parsed.uiMakePresets) ? parsed.uiMakePresets : DEFAULT_CHARACTER.uiMakePresets,
-          };
+          return normalizeCharacter(parsed);
         }
       }
     } catch {
@@ -256,24 +186,27 @@ export default function App({ readOnly: propReadOnly }: AppProps = {}) {
   // Debounced Crash Autosave (~1 second after character changes)
   const autosaveState = useAutosave(character, !isReadOnlyMode);
 
-  // On startup, check loadCrash() and use it as initial sheet if present
+  const applyLoadedCharacter = (loaded: PF1Character) => {
+    setCharacter(normalizeCharacter(loaded));
+  };
+
+  // On startup, restore crash recovery or the last deliberately saved character.
   useEffect(() => {
+    if (isReadOnlyMode) return;
     let mounted = true;
-    storage
-      .loadCrash()
-      .then((res) => {
-        if (mounted && res.ok && res.character?.character) {
-          setCharacter(res.character.character);
-          setShowCrashRecoveredBanner(true);
-        }
+    restoreSheetFromStorage(storage)
+      .then((restored) => {
+        if (!mounted || !restored.character) return;
+        setCharacter(restored.character);
+        setShowCrashRecoveredBanner(restored.recoveredFromCrash);
       })
       .catch(() => {
-        // ignore startup crash check errors
+        // ignore startup restore errors
       });
     return () => {
       mounted = false;
     };
-  }, [storage]);
+  }, [storage, isReadOnlyMode]);
 
   // New Sheet & Image File Browser state
   const [isNewSheetOpen, setIsNewSheetOpen] = useState(false);
@@ -674,9 +607,9 @@ export default function App({ readOnly: propReadOnly }: AppProps = {}) {
 
   return (
     <div className={`min-h-screen flex flex-col font-sans ${layout.theme === 'blueprint' || layout.theme === 'mythweavers' ? 'dark' : ''}`}>
-      {/* Top Bar Contract (1 row, 3 clean functional zones) */}
-      <header className="h-14 bg-slate-950 border-b border-slate-800 text-slate-100 px-4 md:px-6 flex items-center justify-between gap-6 shrink-0 z-20 print:hidden select-none">
-        {/* Zone 1: Wordmark & Core Identity */}
+      {/* Top Bar (Clean 1-row header: identity on left, save & storage on right) */}
+      <header className="h-14 bg-slate-950 border-b border-slate-800 text-slate-100 px-4 md:px-6 flex items-center justify-between gap-4 shrink-0 z-20 print:hidden select-none">
+        {/* Left: Wordmark & Core Identity */}
         <div className="flex items-center gap-2.5 shrink-0">
           <button
             onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
@@ -729,172 +662,15 @@ export default function App({ readOnly: propReadOnly }: AppProps = {}) {
           </button>
         </div>
 
-        {/* Zone 2: Sheet Navigation & Viewport Tabs */}
-        <nav className="flex items-center gap-1 bg-slate-900/90 p-1 rounded-lg border border-slate-800 shrink-0">
-          {[
-            { id: 1, label: 'Page 1: Core Combat' },
-            { id: 2, label: 'Page 2: Actions & Skills' },
-            { id: 3, label: 'Page 3: Bio & Storage' },
-            { id: 4, label: 'Page 4: DSL Studio' },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => {
-                setLayout((prev) => ({ ...prev, activeSheet: tab.id as 1 | 2 | 3 | 4, showAllSheets: false }));
-              }}
-              className={`px-3 py-1 text-xs font-medium rounded-md whitespace-nowrap transition-colors ${
-                layout.activeSheet === tab.id && !layout.showAllSheets
-                  ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-          <button
-            onClick={() => setLayout((prev) => ({ ...prev, showAllSheets: !prev.showAllSheets }))}
-            className={`px-3 py-1 text-xs font-medium rounded-md whitespace-nowrap transition-colors ${
-              layout.showAllSheets
-                ? 'bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            All 3 Pages
-          </button>
-        </nav>
-
-        {/* Zone 3: Quick Live Action Bar */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          {/* File Browser for Images & Gear Art */}
-          <button
-            onClick={() =>
-              handleOpenImageBrowser({
-                targetType: 'profile',
-                title: 'Image & File Browser (Portraits, Items, Gallery)',
-                subtitle: 'Browse local files from your computer, choose fantasy items/portraits, or link an image.',
-                currentUrl: character.profileData?.avatarUrl || character.characterBio?.portraits?.[0],
-              })
-            }
-            className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-cyan-500/40 hover:border-cyan-400 text-cyan-300 text-xs font-mono flex items-center gap-1.5 transition-colors"
-            title="Image File Browser: Character portraits, item icons, and fantasy presets"
-          >
-            <FolderOpen className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="hidden lg:inline">Images</span>
-          </button>
-
-          {/* Stepper Tool */}
-          <button
-            onClick={() => setIsStepperOpen(true)}
-            className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-amber-300 text-xs font-mono flex items-center gap-1.5 transition-colors"
-            title="Open Turn Stepper"
-          >
-            <Clock className="w-3.5 h-3.5 text-amber-400" />
-            <span className="hidden sm:inline">Stepper</span>
-          </button>
-
-          {/* Deck Tool */}
-          <button
-            onClick={() => setIsDeckOpen(true)}
-            className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-cyan-300 text-xs font-mono flex items-center gap-1.5 transition-colors"
-            title="Open Deck Simulator"
-          >
-            <Layers className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="hidden sm:inline">Deck</span>
-          </button>
-
-          {/* XDX Tool */}
-          <button
-            onClick={() => setIsXDXOpen(true)}
-            className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-amber-300 text-xs font-mono flex items-center gap-1.5 transition-colors"
-            title="Open XDX Macro Center"
-          >
-            <Terminal className="w-3.5 h-3.5 text-amber-400" />
-            <span className="hidden sm:inline">XDX</span>
-          </button>
-
-          <button
-            onClick={() => setIsDiceOpen(true)}
-            className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-amber-300 text-xs font-mono flex items-center gap-1.5 transition-colors"
-            title="Open Dice Tray"
-          >
-            <Dices className="w-3.5 h-3.5 text-amber-400" />
-            <span className="hidden md:inline">Dice</span>
-          </button>
-
-          <button
-            onClick={() => setIsQuickHPOpen(true)}
-            className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-rose-300 text-xs font-mono flex items-center gap-1.5 transition-colors"
-            title="Adjust HP"
-          >
-            <Heart className="w-3.5 h-3.5 text-rose-500" />
-            <span>
-              {character.hpCurrent}/{character.hpTotalMax}
-            </span>
-          </button>
-
-          {/* Session Journal & Chronicle Button */}
-          <button
-            onClick={handleOpenJournal}
-            className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-amber-300 text-xs font-mono flex items-center gap-1.5 transition-colors"
-            title="Open Session Journal, Notes & Field Sketches"
-          >
-            <BookOpen className="w-3.5 h-3.5 text-amber-400" />
-            <span className="hidden sm:inline">Journal</span>
-          </button>
-
-          {/* AI Companion Quick Tool Button (shown if module installed) */}
-          {character.installedModules?.aiCompanion && (
-            <>
-              <button
-                onClick={() => setIsCompleteSheetOpen((prev) => !prev)}
-                className={`px-2.5 py-1.5 rounded-lg border text-xs font-mono flex items-center gap-1.5 transition-colors shadow-xs ${
-                  isCompleteSheetOpen
-                    ? 'bg-cyan-600 border-cyan-300 text-white shadow-cyan-500/20'
-                    : 'bg-gradient-to-r from-emerald-950/80 to-cyan-950/80 hover:from-emerald-900 hover:to-cyan-900 border-emerald-500/50 text-emerald-300'
-                }`}
-                title="Toggle AI Complete Sheet (Conversational Build from Concept mini-window)"
-              >
-                <AppleEyeIcon className="w-3.5 h-3.5 text-cyan-300" />
-                <span className="hidden sm:inline">Complete Sheet</span>
-              </button>
-
-              <button
-                onClick={() => handleOpenAITool('permissions')}
-                className="px-2.5 py-1.5 rounded-lg bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/50 text-cyan-300 text-xs font-mono flex items-center gap-1.5 transition-colors shadow-xs"
-                title="Open AI Companion Listener Settings & Module Permissions"
-              >
-                <Cpu className="w-3.5 h-3.5 text-cyan-400" />
-                <span className="hidden sm:inline">AI Tool</span>
-              </button>
-            </>
-          )}
-
-          {/* Standalone HTML Export Button */}
-          <button
-            onClick={handleExportStandaloneHTML}
-            disabled={isExportingHTML}
-            className="px-2.5 py-1.5 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-500/50 hover:border-emerald-400 text-emerald-300 text-xs font-mono font-bold flex items-center gap-1.5 transition-colors shadow-xs"
-            title="Export complete standalone single-file HTML sheet to share with friends or host anywhere"
-          >
-            <FileCode className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="hidden xl:inline">{isExportingHTML ? 'Packaging...' : 'Export HTML'}</span>
-          </button>
-
-          {/* Print / Download PDF View Button */}
-          <button
-            onClick={() => setIsPrintViewOpen(true)}
-            className="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-slate-950 text-xs font-mono font-bold flex items-center gap-1.5 transition-colors"
-            title="Open 3-Section Print View & Download PDF"
-          >
-            <Printer className="w-4 h-4" />
-            <span className="hidden xl:inline">Download PDF</span>
-          </button>
-
-          {/* Save CD/Disc Button + Connection Status Dot + Connect Folder + Crash Autosave Label */}
+        {/* Right: Save & Autosave Status */}
+        <div className="flex items-center gap-2 shrink-0">
           <SaveButton
             character={character}
             autosaveState={autosaveState}
-            onCharacterLoaded={(loaded) => setCharacter(loaded)}
+            onCharacterLoaded={(loaded, meta) => {
+              applyLoadedCharacter(loaded);
+              setShowCrashRecoveredBanner(Boolean(meta?.recoveredFromCrash));
+            }}
           />
         </div>
       </header>
@@ -902,7 +678,10 @@ export default function App({ readOnly: propReadOnly }: AppProps = {}) {
       {/* Startup Crash Recovery Banner */}
       <CrashRecoveryBanner
         visible={showCrashRecoveredBanner}
-        onDismiss={() => setShowCrashRecoveredBanner(false)}
+        onDismiss={() => {
+          setShowCrashRecoveredBanner(false);
+          void storage.dismissCrash();
+        }}
       />
 
       {/* Hidden PrintSheet rendered automatically if user triggers native Ctrl+P from workspace */}
@@ -931,6 +710,7 @@ export default function App({ readOnly: propReadOnly }: AppProps = {}) {
             onOpenCMBt={() => setIsCMBtOpen(true)}
             onOpenJournal={handleOpenJournal}
             onOpenAITool={() => handleOpenAITool('permissions')}
+            onOpenCompleteSheet={() => setIsCompleteSheetOpen(true)}
             onInstallAITool={handleInstallAITool}
             onOpenNewSheet={() => setIsNewSheetOpen(true)}
             onOpenImageBrowser={() =>

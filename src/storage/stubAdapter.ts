@@ -1,6 +1,7 @@
 import { DEFAULT_CHARACTER, createBlankCharacter } from '../data/defaultCharacter';
 import type { PF1Character } from '../types/character';
 import type {
+  ActiveCharacterReference,
   LoadedCharacter,
   SaveReceipt,
   StorageAdapter,
@@ -94,10 +95,20 @@ const cloneCharacter = (char: PF1Character): PF1Character =>
 export class StubStorageAdapter implements StorageAdapter {
   private store: Record<string, Record<string, StubCharacterRecord>> = createSeededCharacters();
   private crashSnapshot: LoadedCharacter | null = null;
+  private activeCharacter: ActiveCharacterReference | null = null;
   private selected: boolean = true;
   private rootName: string = 'PF1e_Vault (Stub)';
 
   constructor() {
+    const valerius = this.store['Player 1']?.[DEFAULT_CHARACTER.name || 'Valerius'];
+    if (valerius) {
+      this.activeCharacter = {
+        player: 'Player 1',
+        name: valerius.character.name,
+        characterId: valerius.characterId,
+        savedAt: valerius.savedAt,
+      };
+    }
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       if (params.get('SimulateCrash') === '1' || params.get('crash') === '1') {
@@ -108,6 +119,7 @@ export class StubStorageAdapter implements StorageAdapter {
           },
           characterId: 'stub-crash-recovery',
           savedAt: new Date().toISOString(),
+          sha256: 'stub-crash-recovery-hash',
         };
       }
     }
@@ -151,6 +163,7 @@ export class StubStorageAdapter implements StorageAdapter {
       characterId,
       savedAt,
     };
+    this.activeCharacter = { player: playerKey, name: charKey, characterId, savedAt };
 
     return {
       ok: true,
@@ -181,6 +194,7 @@ export class StubStorageAdapter implements StorageAdapter {
       character: cloneCharacter(character),
       characterId,
       savedAt,
+      sha256: `stub-crash-${savedAt}`,
     };
 
     return {
@@ -202,7 +216,22 @@ export class StubStorageAdapter implements StorageAdapter {
         character: cloneCharacter(this.crashSnapshot.character),
         characterId: this.crashSnapshot.characterId,
         savedAt: this.crashSnapshot.savedAt,
+        sha256: this.crashSnapshot.sha256,
       },
+    };
+  }
+
+  async dismissCrash(): Promise<StorageResult<{ dismissed: true }>> {
+    await delay(80);
+    this.crashSnapshot = null;
+    return { ok: true, dismissed: true };
+  }
+
+  async getActiveCharacter(): Promise<StorageResult<{ activeCharacter: ActiveCharacterReference | null }>> {
+    await delay(50);
+    return {
+      ok: true,
+      activeCharacter: this.activeCharacter ? { ...this.activeCharacter } : null,
     };
   }
 
@@ -263,11 +292,18 @@ export class StubStorageAdapter implements StorageAdapter {
     }
 
     const record = charMap[matchedCharKey];
+    this.activeCharacter = {
+      player: matchedPlayerKey,
+      name: matchedCharKey,
+      characterId: record.characterId,
+      savedAt: record.savedAt,
+    };
     return {
       ok: true,
       character: cloneCharacter(record.character),
       characterId: record.characterId,
       savedAt: record.savedAt,
+      sha256: `stub-${record.characterId}-${record.savedAt}`,
     };
   }
 

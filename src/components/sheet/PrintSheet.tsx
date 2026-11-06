@@ -113,6 +113,21 @@ export const PrintSheet: React.FC<PrintSheetProps> = ({
   const customObjects = character.customObjects || [];
   const bioSections = character.characterBio?.bioSections || [];
   const profileCustomFields = character.profileData?.customFields || [];
+  // A print preview must remain usable for a newly-created, legacy, or
+  // partially imported character. The editable sheet normalizes these fields,
+  // but the print view is also reachable directly from a snapshot.
+  const weapons = Array.isArray(character.weapons) ? character.weapons : [];
+  const armor = Array.isArray(character.armor) ? character.armor : [];
+  const biography = character.biography || {
+    description: '',
+    personality: '',
+    traits: '',
+    flaws: '',
+    allies: '',
+    enemies: '',
+    notes: '',
+  };
+  const calculatedMaxHp = derived.hpBreakdownDetails?.calculatedTotalMaxHP ?? character.hpTotalMax ?? 0;
 
   return (
     <div className="print-sheet-root min-h-screen bg-[#faf7f0] text-stone-900 font-serif print:bg-white print:text-black">
@@ -225,7 +240,7 @@ export const PrintSheet: React.FC<PrintSheetProps> = ({
               <div className="flex items-baseline justify-between">
                 <span className="text-xs">Current / Max HP:</span>
                 <span className="text-base font-bold font-mono">
-                  {character.hpCurrent} / {derived.hpBreakdownDetails.calculatedTotalMaxHP}
+                  {character.hpCurrent ?? 0} / {calculatedMaxHp}
                 </span>
               </div>
               <div className="flex items-baseline justify-between text-xs">
@@ -356,7 +371,7 @@ export const PrintSheet: React.FC<PrintSheetProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-200">
-                {character.weapons.map((w) => {
+                {weapons.map((w) => {
                   const baseAtkBonus =
                     w.category === 'Ranged'
                       ? derived.rangedAttackBonusTotal
@@ -401,11 +416,11 @@ export const PrintSheet: React.FC<PrintSheetProps> = ({
               <div className="text-xs font-mono font-bold uppercase border-b border-stone-300 pb-1">
                 Equipped Armor &amp; Shields
               </div>
-              {character.armor.length === 0 ? (
+              {armor.length === 0 ? (
                 <div className="text-xs italic opacity-70">No armor entries recorded.</div>
               ) : (
                 <ul className="space-y-1 text-xs">
-                  {character.armor.map((a) => (
+                  {armor.map((a) => (
                     <li key={a.id} className="flex items-center justify-between">
                       <span>
                         <strong>{a.name}</strong> ({a.type})
@@ -636,32 +651,32 @@ export const PrintSheet: React.FC<PrintSheetProps> = ({
                 <div className="font-mono font-bold uppercase border-b border-stone-300 pb-1">
                   Backstory, Personality &amp; Notes
                 </div>
-                {character.biography?.description && (
+                {biography.description && (
                   <div>
                     <strong>Appearance &amp; Backstory:</strong>{' '}
-                    <span className="whitespace-pre-wrap">{character.biography.description}</span>
+                    <span className="whitespace-pre-wrap">{biography.description}</span>
                   </div>
                 )}
-                {character.biography?.personality && (
+                {biography.personality && (
                   <div>
-                    <strong>Personality:</strong> {character.biography.personality}
+                    <strong>Personality:</strong> {biography.personality}
                   </div>
                 )}
-                {character.biography?.traits && (
+                {biography.traits && (
                   <div>
-                    <strong>Traits:</strong> {character.biography.traits}
+                    <strong>Traits:</strong> {biography.traits}
                   </div>
                 )}
-                {character.biography?.flaws && (
+                {biography.flaws && (
                   <div>
-                    <strong>Flaws / Drawbacks:</strong> {character.biography.flaws}
+                    <strong>Flaws / Drawbacks:</strong> {biography.flaws}
                   </div>
                 )}
-                {(character.characterBio?.scratchpad || character.biography?.notes) && (
+                {(character.characterBio?.scratchpad || biography.notes) && (
                   <div className="pt-1 border-t border-stone-200">
                     <strong>Session Scratchpad &amp; Notes:</strong>
                     <div className="whitespace-pre-wrap mt-0.5 font-mono text-[11px]">
-                      {character.characterBio?.scratchpad || character.biography?.notes}
+                      {character.characterBio?.scratchpad || biography.notes}
                     </div>
                   </div>
                 )}

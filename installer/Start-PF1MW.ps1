@@ -7,6 +7,9 @@ $port = 38173
 $appDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $htmlPath = Join-Path $appDirectory 'index.html'
 $iconPath = Join-Path $appDirectory 'chirpy.ico'
+$runtimeManifestPath = Join-Path $appDirectory 'runtime-manifest.json'
+$memoryTemplatePath = Join-Path $appDirectory 'memory-bank-template\manifest.json'
+$aiStudioAssetDirectory = Join-Path $appDirectory 'assets\aistudio'
 $address = "http://127.0.0.1:$port/"
 
 function Get-PF1MWBrowserPath {
@@ -55,16 +58,39 @@ function Test-PF1MWHost {
   }
 }
 
-if (-not (Test-Path -LiteralPath $htmlPath -PathType Leaf)) {
-  throw "The installed app file is missing: $htmlPath"
+foreach ($requiredFile in @($htmlPath, $iconPath, $runtimeManifestPath, $memoryTemplatePath)) {
+  if (-not (Test-Path -LiteralPath $requiredFile -PathType Leaf)) {
+    throw "A required installed runtime file is missing: $requiredFile"
+  }
 }
-if (-not (Test-Path -LiteralPath $iconPath -PathType Leaf)) {
-  throw "The installed app icon is missing: $iconPath"
+if (-not (Test-Path -LiteralPath $aiStudioAssetDirectory -PathType Container)) {
+  throw "The installed AI Studio asset directory is missing: $aiStudioAssetDirectory"
+}
+
+$runtimeManifest = Get-Content -LiteralPath $runtimeManifestPath -Raw | ConvertFrom-Json -ErrorAction Stop
+if ($runtimeManifest.format -ne 'pf1mw-runtime-manifest' -or $runtimeManifest.schemaVersion -ne 1) {
+  throw "The installed runtime manifest has an unsupported format: $runtimeManifestPath"
+}
+$runtimeVersion = [string]$runtimeManifest.releaseVersion
+if ($runtimeVersion -notmatch '^[0-9A-Za-z][0-9A-Za-z._+-]{0,63}$') {
+  throw "The installed runtime manifest has an invalid release version: $runtimeManifestPath"
 }
 
 if ($Server) {
   $htmlBytes = [System.IO.File]::ReadAllBytes($htmlPath)
   $iconBytes = [System.IO.File]::ReadAllBytes($iconPath)
+  $runtimeManifestBytes = [System.IO.File]::ReadAllBytes($runtimeManifestPath)
+  $memoryTemplateBytes = [System.IO.File]::ReadAllBytes($memoryTemplatePath)
+  $aiStudioAssets = @{}
+  foreach ($asset in Get-ChildItem -LiteralPath $aiStudioAssetDirectory -File -Filter '*.png') {
+    if ($asset.Name -notmatch '^image_[a-z0-9]+\.png$') {
+      throw "The installed AI Studio asset name is invalid: $($asset.Name)"
+    }
+    $aiStudioAssets[$asset.Name] = [System.IO.File]::ReadAllBytes($asset.FullName)
+  }
+  if ($aiStudioAssets.Count -eq 0) {
+    throw "No AI Studio image assets were installed: $aiStudioAssetDirectory"
+  }
   $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $port)
   $listener.Start()
   try {
@@ -94,6 +120,16 @@ if ($Server) {
           $body = $iconBytes
           $contentType = 'image/x-icon'
           $sendBody = $Matches[1] -eq 'GET'
+        } elseif ($requestLine -match '^(GET|HEAD) /runtime-manifest\.json(?:\?[^ ]*)? HTTP/1\.[01]$') {
+          $status = '200 OK'
+          $body = $runtimeManifestBytes
+          $contentType = 'application/json; charset=utf-8'
+          $sendBody = $Matches[1] -eq 'GET'
+        } elseif ($requestLine -match '^(GET|HEAD) /memory-bank-template/manifest\.json(?:\?[^ ]*)? HTTP/1\.[01]$') {
+          $status = '200 OK'
+          $body = $memoryTemplateBytes
+          $contentType = 'application/json; charset=utf-8'
+          $sendBody = $Matches[1] -eq 'GET'
         } elseif (
           $requestLine -match '^(GET|HEAD) /character-sheet-icons/(01-flat-enamel|02-beveled-token|03-arcane-stamp|04-generic-portraits)/([a-z0-9-]+\.png)(?:\?[^ ]*)? HTTP/1\.[01]$'
         ) {
@@ -106,6 +142,17 @@ if ($Server) {
           if (Test-Path -LiteralPath $assetPath -PathType Leaf) {
             $status = '200 OK'
             $body = [System.IO.File]::ReadAllBytes($assetPath)
+            $contentType = 'image/png'
+            $sendBody = $requestMethod -eq 'GET'
+          } else {
+            $body = [System.Text.Encoding]::UTF8.GetBytes('Not found')
+          }
+        } elseif ($requestLine -match '^(GET|HEAD) /assets/aistudio/(image_[a-z0-9]+\.png)(?:\?[^ ]*)? HTTP/1\.[01]$') {
+          $requestMethod = $Matches[1]
+          $assetName = $Matches[2]
+          if ($aiStudioAssets.ContainsKey($assetName)) {
+            $status = '200 OK'
+            $body = $aiStudioAssets[$assetName]
             $contentType = 'image/png'
             $sendBody = $requestMethod -eq 'GET'
           } else {
@@ -129,6 +176,7 @@ if ($Server) {
           "Content-Length: $($body.Length)",
           'Cache-Control: no-store',
           'X-Content-Type-Options: nosniff',
+          "X-PF1MW-Runtime-Version: $runtimeVersion",
           'Connection: close',
           '',
           ''

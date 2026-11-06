@@ -7,6 +7,7 @@ import {
   isStubModeEnabled,
   emitStorageToastError,
 } from '../../storage/StorageContext';
+import { normalizeCharacter } from '../../storage/characterState';
 
 export interface IdentityLoadFieldsProps {
   character: PF1Character;
@@ -117,7 +118,7 @@ export const IdentityLoadFields: React.FC<IdentityLoadFieldsProps> = ({
       if (isConnected && charName) {
         const loadRes = await storage.loadCharacter(playerName, charName);
         if (loadRes.ok && loadRes.character) {
-          onCharacterLoaded(loadRes.character);
+          onCharacterLoaded(normalizeCharacter(loadRes.character));
           await refreshPlayers();
           await refreshCharacters(loadRes.character.player);
           return;
@@ -131,7 +132,7 @@ export const IdentityLoadFields: React.FC<IdentityLoadFieldsProps> = ({
         if (charName) {
           const retryRes = await storage.loadCharacter(playerName, charName);
           if (retryRes.ok && retryRes.character) {
-            onCharacterLoaded(retryRes.character);
+            onCharacterLoaded(normalizeCharacter(retryRes.character));
           }
         }
       }

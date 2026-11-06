@@ -17,6 +17,13 @@ import {
   RotateCcw,
   Move,
 } from 'lucide-react';
+import {
+  GENERIC_PORTRAITS,
+  GLYPH_DEFINITIONS,
+  GLYPH_STYLE_OPTIONS,
+  getGlyphUrl,
+  type GlyphStyle,
+} from '../../data/glyphs';
 
 export interface ImageFileBrowserProps {
   isOpen: boolean;
@@ -35,9 +42,34 @@ const STORAGE_LIBRARY_KEY = 'pf1e_image_library_v1';
 type AspectPreset = '1:1' | '3:4' | '4:3' | 'circle';
 type FrameStyle = 'none' | 'gold_ring' | 'dark_iron' | 'parchment_vignette';
 
-// Curated fantasy portraits & items for Pathfinder 1e
+const BUNDLED_GLYPH_STYLES: Exclude<GlyphStyle, 'none'>[] = [
+  '01-flat-enamel',
+  '02-beveled-token',
+  '03-arcane-stamp',
+];
+
+const BUNDLED_PORTRAIT_PRESETS = GENERIC_PORTRAITS.map((portrait) => ({
+  id: `bundled-${portrait.id}`,
+  name: portrait.name,
+  category: 'Bundled Portrait',
+  url: portrait.url,
+}));
+
+const BUNDLED_GLYPH_PRESETS = BUNDLED_GLYPH_STYLES.flatMap((style) => {
+  const styleLabel = GLYPH_STYLE_OPTIONS.find((option) => option.id === style)?.label ?? style;
+  return GLYPH_DEFINITIONS.map((glyph) => ({
+    id: `bundled-${style}-${glyph.id}`,
+    name: `${glyph.name} (${styleLabel})`,
+    category: 'Bundled Icon',
+    url: getGlyphUrl(glyph.id, style)!,
+  }));
+});
+
+// The local presets are included in the installed runtime. Online examples are
+// retained as optional extras, rather than being the only image choices.
 const FANTASY_PRESETS = {
   portraits: [
+    ...BUNDLED_PORTRAIT_PRESETS,
     {
       id: 'p-1',
       name: 'Valerius (Dragon Crusader)',
@@ -233,6 +265,7 @@ const FANTASY_PRESETS = {
       url: 'https://images.unsplash.com/photo-1600003014755-ba31aa59c4b6?auto=format&fit=crop&w=400&q=80',
     },
   ],
+  glyphs: BUNDLED_GLYPH_PRESETS,
 };
 
 export const ImageFileBrowserModal: React.FC<ImageFileBrowserProps> = ({
@@ -246,9 +279,9 @@ export const ImageFileBrowserModal: React.FC<ImageFileBrowserProps> = ({
   onSelectImage,
   characterExistingImages = [],
 }) => {
-  // Navigation tabs: 'upload' | 'presets' | 'library' | 'url' | 'crop'
+  // Open on packaged choices so the gallery works immediately while offline.
   const [activeTab, setActiveTab] = useState<'upload' | 'presets' | 'library' | 'url' | 'crop'>(
-    'upload'
+    'presets'
   );
 
   // Selected image candidate
@@ -257,7 +290,7 @@ export const ImageFileBrowserModal: React.FC<ImageFileBrowserProps> = ({
 
   // Local preset subcategory filter
   const [presetCategory, setPresetCategory] = useState<
-    'all' | 'portraits' | 'weapons' | 'armor' | 'magic' | 'gear'
+    'all' | 'portraits' | 'glyphs' | 'weapons' | 'armor' | 'magic' | 'gear'
   >(targetType === 'item' ? 'all' : 'portraits');
 
   // Search filter
@@ -585,6 +618,7 @@ export const ImageFileBrowserModal: React.FC<ImageFileBrowserProps> = ({
     if (presetCategory === 'all') {
       if (targetType === 'item') {
         list = [
+          ...FANTASY_PRESETS.glyphs,
           ...FANTASY_PRESETS.weapons,
           ...FANTASY_PRESETS.armor,
           ...FANTASY_PRESETS.magicItems,
@@ -595,6 +629,8 @@ export const ImageFileBrowserModal: React.FC<ImageFileBrowserProps> = ({
       }
     } else if (presetCategory === 'portraits') {
       list = FANTASY_PRESETS.portraits;
+    } else if (presetCategory === 'glyphs') {
+      list = FANTASY_PRESETS.glyphs;
     } else if (presetCategory === 'weapons') {
       list = FANTASY_PRESETS.weapons;
     } else if (presetCategory === 'armor') {
@@ -839,6 +875,7 @@ export const ImageFileBrowserModal: React.FC<ImageFileBrowserProps> = ({
                   {[
                     { id: 'all', label: 'All Presets' },
                     { id: 'portraits', label: 'Portraits' },
+                    { id: 'glyphs', label: 'Bundled Icons' },
                     { id: 'weapons', label: 'Weapons' },
                     { id: 'armor', label: 'Armor' },
                     { id: 'magic', label: 'Magic Items' },

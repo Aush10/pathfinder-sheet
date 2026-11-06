@@ -12,6 +12,7 @@ a new empty folder or an existing `AIgamesheet` folder instead.
 ```text
 <selected root>/
 └── AIgamesheet/
+    ├── active.json              # last deliberately saved or opened character
     └── pfmusers/
         ├── Crash/
         │   ├── character.json
@@ -76,7 +77,9 @@ a new empty folder or an existing `AIgamesheet` folder instead.
 
 `Crash/` is a character-layout folder, not a player folder. It holds the most
 recent crash autosave and uses the same file names and validation rules as a
-normal character.
+normal character. Dismissing the recovery banner archives `Crash/character.json`
+into `Crash/backups/` and then removes it. Character folder names `settings`,
+`dsl`, and `backups` are reserved under each player.
 
 ## Source of truth and file responsibilities
 
@@ -104,6 +107,7 @@ the folder legible without becoming a second source of truth:
 
 | Location | Written from | Read behavior |
 | --- | --- | --- |
+| `active.json` | player, character folder name, characterId, and savedAt of the last save or Open | Read on startup and after connecting a folder. Never used to rebuild character data. |
 | `index.csv` | safe identity/index fields and save metadata | Never read by the adapter. |
 | `printable-sheet.html` | a text-only printable snapshot | No. |
 | `images/manifest.json` | image and portrait metadata | No. |

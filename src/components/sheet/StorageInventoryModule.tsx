@@ -625,7 +625,7 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
           {/* Default: Left figure (Male). If female: Right figure (Female) */}
           <div className="relative w-44 h-72 rounded-xl overflow-hidden bg-slate-950/40 border border-black/20 dark:border-white/10 flex items-center justify-center select-none shadow-inner">
             <img
-              src="/public/assets/aistudio/image_1f44ffe4.png"
+              src="/assets/aistudio/image_1f44ffe4.png"
               alt={isFemale ? 'Female Body Silhouette' : 'Male Body Silhouette'}
               className={`absolute h-[112%] max-w-none select-none pointer-events-none transition-all duration-300 ${
                 isParchment

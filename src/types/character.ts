@@ -1,3 +1,5 @@
+import type { GlyphStyle } from '../data/glyphs';
+
 /**
  * Core type definitions for Pathfinder 1st Edition Character Sheet & Modular Workspace
  */
@@ -383,6 +385,8 @@ export type SheetFont = 'times' | 'cinzel' | 'sans' | 'mono';
 export interface WorkspaceLayout {
   theme: ThemeMode;
   font: SheetFont;
+  /** Preferred bundled icon family. Optional for layouts saved before this setting existed. */
+  glyphStyle?: GlyphStyle;
   activeSheet: 1 | 2 | 3 | 4;
   showAllSheets: boolean;
   visibleModules: {
@@ -721,6 +725,13 @@ export interface PF1Character {
 
   // Source of Truth (SOT) Catalogue (Weblinks & Rich-Text Override Pages)
   sotCatalogue?: SOTCatalogueData;
+
+  /**
+   * Player-authored, bounded memory that belongs to this character.  It is
+   * saved with character.json and mirrored into AI/memory/manifest.json; it
+   * is data for explicit features, never executable instructions.
+   */
+  memoryBank?: CharacterMemoryBank;
 }
 
 export type SOTCategory =
@@ -796,6 +807,15 @@ export interface SOTCatalogueData {
   weblinks: SOTWeblinkItem[];
   overridePages: SOTRichTextPage[];
   macaroniSuggestions?: SOTMacaroniSuggestion[];
+}
+
+export interface CharacterMemoryBank {
+  schemaVersion: 1;
+  /** Short player-authored facts or continuity anchors. */
+  pinnedFacts: string[];
+  /** Optional compact recap written by a user-facing feature. */
+  summary?: string;
+  updatedAt?: number;
 }
 
 export type SketchDetailQuality = 'crude' | 'passible' | 'tasteful' | 'astounding';

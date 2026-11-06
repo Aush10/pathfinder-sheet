@@ -7,9 +7,9 @@ export interface CrashRecoveryBannerProps {
 }
 
 /**
- * Banner displayed on startup when loadCrash() returns a character snapshot.
- *
- * // TODO(backend): Optionally allow clearing or archiving the disk crash file on dismiss.
+ * Banner displayed on startup when loadCrash() returns a character snapshot
+ * that differs from the last deliberate save. Dismiss archives and clears
+ * Crash/character.json.
  */
 export const CrashRecoveryBanner: React.FC<CrashRecoveryBannerProps> = ({
   visible,

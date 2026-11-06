@@ -9,11 +9,12 @@ import {
   getStorageErrorMessage,
 } from '../../storage/StorageContext';
 import { AutosaveState } from '../../storage/useAutosave';
+import { restoreSheetFromStorage } from '../../storage/characterState';
 
 export interface SaveButtonProps {
   character: PF1Character;
   autosaveState?: AutosaveState;
-  onCharacterLoaded?: (loaded: PF1Character) => void;
+  onCharacterLoaded?: (loaded: PF1Character, meta?: { recoveredFromCrash?: boolean }) => void;
 }
 
 type SaveUiState = 'idle' | 'saving' | 'saved' | 'error';
@@ -28,6 +29,7 @@ type SaveUiState = 'idle' | 'saving' | 'saved' | 'error';
 export const SaveButton: React.FC<SaveButtonProps> = ({
   character,
   autosaveState,
+  onCharacterLoaded,
 }) => {
   const storage = useStorage();
   const [saveState, setSaveState] = useState<SaveUiState>('idle');
@@ -110,6 +112,11 @@ export const SaveButton: React.FC<SaveButtonProps> = ({
       if (!res.ok) {
         setErrorMessage(getStorageErrorMessage(res.error));
         setSaveState('error');
+      } else if (onCharacterLoaded) {
+        const restored = await restoreSheetFromStorage(storage);
+        if (restored.character) {
+          onCharacterLoaded(restored.character, { recoveredFromCrash: restored.recoveredFromCrash });
+        }
       }
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : 'Could not connect save folder.');

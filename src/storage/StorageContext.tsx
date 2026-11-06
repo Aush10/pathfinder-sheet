@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useMemo } from 'react';
 import type { PF1Character } from '../types/character';
 import type {
+  ActiveCharacterReference,
   LoadedCharacter,
   SaveReceipt,
   StorageAdapter,
@@ -130,6 +131,42 @@ function createSafeStorageAdapter(raw: StorageAdapter): StorageAdapter {
         return res;
       } catch (err) {
         return toCaughtFailure(err, 'Failed to load crash autosave.');
+      }
+    },
+
+    async dismissCrash(): Promise<StorageResult<{ dismissed: true }>> {
+      try {
+        const statusRes = await raw.getStatus().catch(() => null);
+        const isConnected =
+          statusRes && statusRes.ok && statusRes.selected && statusRes.permission === 'granted';
+        if (!isConnected && !isStubModeEnabled()) {
+          return { ok: true, dismissed: true };
+        }
+        const res = await raw.dismissCrash();
+        if (!res.ok) {
+          emitStorageToastError(res.error);
+        }
+        return res;
+      } catch (err) {
+        return toCaughtFailure(err, 'Failed to clear crash autosave.');
+      }
+    },
+
+    async getActiveCharacter(): Promise<StorageResult<{ activeCharacter: ActiveCharacterReference | null }>> {
+      try {
+        const statusRes = await raw.getStatus().catch(() => null);
+        const isConnected =
+          statusRes && statusRes.ok && statusRes.selected && statusRes.permission === 'granted';
+        if (!isConnected && !isStubModeEnabled()) {
+          return { ok: true, activeCharacter: null };
+        }
+        const res = await raw.getActiveCharacter();
+        if (!res.ok) {
+          emitStorageToastError(res.error);
+        }
+        return res;
+      } catch (err) {
+        return toCaughtFailure(err, 'Failed to read the last saved character.');
       }
     },
 

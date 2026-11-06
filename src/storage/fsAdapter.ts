@@ -1,5 +1,6 @@
 import type { PF1Character } from '../types/character';
 import type {
+  ActiveCharacterReference,
   LoadedCharacter,
   SaveReceipt,
   StorageAdapter,
@@ -14,6 +15,8 @@ export const STORAGE_ROOT_NAME = 'AIgamesheet';
 export const STORAGE_USERS_NAME = 'pfmusers';
 export const STORAGE_CRASH_NAME = 'Crash';
 export const CHARACTER_FILE_NAME = 'character.json';
+export const ACTIVE_FILE_NAME = 'active.json';
+const RESERVED_CHARACTER_FOLDER_NAMES = ['settings', 'dsl', 'backups'];
 
 const CHARACTER_FORMAT = 'pf1e-character';
 const PROJECTION_FORMAT = 'pf1e-storage-projection';
@@ -205,7 +208,7 @@ function assertAllowedEntityName(value: string, scope: 'player' | 'character'): 
   if (scope === 'player' && safe.toLowerCase() === STORAGE_CRASH_NAME.toLowerCase()) {
     throw new StorageFault('RESERVED_NAME', '"Crash" is reserved for recovery data and cannot be a player folder.');
   }
-  if (scope === 'character' && ['settings', 'dsl'].includes(safe.toLowerCase())) {
+  if (scope === 'character' && RESERVED_CHARACTER_FOLDER_NAMES.includes(safe.toLowerCase())) {
     throw new StorageFault('RESERVED_NAME', 'This character name is reserved by the storage layout.');
   }
   return safe;
@@ -652,6 +655,7 @@ function characterFromEnvelope(envelope: StoredEnvelope): LoadedCharacter {
     character: cloneForStorage(envelope.data) as unknown as PF1Character,
     characterId: envelope.characterId as string,
     savedAt: envelope.savedAt,
+    sha256: envelope.sha256,
   };
 }
 
@@ -879,6 +883,20 @@ async function writeCharacterTree(
   );
 }
 
+function parseActiveCharacter(data: JsonValue): ActiveCharacterReference | null {
+  if (!isRecord(data)) return null;
+  const player = data.player;
+  const name = data.name;
+  const characterId = data.characterId;
+  const savedAt = data.savedAt;
+  if (typeof player !== 'string' || typeof name !== 'string' || typeof characterId !== 'string' || typeof savedAt !== 'string') {
+    return null;
+  }
+  if (!isSafeStoredSegment(player) || !isSafeStoredSegment(name)) return null;
+  if (!characterId || characterId.length > 128 || !savedAt) return null;
+  return { player, name, characterId, savedAt };
+}
+
 function getBrowserFolderPicker(): FsStorageAdapterOptions['folderPicker'] | undefined {
   const browser = globalThis as unknown as {
     showDirectoryPicker?: (options?: { mode: 'readwrite' }) => Promise<FsDirectoryHandleLike>;
@@ -955,6 +973,41 @@ export function createFsStorageAdapter(options: FsStorageAdapterOptions = {}): S
     return { characterId, savedAt };
   }
 
+  async function rememberActive(managedRoot: FsDirectoryHandleLike, ref: ActiveCharacterReference): Promise<void> {
+    const safeData = cloneForStorage(ref);
+    const envelope = await createEnvelope(PROJECTION_FORMAT, safeData, schemaVersion, appVersion, ref.savedAt);
+    await writeDirect(managedRoot, ACTIVE_FILE_NAME, JSON.stringify(envelope, null, 2));
+  }
+
+  async function archiveAndRemoveCrash(layout: CharacterLayout): Promise<void> {
+    const text = await readTextIfPresent(layout.root, CHARACTER_FILE_NAME);
+    if (text !== null) {
+      const safePrior = await sanitizedEnvelopeBackup(text, {
+        format: CHARACTER_FORMAT,
+        schemaVersion,
+        appVersion,
+      });
+      if (safePrior !== null) {
+        let sequence = 0;
+        let candidate = backupFileName(CHARACTER_FILE_NAME, sequence);
+        while ((await readTextIfPresent(layout.backups, candidate)) !== null) {
+          sequence += 1;
+          candidate = backupFileName(CHARACTER_FILE_NAME, sequence);
+        }
+        await writeDirect(layout.backups, candidate, safePrior);
+        await trimBackups(layout.backups, CHARACTER_FILE_NAME);
+      }
+    }
+    assert(layout.root.removeEntry, 'API_UNSUPPORTED', 'This browser cannot clear crash recovery data.');
+    for (const fileName of [CHARACTER_FILE_NAME, `${CHARACTER_FILE_NAME}.tmp`]) {
+      try {
+        await layout.root.removeEntry(fileName);
+      } catch (error) {
+        if (!isNotFound(error)) throw error;
+      }
+    }
+  }
+
   return {
     async pickFolderAndOpen(): Promise<StorageResult<{ rootName: string }>> {
       try {
@@ -998,6 +1051,16 @@ export function createFsStorageAdapter(options: FsStorageAdapterOptions = {}): S
         // are malformed, do not report a failed save after committing source data.
         await writePlayerData(storedPlayer.directory, storedPlayer.name, character, schemaVersion, appVersion, savedAt);
         const receipt = await saveLayout(layout, character, savedAt);
+        try {
+          await rememberActive(tree.managedRoot, {
+            player: storedPlayer.name,
+            name: storedCharacter.name,
+            characterId: receipt.characterId,
+            savedAt: receipt.savedAt,
+          });
+        } catch {
+          // active.json is non-authoritative metadata.
+        }
         return { ok: true, player: storedPlayer.name, name: storedCharacter.name, ...receipt };
       } catch (error) {
         return toFailure(error);
@@ -1020,6 +1083,32 @@ export function createFsStorageAdapter(options: FsStorageAdapterOptions = {}): S
         const tree = await baseTree();
         const envelope = await readCharacterEnvelopeIfPresent(tree.crash.root, schemaVersion);
         return { ok: true, character: envelope ? characterFromEnvelope(envelope) : null };
+      } catch (error) {
+        return toFailure(error);
+      }
+    },
+
+    async dismissCrash(): Promise<StorageResult<{ dismissed: true }>> {
+      try {
+        const tree = await baseTree();
+        await archiveAndRemoveCrash(tree.crash);
+        return { ok: true, dismissed: true };
+      } catch (error) {
+        return toFailure(error);
+      }
+    },
+
+    async getActiveCharacter(): Promise<StorageResult<{ activeCharacter: ActiveCharacterReference | null }>> {
+      try {
+        const tree = await baseTree();
+        const text = await readTextIfPresent(tree.managedRoot, ACTIVE_FILE_NAME);
+        if (text === null) return { ok: true, activeCharacter: null };
+        try {
+          const envelope = await parseEnvelope(text, PROJECTION_FORMAT, schemaVersion);
+          return { ok: true, activeCharacter: parseActiveCharacter(envelope.data) };
+        } catch {
+          return { ok: true, activeCharacter: null };
+        }
       } catch (error) {
         return toFailure(error);
       }
@@ -1059,7 +1148,18 @@ export function createFsStorageAdapter(options: FsStorageAdapterOptions = {}): S
         const storedCharacter = await getNamedDirectory(storedPlayer.directory, name, 'character', false);
         const envelope = await readCharacterEnvelopeIfPresent(storedCharacter.directory, schemaVersion);
         assert(envelope, 'NOT_FOUND', 'This character has no character.json file.');
-        return { ok: true, ...characterFromEnvelope(envelope) };
+        const loaded = characterFromEnvelope(envelope);
+        try {
+          await rememberActive(tree.managedRoot, {
+            player: storedPlayer.name,
+            name: storedCharacter.name,
+            characterId: loaded.characterId,
+            savedAt: loaded.savedAt,
+          });
+        } catch {
+          // active.json is non-authoritative metadata.
+        }
+        return { ok: true, ...loaded };
       } catch (error) {
         return toFailure(error);
       }

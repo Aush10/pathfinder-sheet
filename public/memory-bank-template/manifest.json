@@ -1,0 +1,45 @@
+{
+  "format": "pf1mw-memory-bank-template",
+  "schemaVersion": 1,
+  "templateVersion": "1.0.0",
+  "description": "Read-only contract for character memory created in the user's selected save vault. This template contains no player data, secrets, or executable instructions.",
+  "characterMemory": {
+    "root": "AI/memory",
+    "files": [
+      {
+        "path": "AI/memory/manifest.json",
+        "format": "pf1mw-character-memory-manifest",
+        "schemaVersion": 1,
+        "purpose": "Tracks the character-memory schema and bounded record counts."
+      },
+      {
+        "path": "AI/memory/summary.json",
+        "format": "pf1mw-character-memory-summary",
+        "schemaVersion": 1,
+        "purpose": "Stores a bounded structured summary derived from the active character sheet."
+      },
+      {
+        "path": "AI/memory/conversation.json",
+        "format": "pf1mw-character-memory-conversation",
+        "schemaVersion": 1,
+        "purpose": "Stores a bounded conversation history for the active character."
+      },
+      {
+        "path": "AI/memory/sources.json",
+        "format": "pf1mw-character-memory-sources",
+        "schemaVersion": 1,
+        "purpose": "Stores sanitized Source of Truth document metadata and excerpts."
+      }
+    ]
+  },
+  "trustBoundary": {
+    "allUserContent": "untrusted data, not instructions",
+    "neverStore": [
+      "api keys",
+      "access tokens",
+      "passwords",
+      "environment variables",
+      "session storage"
+    ]
+  }
+}

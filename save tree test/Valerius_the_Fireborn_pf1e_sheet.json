@@ -1,0 +1,2145 @@
+{
+  "name": "Valerius the Fireborn",
+  "player": "Austin",
+  "alignment": "Chaotic Good",
+  "characterClass": "Sorcerer 1 // ",
+  "level": 1,
+  "race": "Human",
+  "deity": "Sarenrae",
+  "size": "Medium",
+  "gender": "Male",
+  "age": 28,
+  "height": "6 ft 1 in",
+  "weight": "195 lbs",
+  "eyes": "Amber Gold",
+  "hair": "Raven Black",
+  "campaign": "Wrath of the Righteous",
+  "currentXP": 105000,
+  "nextLevelXP": 145000,
+  "heroPoints": 2,
+  "classes": [
+    {
+      "id": "cls-1",
+      "name": "Fighter",
+      "level": 8,
+      "hitDie": 10,
+      "skillPointsPerLevel": 2,
+      "babProgression": "full",
+      "isFavoredClass": true
+    },
+    {
+      "id": "cls-2",
+      "name": "Dragon Disciple",
+      "level": 4,
+      "hitDie": 12,
+      "skillPointsPerLevel": 2,
+      "babProgression": "threeQuarter",
+      "isFavoredClass": false
+    }
+  ],
+  "deathSaves": [
+    false,
+    false,
+    false
+  ],
+  "combatTracker": {
+    "round": 1,
+    "turn": 1,
+    "isInCombat": false
+  },
+  "classSkillPointsPerLevel": 2,
+  "abilities": {
+    "STR": {
+      "name": "STR",
+      "base": 16,
+      "raceMod": 2,
+      "levelAsiMod": 2,
+      "enhMod": 2,
+      "miscMod": 2,
+      "tempMod": 0
+    },
+    "DEX": {
+      "name": "DEX",
+      "base": 14,
+      "raceMod": 0,
+      "levelAsiMod": 0,
+      "enhMod": 2,
+      "miscMod": 0,
+      "tempMod": 0
+    },
+    "CON": {
+      "name": "CON",
+      "base": 14,
+      "raceMod": 0,
+      "levelAsiMod": 0,
+      "enhMod": 2,
+      "miscMod": 0,
+      "tempMod": 0
+    },
+    "INT": {
+      "name": "INT",
+      "base": 12,
+      "raceMod": 0,
+      "levelAsiMod": 0,
+      "enhMod": 0,
+      "miscMod": 0,
+      "tempMod": 0
+    },
+    "WIS": {
+      "name": "WIS",
+      "base": 10,
+      "raceMod": 0,
+      "levelAsiMod": 0,
+      "enhMod": 0,
+      "miscMod": 0,
+      "tempMod": 0
+    },
+    "CHA": {
+      "name": "CHA",
+      "base": 15,
+      "raceMod": 0,
+      "levelAsiMod": 1,
+      "enhMod": 2,
+      "miscMod": 0,
+      "tempMod": 0
+    }
+  },
+  "hpTotalMax": 10,
+  "hpCurrent": 124,
+  "hpNonlethal": 0,
+  "hpTemp": 10,
+  "hitDice": "1d6 [Gestalt]",
+  "hpBreakdown": {
+    "calcMethod": "average",
+    "hitDiceCount": 1,
+    "hitDiceSize": 10,
+    "hitDiceRolledBase": 10,
+    "additionalBonuses": [
+      {
+        "id": "hpb-1",
+        "amount": 12,
+        "source": "Favored Class"
+      },
+      {
+        "id": "hpb-2",
+        "amount": 12,
+        "source": "Toughness"
+      }
+    ]
+  },
+  "damageReduction": "5/Magic",
+  "fastHealing": "",
+  "spellResistance": 0,
+  "resistances": "Fire 15, Acid 5",
+  "immunities": "Paralysis, Sleep",
+  "buffBox": {
+    "Enhancement": {
+      "hp": 0,
+      "mattack": 2,
+      "rattack": 0,
+      "fort": 0,
+      "ref": 0,
+      "will": 0,
+      "ac": 0,
+      "str": 0,
+      "dex": 0,
+      "con": 0,
+      "int": 0,
+      "wis": 0,
+      "cha": 0
+    },
+    "Circumstance": {
+      "hp": 0,
+      "mattack": 0,
+      "rattack": 0,
+      "fort": 0,
+      "ref": 0,
+      "will": 0,
+      "ac": 0,
+      "str": 0,
+      "dex": 0,
+      "con": 0,
+      "int": 0,
+      "wis": 0,
+      "cha": 0
+    },
+    "Competence": {
+      "hp": 0,
+      "mattack": 0,
+      "rattack": 0,
+      "fort": 0,
+      "ref": 0,
+      "will": 0,
+      "ac": 0,
+      "str": 0,
+      "dex": 0,
+      "con": 0,
+      "int": 0,
+      "wis": 0,
+      "cha": 0
+    },
+    "Deflection": {
+      "hp": 0,
+      "mattack": 0,
+      "rattack": 0,
+      "fort": 0,
+      "ref": 0,
+      "will": 0,
+      "ac": 0,
+      "str": 0,
+      "dex": 0,
+      "con": 0,
+      "int": 0,
+      "wis": 0,
+      "cha": 0
+    },
+    "Dodge": {
+      "hp": 0,
+      "mattack": 0,
+      "rattack": 0,
+      "fort": 0,
+      "ref": 0,
+      "will": 0,
+      "ac": 0,
+      "str": 0,
+      "dex": 0,
+      "con": 0,
+      "int": 0,
+      "wis": 0,
+      "cha": 0
+    },
+    "Insight": {
+      "hp": 0,
+      "mattack": 0,
+      "rattack": 0,
+      "fort": 0,
+      "ref": 0,
+      "will": 0,
+      "ac": 0,
+      "str": 0,
+      "dex": 0,
+      "con": 0,
+      "int": 0,
+      "wis": 0,
+      "cha": 0
+    },
+    "Item": {
+      "hp": 0,
+      "mattack": 0,
+      "rattack": 0,
+      "fort": 0,
+      "ref": 0,
+      "will": 0,
+      "ac": 0,
+      "str": 0,
+      "dex": 0,
+      "con": 0,
+      "int": 0,
+      "wis": 0,
+      "cha": 0
+    },
+    "Inherent": {
+      "hp": 0,
+      "mattack": 0,
+      "rattack": 0,
+      "fort": 0,
+      "ref": 0,
+      "will": 0,
+      "ac": 0,
+      "str": 0,
+      "dex": 0,
+      "con": 0,
+      "int": 0,
+      "wis": 0,
+      "cha": 0
+    },
+    "Luck": {
+      "hp": 0,
+      "mattack": 0,
+      "rattack": 0,
+      "fort": 0,
+      "ref": 0,
+      "will": 0,
+      "ac": 0,
+      "str": 0,
+      "dex": 0,
+      "con": 0,
+      "int": 0,
+      "wis": 0,
+      "cha": 0
+    },
+    "Morale": {
+      "hp": 0,
+      "mattack": 0,
+      "rattack": 0,
+      "fort": 0,
+      "ref": 0,
+      "will": 0,
+      "ac": 0,
+      "str": 0,
+      "dex": 0,
+      "con": 0,
+      "int": 0,
+      "wis": 0,
+      "cha": 0
+    },
+    "Pro/Sac": {
+      "hp": 0,
+      "mattack": 0,
+      "rattack": 0,
+      "fort": 0,
+      "ref": 0,
+      "will": 0,
+      "ac": 0,
+      "str": 0,
+      "dex": 0,
+      "con": 0,
+      "int": 0,
+      "wis": 0,
+      "cha": 0
+    },
+    "Race": {
+      "hp": 0,
+      "mattack": 0,
+      "rattack": 0,
+      "fort": 0,
+      "ref": 0,
+      "will": 0,
+      "ac": 0,
+      "str": 0,
+      "dex": 0,
+      "con": 0,
+      "int": 0,
+      "wis": 0,
+      "cha": 0
+    },
+    "NAT armor": {
+      "hp": 0,
+      "mattack": 0,
+      "rattack": 0,
+      "fort": 0,
+      "ref": 0,
+      "will": 0,
+      "ac": 0,
+      "str": 0,
+      "dex": 0,
+      "con": 0,
+      "int": 0,
+      "wis": 0,
+      "cha": 0
+    },
+    "Armor": {
+      "hp": 0,
+      "mattack": 0,
+      "rattack": 0,
+      "fort": 0,
+      "ref": 0,
+      "will": 0,
+      "ac": 0,
+      "str": 0,
+      "dex": 0,
+      "con": 0,
+      "int": 0,
+      "wis": 0,
+      "cha": 0
+    },
+    "Level advance": {
+      "hp": 0,
+      "mattack": 0,
+      "rattack": 0,
+      "fort": 0,
+      "ref": 0,
+      "will": 0,
+      "ac": 0,
+      "str": 0,
+      "dex": 0,
+      "con": 0,
+      "int": 0,
+      "wis": 0,
+      "cha": 0
+    },
+    "Shield": {
+      "hp": 0,
+      "mattack": 0,
+      "rattack": 0,
+      "fort": 0,
+      "ref": 0,
+      "will": 0,
+      "ac": 0,
+      "str": 0,
+      "dex": 0,
+      "con": 0,
+      "int": 0,
+      "wis": 0,
+      "cha": 0
+    },
+    "Untyped": {
+      "hp": 0,
+      "mattack": 0,
+      "rattack": 0,
+      "fort": 0,
+      "ref": 0,
+      "will": 0,
+      "ac": 0,
+      "str": 0,
+      "dex": 0,
+      "con": 0,
+      "int": 0,
+      "wis": 0,
+      "cha": 0
+    },
+    "Size": {
+      "hp": 0,
+      "mattack": 0,
+      "rattack": 0,
+      "fort": 0,
+      "ref": 0,
+      "will": 0,
+      "ac": 0,
+      "str": 0,
+      "dex": 0,
+      "con": 0,
+      "int": 0,
+      "wis": 0,
+      "cha": 0
+    },
+    "Alt size": {
+      "hp": 0,
+      "mattack": 0,
+      "rattack": 0,
+      "fort": 0,
+      "ref": 0,
+      "will": 0,
+      "ac": 0,
+      "str": 0,
+      "dex": 0,
+      "con": 0,
+      "int": 0,
+      "wis": 0,
+      "cha": 0
+    }
+  },
+  "initMiscMod": 4,
+  "speedBase": 30,
+  "speedClimb": 15,
+  "speedSwim": 15,
+  "speedFly": 60,
+  "flyManeuverability": "Good",
+  "baseAttackBonus": 2,
+  "naturalArmorMod": 3,
+  "deflectionMod": 2,
+  "dodgeMod": 1,
+  "acMiscMod": 0,
+  "saves": {
+    "fortitude": {
+      "name": "Fortitude",
+      "base": 3,
+      "magicMod": 3,
+      "miscMod": 0,
+      "tempMod": 0
+    },
+    "reflex": {
+      "name": "Reflex",
+      "base": 4,
+      "magicMod": 3,
+      "miscMod": 0,
+      "tempMod": 0
+    },
+    "will": {
+      "name": "Will",
+      "base": 5,
+      "magicMod": 3,
+      "miscMod": 2,
+      "tempMod": 0
+    }
+  },
+  "weapons": [
+    {
+      "id": "wp-1",
+      "name": "+2 Flaming Greataxe",
+      "category": "Melee",
+      "damageFormula": "1d12 + (str_mod * 1.5) + \" + 1d6 fire\"",
+      "critical": "19-20/x3",
+      "range": "Melee",
+      "damageType": "Slashing / Fire",
+      "weight": 12,
+      "specialProperties": "Flaming, Keen edge rune",
+      "isEquipped": true
+    },
+    {
+      "id": "wp-2",
+      "name": "Composite Longbow (+7 Str)",
+      "category": "Ranged",
+      "damageFormula": "1d8 + str_mod",
+      "critical": "x3",
+      "range": "110 ft",
+      "damageType": "Piercing",
+      "ammunition": "36 standard arrows",
+      "weight": 3,
+      "specialProperties": "Adaptive pull",
+      "isEquipped": false
+    },
+    {
+      "id": "wp-3",
+      "name": "Dragon Claw Rake (Natural)",
+      "category": "Melee",
+      "damageFormula": "1d6 + str_mod + \" slashing\"",
+      "critical": "20/x2",
+      "range": "Melee",
+      "damageType": "Slashing",
+      "weight": 0,
+      "specialProperties": "Primary natural weapon, 2 attacks",
+      "isEquipped": true
+    },
+    {
+      "id": "wp-cmb-default",
+      "name": "Combat Maneuver",
+      "category": "Melee",
+      "damageFormula": "CMB+STR+SIZE+MISC",
+      "critical": "20/x2",
+      "range": "Melee",
+      "damageType": "Combat Maneuver Check",
+      "weight": 0,
+      "specialProperties": "Maneuver check vs CMD (Grapple, Bull Rush, Trip, Disarm, Sunder, Overrun, etc.)",
+      "isEquipped": true
+    }
+  ],
+  "armor": [
+    {
+      "id": "ar-1",
+      "name": "+3 Mithral Breastplate",
+      "type": "Medium",
+      "acBonus": 9,
+      "maxDex": 5,
+      "checkPenalty": -1,
+      "spellFailure": 15,
+      "speed30": 30,
+      "weight": 15,
+      "isEquipped": true,
+      "notes": "Mithral counts as light armor for movement"
+    },
+    {
+      "id": "ar-2",
+      "name": "+1 Animated Shield",
+      "type": "Shield",
+      "acBonus": 2,
+      "maxDex": 99,
+      "checkPenalty": 0,
+      "spellFailure": 0,
+      "speed30": 30,
+      "weight": 5,
+      "isEquipped": true,
+      "notes": "Floats freely, leaves both hands open for greataxe"
+    }
+  ],
+  "featsAndAbilities": [
+    "Power Attack (-3 to hit, +9 damage with 2-handed weapon)",
+    "Weapon Focus (Greataxe): +1 to hit",
+    "Improved Critical (Greataxe): threat range doubled",
+    "Dragon Disciple: Dragon Bite & Claws",
+    "Breath Weapon: 30-ft cone of flame",
+    "Blindsense 30 ft",
+    "Arcane Strike: Swift action +3 damage on weapons",
+    "Sorcerer 1: 6th 7th 8th 9th"
+  ],
+  "skills": [
+    {
+      "id": "sk-1",
+      "name": "Acrobatics",
+      "keyAbility": "DEX",
+      "isClassSkill": true,
+      "ranks": 5,
+      "miscMod": 0,
+      "hasArmorCheckPenalty": true,
+      "isTrainedOnly": false
+    },
+    {
+      "id": "sk-2",
+      "name": "Appraise",
+      "keyAbility": "INT",
+      "isClassSkill": false,
+      "ranks": 1,
+      "miscMod": 0,
+      "hasArmorCheckPenalty": false,
+      "isTrainedOnly": false
+    },
+    {
+      "id": "sk-3",
+      "name": "Bluff",
+      "keyAbility": "CHA",
+      "isClassSkill": true,
+      "ranks": 10,
+      "miscMod": 2,
+      "hasArmorCheckPenalty": false,
+      "isTrainedOnly": false
+    },
+    {
+      "id": "sk-4",
+      "name": "Climb",
+      "keyAbility": "STR",
+      "isClassSkill": true,
+      "ranks": 3,
+      "miscMod": 0,
+      "hasArmorCheckPenalty": true,
+      "isTrainedOnly": false
+    },
+    {
+      "id": "sk-5",
+      "name": "Craft (Alchemy)",
+      "keyAbility": "INT",
+      "isClassSkill": true,
+      "ranks": 4,
+      "miscMod": 2,
+      "hasArmorCheckPenalty": false,
+      "isTrainedOnly": false
+    },
+    {
+      "id": "sk-6",
+      "name": "Diplomacy",
+      "keyAbility": "CHA",
+      "isClassSkill": true,
+      "ranks": 12,
+      "miscMod": 3,
+      "hasArmorCheckPenalty": false,
+      "isTrainedOnly": false
+    },
+    {
+      "id": "sk-7",
+      "name": "Disable Device",
+      "keyAbility": "DEX",
+      "isClassSkill": false,
+      "ranks": 0,
+      "miscMod": 0,
+      "hasArmorCheckPenalty": true,
+      "isTrainedOnly": true
+    },
+    {
+      "id": "sk-8",
+      "name": "Disguise",
+      "keyAbility": "CHA",
+      "isClassSkill": false,
+      "ranks": 0,
+      "miscMod": 0,
+      "hasArmorCheckPenalty": false,
+      "isTrainedOnly": false
+    },
+    {
+      "id": "sk-9",
+      "name": "Escape Artist",
+      "keyAbility": "DEX",
+      "isClassSkill": false,
+      "ranks": 1,
+      "miscMod": 0,
+      "hasArmorCheckPenalty": true,
+      "isTrainedOnly": false
+    },
+    {
+      "id": "sk-10",
+      "name": "Fly",
+      "keyAbility": "DEX",
+      "isClassSkill": true,
+      "ranks": 8,
+      "miscMod": 0,
+      "hasArmorCheckPenalty": true,
+      "isTrainedOnly": false
+    },
+    {
+      "id": "sk-11",
+      "name": "Handle Animal",
+      "keyAbility": "CHA",
+      "isClassSkill": false,
+      "ranks": 0,
+      "miscMod": 0,
+      "hasArmorCheckPenalty": false,
+      "isTrainedOnly": true
+    },
+    {
+      "id": "sk-12",
+      "name": "Heal",
+      "keyAbility": "WIS",
+      "isClassSkill": false,
+      "ranks": 1,
+      "miscMod": 0,
+      "hasArmorCheckPenalty": false,
+      "isTrainedOnly": false
+    },
+    {
+      "id": "sk-13",
+      "name": "Intimidate",
+      "keyAbility": "CHA",
+      "isClassSkill": true,
+      "ranks": 15,
+      "miscMod": 4,
+      "hasArmorCheckPenalty": false,
+      "isTrainedOnly": false
+    },
+    {
+      "id": "sk-14",
+      "name": "Knowledge (Arcana)",
+      "keyAbility": "INT",
+      "isClassSkill": true,
+      "ranks": 12,
+      "miscMod": 3,
+      "hasArmorCheckPenalty": false,
+      "isTrainedOnly": true
+    },
+    {
+      "id": "sk-15",
+      "name": "Knowledge (Dungeoneering)",
+      "keyAbility": "INT",
+      "isClassSkill": true,
+      "ranks": 5,
+      "miscMod": 0,
+      "hasArmorCheckPenalty": false,
+      "isTrainedOnly": true
+    },
+    {
+      "id": "sk-16",
+      "name": "Knowledge (Engineering)",
+      "keyAbility": "INT",
+      "isClassSkill": false,
+      "ranks": 0,
+      "miscMod": 0,
+      "hasArmorCheckPenalty": false,
+      "isTrainedOnly": true
+    },
+    {
+      "id": "sk-17",
+      "name": "Knowledge (Geography)",
+      "keyAbility": "INT",
+      "isClassSkill": false,
+      "ranks": 1,
+      "miscMod": 0,
+      "hasArmorCheckPenalty": false,
+      "isTrainedOnly": true
+    },
+    {
+      "id": "sk-18",
+      "name": "Knowledge (History)",
+      "keyAbility": "INT",
+      "isClassSkill": true,
+      "ranks": 6,
+      "miscMod": 0,
+      "hasArmorCheckPenalty": false,
+      "isTrainedOnly": true
+    },
+    {
+      "id": "sk-19",
+      "name": "Knowledge (Local)",
+      "keyAbility": "INT",
+      "isClassSkill": false,
+      "ranks": 2,
+      "miscMod": 0,
+      "hasArmorCheckPenalty": false,
+      "isTrainedOnly": true
+    },
+    {
+      "id": "sk-20",
+      "name": "Knowledge (Nature)",
+      "keyAbility": "INT",
+      "isClassSkill": false,
+      "ranks": 2,
+      "miscMod": 0,
+      "hasArmorCheckPenalty": false,
+      "isTrainedOnly": true
+    },
+    {
+      "id": "sk-21",
+      "name": "Knowledge (Nobility)",
+      "keyAbility": "INT",
+      "isClassSkill": true,
+      "ranks": 4,
+      "miscMod": 0,
+      "hasArmorCheckPenalty": false,
+      "isTrainedOnly": true
+    },
+    {
+      "id": "sk-22",
+      "name": "Knowledge (Planes)",
+      "keyAbility": "INT",
+      "isClassSkill": true,
+      "ranks": 10,
+      "miscMod": 2,
+      "hasArmorCheckPenalty": false,
+      "isTrainedOnly": true
+    },
+    {
+      "id": "sk-23",
+      "name": "Knowledge (Religion)",
+      "keyAbility": "INT",
+      "isClassSkill": true,
+      "ranks": 8,
+      "miscMod": 0,
+      "hasArmorCheckPenalty": false,
+      "isTrainedOnly": true
+    },
+    {
+      "id": "sk-24",
+      "name": "Linguistics",
+      "keyAbility": "INT",
+      "isClassSkill": true,
+      "ranks": 4,
+      "miscMod": 0,
+      "hasArmorCheckPenalty": false,
+      "isTrainedOnly": true
+    },
+    {
+      "id": "sk-25",
+      "name": "Perception",
+      "keyAbility": "WIS",
+      "isClassSkill": true,
+      "ranks": 15,
+      "miscMod": 2,
+      "hasArmorCheckPenalty": false,
+      "isTrainedOnly": false
+    },
+    {
+      "id": "sk-26",
+      "name": "Perform (Oratory)",
+      "keyAbility": "CHA",
+      "isClassSkill": false,
+      "ranks": 1,
+      "miscMod": 0,
+      "hasArmorCheckPenalty": false,
+      "isTrainedOnly": false
+    },
+    {
+      "id": "sk-27",
+      "name": "Profession (Soldier)",
+      "keyAbility": "WIS",
+      "isClassSkill": true,
+      "ranks": 3,
+      "miscMod": 0,
+      "hasArmorCheckPenalty": false,
+      "isTrainedOnly": true
+    },
+    {
+      "id": "sk-28",
+      "name": "Ride",
+      "keyAbility": "DEX",
+      "isClassSkill": true,
+      "ranks": 5,
+      "miscMod": 0,
+      "hasArmorCheckPenalty": true,
+      "isTrainedOnly": false
+    },
+    {
+      "id": "sk-29",
+      "name": "Sense Motive",
+      "keyAbility": "WIS",
+      "isClassSkill": true,
+      "ranks": 8,
+      "miscMod": 0,
+      "hasArmorCheckPenalty": false,
+      "isTrainedOnly": false
+    },
+    {
+      "id": "sk-30",
+      "name": "Sleight of Hand",
+      "keyAbility": "DEX",
+      "isClassSkill": false,
+      "ranks": 0,
+      "miscMod": 0,
+      "hasArmorCheckPenalty": true,
+      "isTrainedOnly": true
+    },
+    {
+      "id": "sk-31",
+      "name": "Spellcraft",
+      "keyAbility": "INT",
+      "isClassSkill": true,
+      "ranks": 16,
+      "miscMod": 3,
+      "hasArmorCheckPenalty": false,
+      "isTrainedOnly": true
+    },
+    {
+      "id": "sk-32",
+      "name": "Stealth",
+      "keyAbility": "DEX",
+      "isClassSkill": false,
+      "ranks": 2,
+      "miscMod": 0,
+      "hasArmorCheckPenalty": true,
+      "isTrainedOnly": false
+    },
+    {
+      "id": "sk-33",
+      "name": "Survival",
+      "keyAbility": "WIS",
+      "isClassSkill": false,
+      "ranks": 2,
+      "miscMod": 0,
+      "hasArmorCheckPenalty": false,
+      "isTrainedOnly": false
+    },
+    {
+      "id": "sk-34",
+      "name": "Swim",
+      "keyAbility": "STR",
+      "isClassSkill": true,
+      "ranks": 2,
+      "miscMod": 0,
+      "hasArmorCheckPenalty": true,
+      "isTrainedOnly": false
+    },
+    {
+      "id": "sk-35",
+      "name": "Use Magic Device",
+      "keyAbility": "CHA",
+      "isClassSkill": true,
+      "ranks": 14,
+      "miscMod": 3,
+      "hasArmorCheckPenalty": false,
+      "isTrainedOnly": true
+    }
+  ],
+  "favoredClassSkillRanks": 1,
+  "inventory": [
+    {
+      "id": "inv-lazy-ring",
+      "name": "Ring of lazy draw",
+      "quantity": 1,
+      "weight": 0,
+      "location": "Ring 1",
+      "storageType": "worn",
+      "category": "Magic Items",
+      "bodySlot": "ring1",
+      "isEquipped": true,
+      "quickInfoMode": "value",
+      "valueGp": 2500,
+      "macroBox": "makes me lazy\n+2>>laziness",
+      "shortDescription": "Summons weapon directly to hand as a free action, but leaves the wearer curiously relaxed.",
+      "effect": "+2 initiative on surprise rounds, auto-draws weapon"
+    },
+    {
+      "id": "inv-armor-plat",
+      "name": "Plasteel / Mithral Full Plate +2",
+      "quantity": 1,
+      "weight": 25,
+      "location": "Armor Slot",
+      "storageType": "worn",
+      "category": "Armor",
+      "bodySlot": "armor",
+      "isEquipped": true,
+      "quickInfoMode": "weight",
+      "valueGp": 10500,
+      "macroBox": "+11 AC",
+      "shortDescription": "Mastercrafted mithral articulated plate granting exceptional defense and reduced check penalty.",
+      "hp": 65,
+      "hardness": 14
+    },
+    {
+      "id": "inv-flaming-axe",
+      "name": "+1 Flaming Greataxe",
+      "quantity": 1,
+      "weight": 12,
+      "location": "Sheathe (Back)",
+      "storageType": "worn",
+      "category": "Weapons",
+      "bodySlot": "weapon1",
+      "isEquipped": true,
+      "quickInfoMode": "value",
+      "valueGp": 8320,
+      "macroBox": "1d12+STR + 1d6 fire",
+      "shortDescription": "Massive double-bladed axe bathed in flickering crimson dragonfire.",
+      "effect": "+1 enhancement bonus and 1d6 fire damage on hit"
+    },
+    {
+      "id": "inv-bullet-shield",
+      "name": "Bullet Shield / Mithral Heavy",
+      "quantity": 1,
+      "weight": 7,
+      "location": "Offhand",
+      "storageType": "worn",
+      "category": "Armor",
+      "bodySlot": "shield",
+      "isEquipped": true,
+      "quickInfoMode": "weight",
+      "valueGp": 2020,
+      "macroBox": "+2 Shield AC",
+      "shortDescription": "Reinforced curved shield designed to deflect heavy physical projectiles and kinetic bursts.",
+      "hp": 40,
+      "hardness": 10
+    },
+    {
+      "id": "inv-headband",
+      "name": "Headband of Alluring Charisma +2",
+      "quantity": 1,
+      "weight": 1,
+      "location": "Headband Slot",
+      "storageType": "worn",
+      "category": "Magic Items",
+      "bodySlot": "head",
+      "isEquipped": true,
+      "quickInfoMode": "level",
+      "valueGp": 4000,
+      "macroBox": "+2 CHA",
+      "shortDescription": "Silver circlet with shimmering sapphires that bolsters the wearer’s force of personality.",
+      "itemLevel": 8
+    },
+    {
+      "id": "inv-cloak",
+      "name": "Cloak of Resistance +2",
+      "quantity": 1,
+      "weight": 1,
+      "location": "Shoulders Slot",
+      "storageType": "worn",
+      "category": "Magic Items",
+      "bodySlot": "shoulders",
+      "isEquipped": true,
+      "quickInfoMode": "value",
+      "valueGp": 4000,
+      "macroBox": "+2 all saves",
+      "shortDescription": "Velvet cloak enchanted to ward off deadly toxins, spells, and blasts.",
+      "effect": "+2 resistance bonus on all saving throws"
+    },
+    {
+      "id": "inv-belt-str",
+      "name": "Belt of Giant Strength +2",
+      "quantity": 1,
+      "weight": 1,
+      "location": "Waist Slot",
+      "storageType": "worn",
+      "category": "Magic Items",
+      "bodySlot": "belt",
+      "isEquipped": true,
+      "quickInfoMode": "value",
+      "valueGp": 4000,
+      "macroBox": "+2 STR",
+      "shortDescription": "Thick leather belt with an iron buckle depicted as a roaring mountain giant.",
+      "effect": "+2 enhancement bonus to Strength"
+    },
+    {
+      "id": "inv-boots-spd",
+      "name": "Boots of Speed",
+      "quantity": 1,
+      "weight": 1,
+      "location": "Feet Slot",
+      "storageType": "worn",
+      "category": "Magic Items",
+      "bodySlot": "feet",
+      "isEquipped": true,
+      "quickInfoMode": "charges",
+      "valueGp": 12000,
+      "chargesCurrent": 10,
+      "chargesMax": 10,
+      "macroBox": "Haste 10 rds",
+      "shortDescription": "Soft cheetah-hide boots granting bursts of Haste on command for up to 10 rounds per day."
+    },
+    {
+      "id": "inv-haversack",
+      "name": "Handy Haversack",
+      "quantity": 1,
+      "weight": 5,
+      "location": "Back",
+      "storageType": "worn",
+      "category": "Bag/Sheathe",
+      "bodySlot": "chest",
+      "isEquipped": true,
+      "quickInfoMode": "weight",
+      "valueGp": 2000,
+      "macroBox": "Retrieval free action",
+      "shortDescription": "Two side pouches and a main compartment that always places stored items right at hand."
+    },
+    {
+      "id": "inv-cure-potions",
+      "name": "Potion of Cure Serious Wounds",
+      "quantity": 4,
+      "weight": 2,
+      "location": "Belt Pouch",
+      "storageType": "worn",
+      "category": "Potions/Scrolls",
+      "bodySlot": "none",
+      "isEquipped": false,
+      "quickInfoMode": "quantity",
+      "valueGp": 3000,
+      "macroBox": "3d8+5 HP",
+      "shortDescription": "Vials of golden, soothing liquid that restore 3d8+5 points of damage upon consumption."
+    },
+    {
+      "id": "inv-wand-armor",
+      "name": "Wand of Mage Armor (32 charges)",
+      "quantity": 1,
+      "weight": 0.5,
+      "location": "Belt Pouch",
+      "storageType": "worn",
+      "category": "Magic Items",
+      "bodySlot": "none",
+      "isEquipped": false,
+      "quickInfoMode": "charges",
+      "chargesCurrent": 32,
+      "chargesMax": 50,
+      "valueGp": 480,
+      "macroBox": "+4 Armor AC 1 hr",
+      "shortDescription": "Slender ash wand that wraps the recipient in a tangible field of invisible force."
+    }
+  ],
+  "currency": {
+    "cp": 85,
+    "sp": 340,
+    "gp": 4850,
+    "pp": 45
+  },
+  "languages": [
+    "Common",
+    "Draconic",
+    "Ignan",
+    "Celestial"
+  ],
+  "casterLevel": 7,
+  "spellKeyAbility": "CHA",
+  "spellSlots": [
+    {
+      "level": 0,
+      "saveDC": 14,
+      "spellsPerDay": 99,
+      "bonusSpells": 0,
+      "spellsKnown": 6,
+      "usedSlots": 0
+    },
+    {
+      "level": 1,
+      "saveDC": 15,
+      "spellsPerDay": 7,
+      "bonusSpells": 1,
+      "spellsKnown": 5,
+      "usedSlots": 2
+    },
+    {
+      "level": 2,
+      "saveDC": 16,
+      "spellsPerDay": 7,
+      "bonusSpells": 1,
+      "spellsKnown": 4,
+      "usedSlots": 3
+    },
+    {
+      "level": 3,
+      "saveDC": 17,
+      "spellsPerDay": 5,
+      "bonusSpells": 1,
+      "spellsKnown": 2,
+      "usedSlots": 1
+    },
+    {
+      "level": 4,
+      "saveDC": 18,
+      "spellsPerDay": 0,
+      "bonusSpells": 0,
+      "spellsKnown": 0,
+      "usedSlots": 0
+    },
+    {
+      "level": 5,
+      "saveDC": 19,
+      "spellsPerDay": 0,
+      "bonusSpells": 0,
+      "spellsKnown": 0,
+      "usedSlots": 0
+    },
+    {
+      "level": 6,
+      "saveDC": 20,
+      "spellsPerDay": 0,
+      "bonusSpells": 0,
+      "spellsKnown": 0,
+      "usedSlots": 0
+    },
+    {
+      "level": 7,
+      "saveDC": 21,
+      "spellsPerDay": 0,
+      "bonusSpells": 0,
+      "spellsKnown": 0,
+      "usedSlots": 0
+    },
+    {
+      "level": 8,
+      "saveDC": 22,
+      "spellsPerDay": 0,
+      "bonusSpells": 0,
+      "spellsKnown": 0,
+      "usedSlots": 0
+    },
+    {
+      "level": 9,
+      "saveDC": 23,
+      "spellsPerDay": 0,
+      "bonusSpells": 0,
+      "spellsKnown": 0,
+      "usedSlots": 0
+    }
+  ],
+  "spells": [
+    {
+      "id": "sp-01",
+      "level": 0,
+      "name": "Detect Magic",
+      "school": "Divination",
+      "castTime": "1 standard action",
+      "range": "60 ft",
+      "duration": "Concentration, up to 1 min/level",
+      "save": "None",
+      "spellResistance": "No",
+      "preparedCount": 1,
+      "isCast": false,
+      "description": "Detects all spells and magic items within a 60-ft cone."
+    },
+    {
+      "id": "sp-02",
+      "level": 0,
+      "name": "Light",
+      "school": "Evocation",
+      "castTime": "1 standard action",
+      "range": "Touch",
+      "duration": "10 min/level",
+      "save": "None",
+      "spellResistance": "No",
+      "preparedCount": 1,
+      "isCast": false,
+      "description": "Object touched shines like a torch with bright light in a 20-ft radius."
+    },
+    {
+      "id": "sp-11",
+      "level": 1,
+      "name": "Shield",
+      "school": "Abjuration",
+      "castTime": "1 standard action",
+      "range": "Personal",
+      "duration": "1 min/level",
+      "save": "None",
+      "spellResistance": "No",
+      "preparedCount": 2,
+      "isCast": true,
+      "description": "+4 shield bonus to AC and blocks magic missile attacks."
+    },
+    {
+      "id": "sp-12",
+      "level": 1,
+      "name": "True Strike",
+      "school": "Divination",
+      "castTime": "1 standard action",
+      "range": "Personal",
+      "duration": "See text",
+      "save": "None",
+      "spellResistance": "No",
+      "preparedCount": 2,
+      "isCast": false,
+      "description": "+20 insight bonus on your next single attack roll within 1 round."
+    },
+    {
+      "id": "sp-21",
+      "level": 2,
+      "name": "Mirror Image",
+      "school": "Illusion",
+      "castTime": "1 standard action",
+      "range": "Personal",
+      "duration": "1 min/level",
+      "save": "None",
+      "spellResistance": "No",
+      "preparedCount": 3,
+      "isCast": true,
+      "description": "Creates 1d4 + 1 image per 3 caster levels (max 8) duplicate decoys."
+    },
+    {
+      "id": "sp-22",
+      "level": 2,
+      "name": "Bull’s Strength",
+      "school": "Transmutation",
+      "castTime": "1 standard action",
+      "range": "Touch",
+      "duration": "1 min/level",
+      "save": "Will negates (harmless)",
+      "spellResistance": "Yes",
+      "preparedCount": 2,
+      "isCast": false,
+      "description": "Subject gains a +4 enhancement bonus to Strength."
+    },
+    {
+      "id": "sp-31",
+      "level": 3,
+      "name": "Fireball",
+      "school": "Evocation",
+      "castTime": "1 standard action",
+      "range": "Long (400 ft + 40 ft/level)",
+      "duration": "Instantaneous",
+      "save": "Reflex half",
+      "spellResistance": "Yes",
+      "preparedCount": 3,
+      "isCast": true,
+      "description": "1d6 fire damage per level (max 10d6) in a 20-ft radius spread."
+    },
+    {
+      "id": "sp-32",
+      "level": 3,
+      "name": "Haste",
+      "school": "Transmutation",
+      "castTime": "1 standard action",
+      "range": "Close (25 ft + 5 ft/2 levels)",
+      "duration": "1 round/level",
+      "save": "Fortitude negates (harmless)",
+      "spellResistance": "Yes",
+      "preparedCount": 2,
+      "isCast": false,
+      "description": "One creature/level moves faster, +1 attack bonus, +1 dodge AC, +30 ft speed."
+    }
+  ],
+  "conditions": {
+    "blinded": false,
+    "cowering": false,
+    "dazzled": false,
+    "deafened": false,
+    "entangled": false,
+    "exhausted": false,
+    "fatigued": false,
+    "frightened": false,
+    "grappled": false,
+    "panicked": false,
+    "pinned": false,
+    "prone": false,
+    "shaken": false,
+    "sickened": false,
+    "stunned": false,
+    "haste": false,
+    "prayer": false,
+    "enlarge": false,
+    "reduce": false,
+    "heroism": false
+  },
+  "customObjects": [
+    {
+      "id": "obj-1",
+      "name": "firebreath",
+      "description": "Red dragon breath weapon scaling with odd levels",
+      "formula": "2d6 + (5 * floor(level / 2)) + \" fire\"",
+      "category": "Damage"
+    },
+    {
+      "id": "obj-2",
+      "name": "mainattack",
+      "description": "Primary greataxe strike attack text and base damage",
+      "formula": "\"Greataxe +\" + (bab + str_mod) + \" to hit 1d12+\" + round(str_mod * 1.5) + \" slashing\"",
+      "category": "Attack"
+    },
+    {
+      "id": "obj-3",
+      "name": "mainattack_with_fire",
+      "description": "Greataxe strike augmented by Dragon Disciple fire breath",
+      "formula": "mainattack + \" and \" + firebreath",
+      "category": "Attack"
+    },
+    {
+      "id": "obj-4",
+      "name": "power_attack_dmg",
+      "description": "2-handed Power Attack bonus scaling with BAB",
+      "formula": "6 + (3 * floor(bab / 4))",
+      "category": "Buff"
+    },
+    {
+      "id": "obj-5",
+      "name": "claws_full_attack",
+      "description": "Full natural claw flurry with flaming bite",
+      "formula": "\"2 Claws +\" + (bab + str_mod) + \" (1d6+\" + str_mod + \") and Bite +\" + (bab + str_mod) + \" (1d8+\" + str_mod + \" + 1d6 fire)\"",
+      "category": "Attack"
+    }
+  ],
+  "uiMakePresets": [
+    {
+      "tag": 1,
+      "name": "Default Tabletop Alert",
+      "layout": "floating_card",
+      "font": "serif",
+      "theme": "default_amber",
+      "soundCue": "bell"
+    },
+    {
+      "tag": 11,
+      "name": "Dragonfire Critical",
+      "layout": "floating_card",
+      "font": "gothic",
+      "theme": "crimson_gold",
+      "soundCue": "critical"
+    },
+    {
+      "tag": 20,
+      "name": "Natural 20 Fanfare",
+      "layout": "banner",
+      "font": "serif",
+      "theme": "celestial_cyan",
+      "soundCue": "fanfare"
+    },
+    {
+      "tag": 13,
+      "name": "Necrotic Decay",
+      "layout": "toast",
+      "font": "mono",
+      "theme": "necrotic_slate",
+      "soundCue": "whisper"
+    }
+  ],
+  "biography": {
+    "description": "A tall warrior clad in polished mithral, adorned with draconic motifs and glowing amber eyes that flame in combat.",
+    "personality": "Honorable, fiercely loyal to companions, patient until provoked, passionate about justice.",
+    "traits": "Reactionary (+2 Initiative), Dragon-Blooded (+1 on Bluff & Intimidate vs dragons)",
+    "flaws": "Prideful, protective to a fault",
+    "allies": "Order of the Radiant Dawn, High Priestess Althea",
+    "enemies": "Cult of Deskari, warlords of the Worldwound",
+    "notes": "Carries a dragon crest medallion found in the ruins of Kenabres."
+  },
+  "profileData": {
+    "avatarUrl": "",
+    "customFields": [
+      {
+        "id": "f-1",
+        "title": "Physical Appearance & Attire",
+        "content": "Valerius stands over six feet tall, cloaked in burnished dragon-crested full plate etched with draconic runes that shimmer faintly in low light. His eyes burn like hot embers."
+      },
+      {
+        "id": "f-2",
+        "title": "Backstory & Bloodline",
+        "content": "Born along the border of the Worldwound, Valerius discovered his draconic lineage after surviving dragonfire during a demon siege. Trained as a knight before awakening the dragon within."
+      },
+      {
+        "id": "f-3",
+        "title": "Deity & Code of Conduct",
+        "content": "Devoted to Sarenrae, the Dawnflower. He believes in redemption where possible, but ruthless cleansing of fiends, undead, and oathbreakers."
+      }
+    ]
+  },
+  "rollupNotes": {
+    "content": "== Current Quest: Defense of Kenabres ==\n- Met with High Priestess Althea at the temple\n- Need to investigate the subterranean cavern beneath the market square\n- Track demonic cultists carrying the sign of Deskari\n- Stock up on holy water and cold iron arrows before descending",
+    "isRolledUp": false
+  },
+  "customClassGrids": {
+    "class1": {
+      "id": "class1",
+      "className": "Sorcerer",
+      "level": 12,
+      "hitDie": 6,
+      "skillPointsPerLevel": 2,
+      "proficiencies": "simple weapons",
+      "starterKitName": "Cavalier's Kit",
+      "rawText": "Level\tBase Attack Bonus\tFort Save\tRef Save\tWill Save\tSpecial\tSpells per Day\n1st\t2nd\t3rd\t4th\t5th\t6th\t7th\t8th\t9th\n1st\t+0\t+0\t+0\t+2\tBloodline power, cantrips, eschew materials\t3\t—\t—\t—\t—\t—\t—\t—\t—\n2nd\t+1\t+0\t+0\t+3\t \t4\t—\t—\t—\t—\t—\t—\t—\t—\n3rd\t+1\t+1\t+1\t+3\tBloodline power, bloodline spell\t5\t—\t—\t—\t—\t—\t—\t—\t—\n4th\t+2\t+1\t+1\t+4\t \t6\t3\t—\t—\t—\t—\t—\t—\t—\n5th\t+2\t+1\t+1\t+4\tBloodline spell\t6\t4\t—\t—\t—\t—\t—\t—\t—\n6th\t+3\t+2\t+2\t+5\t \t6\t5\t3\t—\t—\t—\t—\t—\t—\n7th\t+3\t+2\t+2\t+5\tBloodline feat, bloodline spell\t6\t6\t4\t—\t—\t—\t—\t—\t—\n8th\t+4\t+2\t+2\t+6\t \t6\t6\t5\t3\t—\t—\t—\t—\t—\n9th\t+4\t+3\t+3\t+6\tBloodline power, bloodline spell\t6\t6\t6\t4\t—\t—\t—\t—\t—\n10th\t+5\t+3\t+3\t+7\t \t6\t6\t6\t5\t3\t—\t—\t—\t—\n11th\t+5\t+3\t+3\t+7\tBloodline spell\t6\t6\t6\t6\t4\t—\t—\t—\t—\n12th\t+6/+1\t+4\t+4\t+8\t \t6\t6\t6\t6\t5\t3\t—\t—\t—\n13th\t+6/+1\t+4\t+4\t+8\tBloodline feat, bloodline spell\t6\t6\t6\t6\t6\t4\t—\t—\t—\n14th\t+7/+2\t+4\t+4\t+9\t \t6\t6\t6\t6\t6\t5\t3\t—\t—\n15th\t+7/+2\t+5\t+5\t+9\tBloodline power, bloodline spell\t6\t6\t6\t6\t6\t6\t4\t—\t—\n16th\t+8/+3\t+5\t+5\t+10\t \t6\t6\t6\t6\t6\t6\t5\t3\t—\n17th\t+8/+3\t+5\t+5\t+10\tBloodline spell\t6\t6\t6\t6\t6\t6\t6\t4\t—\n18th\t+9/+4\t+6\t+6\t+11\t \t6\t6\t6\t6\t6\t6\t6\t5\t3\n19th\t+9/+4\t+6\t+6\t+11\tBloodline feat, bloodline spell\t6\t6\t6\t6\t6\t6\t6\t6\t4\n20th\t+10/+5\t+6\t+6\t+12\tBloodline power\t6\t6\t6\t6\t6\t6\t6\t6\t6",
+      "rows": [
+        {
+          "level": 1,
+          "bab": 2,
+          "babString": "2nd",
+          "fort": 3,
+          "ref": 4,
+          "will": 5,
+          "special": "6th 7th 8th 9th"
+        },
+        {
+          "level": 1,
+          "bab": 0,
+          "babString": "+0",
+          "fort": 0,
+          "ref": 0,
+          "will": 2,
+          "special": "Bloodline power, cantrips, eschew materials 3 — — — — — — — —"
+        },
+        {
+          "level": 2,
+          "bab": 1,
+          "babString": "+1",
+          "fort": 0,
+          "ref": 0,
+          "will": 3,
+          "special": "4 — — — — — — — —"
+        },
+        {
+          "level": 3,
+          "bab": 1,
+          "babString": "+1",
+          "fort": 1,
+          "ref": 1,
+          "will": 3,
+          "special": "Bloodline power, bloodline spell 5 — — — — — — — —"
+        },
+        {
+          "level": 4,
+          "bab": 2,
+          "babString": "+2",
+          "fort": 1,
+          "ref": 1,
+          "will": 4,
+          "special": "6 3 — — — — — — —"
+        },
+        {
+          "level": 5,
+          "bab": 2,
+          "babString": "+2",
+          "fort": 1,
+          "ref": 1,
+          "will": 4,
+          "special": "Bloodline spell 6 4 — — — — — — —"
+        },
+        {
+          "level": 6,
+          "bab": 3,
+          "babString": "+3",
+          "fort": 2,
+          "ref": 2,
+          "will": 5,
+          "special": "6 5 3 — — — — — —"
+        },
+        {
+          "level": 7,
+          "bab": 3,
+          "babString": "+3",
+          "fort": 2,
+          "ref": 2,
+          "will": 5,
+          "special": "Bloodline feat, bloodline spell 6 6 4 — — — — — —"
+        },
+        {
+          "level": 8,
+          "bab": 4,
+          "babString": "+4",
+          "fort": 2,
+          "ref": 2,
+          "will": 6,
+          "special": "6 6 5 3 — — — — —"
+        },
+        {
+          "level": 9,
+          "bab": 4,
+          "babString": "+4",
+          "fort": 3,
+          "ref": 3,
+          "will": 6,
+          "special": "Bloodline power, bloodline spell 6 6 6 4 — — — — —"
+        },
+        {
+          "level": 10,
+          "bab": 5,
+          "babString": "+5",
+          "fort": 3,
+          "ref": 3,
+          "will": 7,
+          "special": "6 6 6 5 3 — — — —"
+        },
+        {
+          "level": 11,
+          "bab": 5,
+          "babString": "+5",
+          "fort": 3,
+          "ref": 3,
+          "will": 7,
+          "special": "Bloodline spell 6 6 6 6 4 — — — —"
+        },
+        {
+          "level": 12,
+          "bab": 6,
+          "babString": "+6/+1",
+          "fort": 4,
+          "ref": 4,
+          "will": 8,
+          "special": "6 6 6 6 5 3 — — —"
+        },
+        {
+          "level": 13,
+          "bab": 6,
+          "babString": "+6/+1",
+          "fort": 4,
+          "ref": 4,
+          "will": 8,
+          "special": "Bloodline feat, bloodline spell 6 6 6 6 6 4 — — —"
+        },
+        {
+          "level": 14,
+          "bab": 7,
+          "babString": "+7/+2",
+          "fort": 4,
+          "ref": 4,
+          "will": 9,
+          "special": "6 6 6 6 6 5 3 — —"
+        },
+        {
+          "level": 15,
+          "bab": 7,
+          "babString": "+7/+2",
+          "fort": 5,
+          "ref": 5,
+          "will": 9,
+          "special": "Bloodline power, bloodline spell 6 6 6 6 6 6 4 — —"
+        },
+        {
+          "level": 16,
+          "bab": 8,
+          "babString": "+8/+3",
+          "fort": 5,
+          "ref": 5,
+          "will": 10,
+          "special": "6 6 6 6 6 6 5 3 —"
+        },
+        {
+          "level": 17,
+          "bab": 8,
+          "babString": "+8/+3",
+          "fort": 5,
+          "ref": 5,
+          "will": 10,
+          "special": "Bloodline spell 6 6 6 6 6 6 6 4 —"
+        },
+        {
+          "level": 18,
+          "bab": 9,
+          "babString": "+9/+4",
+          "fort": 6,
+          "ref": 6,
+          "will": 11,
+          "special": "6 6 6 6 6 6 6 5 3"
+        },
+        {
+          "level": 19,
+          "bab": 9,
+          "babString": "+9/+4",
+          "fort": 6,
+          "ref": 6,
+          "will": 11,
+          "special": "Bloodline feat, bloodline spell 6 6 6 6 6 6 6 6 4"
+        },
+        {
+          "level": 20,
+          "bab": 10,
+          "babString": "+10/+5",
+          "fort": 6,
+          "ref": 6,
+          "will": 12,
+          "special": "Bloodline power 6 6 6 6 6 6 6 6 6"
+        }
+      ],
+      "classSkillsText": "Appraise (Int), Bluff (Cha), Craft (Int), Fly (Dex), Intimidate (Cha), Knowledge (arcana) (Int), Profession (Wis), Spellcraft (Int), and Use Magic Device (Cha)."
+    },
+    "class2": {
+      "id": "class2",
+      "className": "",
+      "level": 1,
+      "hitDie": 8,
+      "skillPointsPerLevel": 4,
+      "proficiencies": "Simple weapons, light armor.",
+      "rawText": "",
+      "rows": []
+    }
+  },
+  "customBuffs": [
+    {
+      "id": "buff-haste",
+      "name": "Haste",
+      "category": "activatable",
+      "bonusType": "Dodge",
+      "isActive": false,
+      "duration": "1 round/level",
+      "notes": "+1 attack, +1 dodge AC, +1 Reflex save, +30ft speed",
+      "values": {
+        "hp": 0,
+        "mattack": 1,
+        "rattack": 1,
+        "fort": 0,
+        "ref": 1,
+        "will": 0,
+        "ac": 1,
+        "str": 0,
+        "dex": 0,
+        "con": 0,
+        "int": 0,
+        "wis": 0,
+        "cha": 0
+      }
+    },
+    {
+      "id": "buff-heroism",
+      "name": "Heroism",
+      "category": "activatable",
+      "bonusType": "Morale",
+      "isActive": false,
+      "duration": "10 min/level",
+      "notes": "+2 morale bonus to attack rolls, saves, and skill checks",
+      "values": {
+        "hp": 0,
+        "mattack": 2,
+        "rattack": 2,
+        "fort": 2,
+        "ref": 2,
+        "will": 2,
+        "ac": 0,
+        "str": 0,
+        "dex": 0,
+        "con": 0,
+        "int": 0,
+        "wis": 0,
+        "cha": 0
+      }
+    },
+    {
+      "id": "buff-bull",
+      "name": "Bull's Strength",
+      "category": "activatable",
+      "bonusType": "Enhancement",
+      "isActive": false,
+      "duration": "1 min/level",
+      "notes": "+4 enhancement bonus to Strength",
+      "values": {
+        "hp": 0,
+        "mattack": 0,
+        "rattack": 0,
+        "fort": 0,
+        "ref": 0,
+        "will": 0,
+        "ac": 0,
+        "str": 4,
+        "dex": 0,
+        "con": 0,
+        "int": 0,
+        "wis": 0,
+        "cha": 0
+      }
+    },
+    {
+      "id": "buff-sickened",
+      "name": "Sickened (Debuff)",
+      "category": "debuff",
+      "bonusType": "Untyped",
+      "isActive": false,
+      "duration": "Varies",
+      "notes": "-2 untyped penalty on all attack rolls, weapon damage, saves, skill checks",
+      "values": {
+        "hp": 0,
+        "mattack": -2,
+        "rattack": -2,
+        "fort": -2,
+        "ref": -2,
+        "will": -2,
+        "ac": 0,
+        "str": 0,
+        "dex": 0,
+        "con": 0,
+        "int": 0,
+        "wis": 0,
+        "cha": 0
+      }
+    },
+    {
+      "id": "buff-shaken",
+      "name": "Shaken (Debuff)",
+      "category": "debuff",
+      "bonusType": "Untyped",
+      "isActive": false,
+      "duration": "Varies",
+      "notes": "-2 untyped penalty on attack rolls, saving throws, and skill checks",
+      "values": {
+        "hp": 0,
+        "mattack": -2,
+        "rattack": -2,
+        "fort": -2,
+        "ref": -2,
+        "will": -2,
+        "ac": 0,
+        "str": 0,
+        "dex": 0,
+        "con": 0,
+        "int": 0,
+        "wis": 0,
+        "cha": 0
+      }
+    },
+    {
+      "id": "buff-fatigued",
+      "name": "Fatigued (Debuff)",
+      "category": "debuff",
+      "bonusType": "Untyped",
+      "isActive": false,
+      "duration": "Until rested",
+      "notes": "-2 Strength, -2 Dexterity, cannot run or charge",
+      "values": {
+        "hp": 0,
+        "mattack": 0,
+        "rattack": 0,
+        "fort": 0,
+        "ref": 0,
+        "will": 0,
+        "ac": 0,
+        "str": -2,
+        "dex": -2,
+        "con": 0,
+        "int": 0,
+        "wis": 0,
+        "cha": 0
+      }
+    },
+    {
+      "id": "buff-belt",
+      "name": "Belt of Giant Strength +2",
+      "category": "permanent",
+      "bonusType": "Enhancement",
+      "isActive": true,
+      "duration": "Continuous",
+      "notes": "Worn magical item granting +2 enhancement bonus to STR",
+      "values": {
+        "hp": 0,
+        "mattack": 0,
+        "rattack": 0,
+        "fort": 0,
+        "ref": 0,
+        "will": 0,
+        "ac": 0,
+        "str": 2,
+        "dex": 0,
+        "con": 0,
+        "int": 0,
+        "wis": 0,
+        "cha": 0
+      }
+    },
+    {
+      "id": "buff-ring",
+      "name": "Ring of Protection +1",
+      "category": "permanent",
+      "bonusType": "Deflection",
+      "isActive": true,
+      "duration": "Continuous",
+      "notes": "+1 deflection bonus to Armor Class",
+      "values": {
+        "hp": 0,
+        "mattack": 0,
+        "rattack": 0,
+        "fort": 0,
+        "ref": 0,
+        "will": 0,
+        "ac": 1,
+        "str": 0,
+        "dex": 0,
+        "con": 0,
+        "int": 0,
+        "wis": 0,
+        "cha": 0
+      }
+    }
+  ],
+  "resourceTrackers": [
+    {
+      "id": "res-smite",
+      "name": "Smite Evil",
+      "current": 1,
+      "max": 3,
+      "macroKey": "SMITE",
+      "category": "Class Resource",
+      "notes": "+4 attack (CHA), +12 damage (level), double on first hit vs evil dragons/undead/outsiders"
+    },
+    {
+      "id": "res-challenge",
+      "name": "Cavalier Challenge",
+      "current": 2,
+      "max": 4,
+      "macroKey": "CHALLENGE",
+      "category": "Class Resource",
+      "notes": "+12 damage against challenged target, -2 AC to other foes"
+    },
+    {
+      "id": "res-lay-hands",
+      "name": "Lay on Hands / Healing",
+      "current": 4,
+      "max": 6,
+      "macroKey": "LAY_ON_HANDS",
+      "category": "Resource Pool",
+      "notes": "Heals 6d6 as standard action (swift on self)"
+    },
+    {
+      "id": "res-spells-1",
+      "name": "1st-Level Spells",
+      "current": 3,
+      "max": 3,
+      "macroKey": "SPELL_SLOT_1",
+      "category": "Spell Slot",
+      "notes": "Paladin / Cleric 1st circle spell slots"
+    }
+  ],
+  "characterActions": [
+    {
+      "id": "act-smite",
+      "name": "Smite Evil!",
+      "category": "Class Ability",
+      "actionType": "Swift",
+      "macroFormula": "2d6+CHA",
+      "macroKey": "SMITE_EVIL",
+      "icon": "sparkles",
+      "description": "Adds CHA mod (+4) to attack rolls and level (+12) to damage against evil targets. On the first successful hit against evil dragons, undead, or fiends, damage increases to 2 per level (+24). Bypasses DR and grants +4 deflection AC vs target.",
+      "shortSummary": "Swift action. +4 attack, +12 dmg, bypass DR",
+      "usesPerDay": "1/3 used",
+      "range": "Line of sight",
+      "target": "One evil creature"
+    },
+    {
+      "id": "act-breath",
+      "name": "Dragon Breath",
+      "category": "Racial",
+      "actionType": "Standard",
+      "macroFormula": "2d6+5",
+      "macroKey": "DRAGON_BREATH",
+      "icon": "flame",
+      "description": "Exhales a 30-foot cone of searing dragonfire dealing 2d6+5 fire damage to all creatures in the area. DC 17 Reflex save for half damage.",
+      "shortSummary": "30-ft cone, 2d6+5 fire, Reflex DC 17 half",
+      "saveDC": "DC 17 Reflex",
+      "range": "30 ft cone"
+    },
+    {
+      "id": "act-power-atk",
+      "name": "Power Attack",
+      "category": "Feats",
+      "actionType": "Free",
+      "macroFormula": "-3/+9",
+      "macroKey": "POWER_ATTACK",
+      "icon": "swords",
+      "description": "Take a -3 penalty on all melee attack rolls to gain a +9 bonus on all melee damage rolls when wielding a two-handed weapon (such as the Greataxe). Lasts until next turn.",
+      "shortSummary": "Free action. -3 attack, +9 damage (2H)"
+    },
+    {
+      "id": "act-heroism",
+      "name": "Heroism",
+      "category": "Spells",
+      "actionType": "Standard",
+      "macroFormula": "1d20+2",
+      "macroKey": "HEROISM",
+      "icon": "shield",
+      "description": "Imbues a single touched creature with heroic bravery, granting a +2 morale bonus on attack rolls, saving throws, and skill checks for 120 minutes.",
+      "shortSummary": "+2 morale bonus to attacks, saves, skills for 120 min",
+      "duration": "120 min",
+      "range": "Touch"
+    },
+    {
+      "id": "act-challenge",
+      "name": "Cavalier's Challenge",
+      "category": "Class Ability",
+      "actionType": "Swift",
+      "macroFormula": "1d20+12",
+      "macroKey": "CHALLENGE",
+      "icon": "crosshair",
+      "description": "Issue a formal combat challenge to a single foe in sight. Melee attacks deal +12 damage to the target, but you suffer a -2 AC penalty against all other attacks.",
+      "shortSummary": "+12 damage to challenged target, -2 AC to others"
+    }
+  ],
+  "characterFeats": [
+    {
+      "id": "feat-1",
+      "name": "Power Attack",
+      "type": "Combat",
+      "prerequisites": "Str 13, BAB +1",
+      "summary": "Trade melee attack bonus for extra damage (-3 to hit / +9 damage two-handed)."
+    },
+    {
+      "id": "feat-2",
+      "name": "Furious Focus",
+      "type": "Combat",
+      "prerequisites": "Str 13, Power Attack, BAB +1",
+      "summary": "No penalty on first melee attack when two-handing with Power Attack."
+    },
+    {
+      "id": "feat-3",
+      "name": "Weapon Focus (Greataxe)",
+      "type": "Combat",
+      "prerequisites": "Proficiency with weapon, BAB +1",
+      "summary": "+1 bonus on all attack rolls with greataxe."
+    },
+    {
+      "id": "feat-4",
+      "name": "Toughness",
+      "type": "General",
+      "prerequisites": "None",
+      "summary": "+3 hit points, +1 per Hit Die beyond 3rd (+12 HP total)."
+    },
+    {
+      "id": "feat-5",
+      "name": "Iron Will",
+      "type": "General",
+      "prerequisites": "None",
+      "summary": "+2 bonus on all Will saving throws."
+    },
+    {
+      "id": "feat-6",
+      "name": "Combat Reflexes",
+      "type": "Combat",
+      "prerequisites": "None",
+      "summary": "Make additional attacks of opportunity equal to Dex bonus (+3 AoOs/round)."
+    }
+  ],
+  "generatedOddFeatLevels": [
+    1,
+    3,
+    5,
+    7,
+    9,
+    11
+  ],
+  "downtimeCapital": {
+    "currentGp": 849.2,
+    "bankGp": 790.51,
+    "level": 2,
+    "totalDp": 2,
+    "goods": -98,
+    "influence": 28,
+    "labor": -6,
+    "magic": 8,
+    "kbp": 0
+  },
+  "magicItemSlots": {
+    "armor": "Plasteel / Mithral Full Plate +2",
+    "weapon1": "+1 Flaming Greataxe (w1)",
+    "weapon2": "Masterwork Composite Longbow (w2)",
+    "shield": "Bullet / Mithral Heavy Shield",
+    "head": "Helm of Comprehend Languages",
+    "headband": "Headband of Alluring Charisma +2",
+    "eyes": "Goggles of Night",
+    "neck": "Amulet of Natural Armor +1",
+    "shoulders": "Cloak of Resistance +2",
+    "chest": "Quick Runner Shirt",
+    "belt": "Belt of Giant Strength +2",
+    "body": "Monk Robes of Protection",
+    "gloves": "Gauntlets of the Skilled Blow",
+    "wrist": "Bracers of Armor +1",
+    "ring1": "Ring of Protection +1",
+    "ring2": "Ring of Sustenance",
+    "slotless": "Ioun Stone (Dusty Rose Prism)",
+    "backpack": "Handy Haversack"
+  },
+  "companions": [
+    {
+      "id": "comp-1",
+      "name": "Ignis",
+      "type": "Animal Companion",
+      "relation": "Loyal Draconic Warhorse Mount",
+      "hp": "68/68",
+      "ac": "22",
+      "notes": "Bite 1d6+6, 2 Hooves 1d4+3, Combat Riding trained, Link, Share Spells"
+    },
+    {
+      "id": "comp-2",
+      "name": "High Priestess Althea",
+      "type": "NPC",
+      "relation": "Patron & Mentor (Kenabres Temple of Sarenrae)",
+      "notes": "Provides sanctuary, holy water supplies, and restorative spells."
+    }
+  ],
+  "characterBio": {
+    "scratchpad": "== Party Initiative & Combat Notes ==\n- Watch schedule: Valerius (1st watch), Althea (2nd watch)\n- Cave entrance behind Kenabres watermill marked with red chalk\n- Remember: Heroism spell active (+2 morale to attack/saves/skills for 2 hours)\n- Target: Demon-worshipping cultist leader with horned staff",
+    "portraits": [
+      "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=600&q=80",
+      "https://images.unsplash.com/photo-1563089145-599997674d42?auto=format&fit=crop&w=600&q=80"
+    ],
+    "currentPortraitIndex": 0,
+    "bioSections": [
+      {
+        "id": "bio-bg",
+        "title": "Background & Lineage",
+        "content": "Born along the demon-haunted border of the Worldwound, Valerius was knighted after single-handedly holding a shattered breach against abyss-spawned dretches. His draconic blood awakened during a dragonfire baptism."
+      },
+      {
+        "id": "bio-app",
+        "title": "Appearance & Demeanor",
+        "content": "Stands 6'2\" with raven black hair, sun-bronzed skin, and glowing ember-amber eyes. Clad in ornate draconic mithral plate that glimmers with faint runes in the dark."
+      },
+      {
+        "id": "bio-goals",
+        "title": "Goals & Ideals",
+        "content": "Purge the abyssal taint from the Worldwound, defend the innocent pilgrims of Mendev, and reclaim his ancestral family standard."
+      },
+      {
+        "id": "bio-pers",
+        "title": "Personality & Flaws",
+        "content": "Fiercely loyal to companions, patient until provoked, but prone to unrelenting fury when fiends threaten the defenseless."
+      }
+    ],
+    "skin": "Sun-bronzed"
+  },
+  "activeStorageTab": "worn",
+  "journal": [
+    {
+      "id": "journal-1",
+      "title": "The Siege of the Redoubt",
+      "sessionDate": "Session 14 - 4712 AR",
+      "realDate": "2026-10-24",
+      "location": "Kenabres North Sally Port, Worldwound Border",
+      "content": "The horns blew before dawn. Shuddering screams of dretches echoed across the ruined battlements as the first wave assaulted the sally port.\n\nFlame leaped from my blade as my draconic blood surged. We held the breach until the high sun broke the siege. Althea tended the wounded while I inspected the broken palisade.\n\nWe found strange abyssal runes carved into the basalt beneath the gatehouse.",
+      "characterVoiceUsed": "Gruff, resolute, veteran crusader with concise battlefield prose",
+      "recalledNotes": [
+        "Cultist leader carried an obsidian holy symbol of Deskari",
+        "High Priestess Althea requested 3 vials of demon bile before next new moon",
+        "Secret cache buried beneath the third flagstone of the chapel garden"
+      ],
+      "images": [],
+      "tags": [
+        "Combat",
+        "Kenabres",
+        "Worldwound",
+        "Siege"
+      ],
+      "createdAt": 1729756800000,
+      "updatedAt": 1729756800000
+    },
+    {
+      "id": "journal-2",
+      "title": "Reconnaissance at the Sunken Shrine",
+      "sessionDate": "Session 13 - 4712 AR",
+      "realDate": "2026-10-17",
+      "location": "Sunken Shrine of Sarenrae, Kenabres Outskirts",
+      "content": "Heavy fog clung to the flooded sanctuary. Shadows stirred among the cracked marble pillars.\n\nDiscovered an intact holy font of blessed water and recovered ancient parchment scrolls detailing the first crusade’s garrison defenses.",
+      "characterVoiceUsed": "Gruff veteran",
+      "recalledNotes": [
+        "Font water still possesses holy aura (+1 to saves for 1 hour when consumed)",
+        "Merchant in Defender’s Heart offered 150 gp for the recovered crusade scrolls"
+      ],
+      "images": [],
+      "tags": [
+        "Exploration",
+        "Shrine",
+        "Loot"
+      ],
+      "createdAt": 1729152000000,
+      "updatedAt": 1729152000000
+    }
+  ],
+  "installedModules": {
+    "aiCompanion": true,
+    "aiSettings": {
+      "isInstalled": true,
+      "allowedFields": {
+        "hp": true,
+        "conditions": true,
+        "currency": true,
+        "inventory": true,
+        "notes": true,
+        "journal": true,
+        "customFormulas": true
+      },
+      "preferredVoice": "Terse, serious, no-nonsense, short sentences, gruff veteran"
+    }
+  },
+  "workspaceLibraryImages": [],
+  "careerData": {
+    "mode": "gestalt",
+    "useFractionalBab": false,
+    "useFractionalSaves": false,
+    "levels": [
+      {
+        "level": 1,
+        "primaryClassId": "class1",
+        "primaryClassLevel": 1,
+        "isGestalt": false,
+        "gestaltClassId": "class2",
+        "gestaltClassLevel": 1,
+        "favoredClassBonus": "hp"
+      }
+    ],
+    "archetypes": [],
+    "variantMulticlassing": {
+      "enabled": false,
+      "secondaryClass": "Wizard"
+    },
+    "thirdPartySupport": {
+      "pathOfWarEnabled": false,
+      "spheresEnabled": false
+    }
+  }
+}

@@ -52,12 +52,28 @@ export interface LoadedCharacter {
   character: PF1Character;
   characterId: string;
   savedAt: string;
+  /** Envelope checksum for the stored `data` object. Used to skip crash recovery when it matches the last save. */
+  sha256?: string;
+}
+
+/**
+ * The last character deliberately selected from a storage tree.  This is
+ * storage metadata, not part of the character sheet, and lets a reopened
+ * local install attach the on-screen sheet to the same authoritative save.
+ */
+export interface ActiveCharacterReference {
+  player: string;
+  name: string;
+  characterId: string;
+  savedAt: string;
 }
 
 export interface StorageAdapter {
   saveCharacter(player: string, character: PF1Character): Promise<StorageResult<SaveReceipt>>;
   autosaveCrash(character: PF1Character): Promise<StorageResult<Omit<SaveReceipt, 'player'>>>;
   loadCrash(): Promise<StorageResult<{ character: LoadedCharacter | null }>>;
+  dismissCrash(): Promise<StorageResult<{ dismissed: true }>>;
+  getActiveCharacter(): Promise<StorageResult<{ activeCharacter: ActiveCharacterReference | null }>>;
   listPlayers(): Promise<StorageResult<{ players: StoredPlayer[] }>>;
   listCharacters(player: string): Promise<StorageResult<{ characters: StoredCharacterSummary[] }>>;
   loadCharacter(player: string, name: string): Promise<StorageResult<LoadedCharacter>>;
