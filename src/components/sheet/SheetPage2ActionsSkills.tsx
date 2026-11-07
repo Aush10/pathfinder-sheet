@@ -34,13 +34,14 @@ import { FieldCallTooltip } from '../common/FieldCallTooltip';
 import { AppleEyeIcon } from '../common/AppleEyeIcon';
 import { syncOddLevelFeats } from '../../data/defaultCharacter';
 import { lookupRulesWithSOT, RulesLookupResult } from '../../engine/aiService';
+import { useCharacter } from '../../context/CharacterContext';
 
 interface SheetPage2ActionsSkillsProps {
-  character: PF1Character;
-  derived: DerivedCombatStats;
-  theme: string;
+  character?: PF1Character;
+  derived?: DerivedCombatStats;
+  theme?: string;
   fontClass: string;
-  onUpdateCharacter: (updater: (prev: PF1Character) => PF1Character) => void;
+  onUpdateCharacter?: (updater: (prev: PF1Character) => PF1Character) => void;
   onRollFormula: (formula: string, label?: string) => void;
   visibleModules?: Record<string, boolean>;
 }
@@ -61,14 +62,20 @@ export type ActionSortOption =
   | 'name-asc';
 
 export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = ({
-  character,
-  derived,
-  theme,
+  character: propCharacter,
+  derived: propDerived,
+  theme: propTheme,
   fontClass,
-  onUpdateCharacter,
+  onUpdateCharacter: propOnUpdateCharacter,
   onRollFormula,
-  visibleModules = {},
+  visibleModules: propVisibleModules,
 }) => {
+  const ctx = useCharacter();
+  const character = propCharacter ?? ctx.character;
+  const derived = propDerived ?? ctx.derived;
+  const theme = propTheme ?? ctx.layout.theme;
+  const visibleModules = propVisibleModules ?? ctx.layout.visibleModules;
+  const onUpdateCharacter = propOnUpdateCharacter ?? ctx.updateCharacter;
   // Skill search & sorting state
   const [skillSearch, setSkillSearch] = useState('');
   const [skillSort, setSkillSort] = useState<SkillSortOption>('custom');

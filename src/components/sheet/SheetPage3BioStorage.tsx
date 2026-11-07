@@ -35,25 +35,31 @@ import { DerivedCombatStats } from '../../engine/pf1eMath';
 import { StorageInventoryModule } from './StorageInventoryModule';
 import { ImageFileBrowserModal } from '../tools/ImageFileBrowserModal';
 import { executeScratchpadAIMacro, DEFAULT_AI_MODULE_SETTINGS } from '../../engine/aiService';
+import { useCharacter } from '../../context/CharacterContext';
 
 interface SheetPage3BioStorageProps {
-  character: PF1Character;
-  derived: DerivedCombatStats;
-  theme: string;
+  character?: PF1Character;
+  derived?: DerivedCombatStats;
+  theme?: string;
   fontClass: string;
-  onUpdateCharacter: (updater: (prev: PF1Character) => PF1Character) => void;
+  onUpdateCharacter?: (updater: (prev: PF1Character) => PF1Character) => void;
   onRollFormula?: (formula: string, label?: string) => void;
   visibleModules?: Record<string, boolean>;
 }
 
 export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
-  character,
-  derived,
-  theme,
+  character: propCharacter,
+  derived: propDerived,
+  theme: propTheme,
   fontClass,
-  onUpdateCharacter,
+  onUpdateCharacter: propOnUpdateCharacter,
   onRollFormula,
 }) => {
+  const ctx = useCharacter();
+  const character = propCharacter ?? ctx.character;
+  const derived = propDerived ?? ctx.derived;
+  const theme = propTheme ?? ctx.layout.theme;
+  const onUpdateCharacter = propOnUpdateCharacter ?? ctx.updateCharacter;
   // Companion Modal state
   const [isAddCompanionOpen, setIsAddCompanionOpen] = useState(false);
   const [newCompName, setNewCompName] = useState('');

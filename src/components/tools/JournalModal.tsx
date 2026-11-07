@@ -31,12 +31,13 @@ import {
   generatePencilSketch,
   getSessionApiKey,
 } from '../../engine/aiService';
+import { useCharacter } from '../../context/CharacterContext';
 
 interface JournalModalProps {
   isOpen: boolean;
   onClose: () => void;
-  character: PF1Character;
-  onUpdateCharacter: (updater: (prev: PF1Character) => PF1Character) => void;
+  character?: PF1Character;
+  onUpdateCharacter?: (updater: (prev: PF1Character) => PF1Character) => void;
   onOpenAITool?: (initialTab?: string) => void;
   theme?: ThemeMode;
 }
@@ -44,11 +45,16 @@ interface JournalModalProps {
 export const JournalModal: React.FC<JournalModalProps> = ({
   isOpen,
   onClose,
-  character,
-  onUpdateCharacter,
+  character: propCharacter,
+  onUpdateCharacter: propOnUpdateCharacter,
   onOpenAITool,
-  theme = 'parchment',
+  theme: propTheme,
 }) => {
+  const ctx = useCharacter();
+  const character = propCharacter ?? ctx.character;
+  const onUpdateCharacter = propOnUpdateCharacter ?? ctx.updateCharacter;
+  const theme = propTheme ?? ctx.layout.theme;
+
   const entries: JournalEntry[] = character.journal || [];
   const [selectedEntryId, setSelectedEntryId] = useState<string>(() => {
     return entries.length > 0 ? entries[0].id : '';

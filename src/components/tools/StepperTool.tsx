@@ -13,13 +13,14 @@ import {
 } from 'lucide-react';
 import { PF1Character, StepperRule } from '../../types/character';
 import { DerivedCombatStats } from '../../engine/pf1eMath';
+import { useCharacter } from '../../context/CharacterContext';
 
 interface StepperToolProps {
   isOpen: boolean;
   onClose: () => void;
-  character: PF1Character;
-  derived: DerivedCombatStats;
-  onUpdateCharacter: (updater: (prev: PF1Character) => PF1Character) => void;
+  character?: PF1Character;
+  derived?: DerivedCombatStats;
+  onUpdateCharacter?: (updater: (prev: PF1Character) => PF1Character) => void;
   theme?: string;
   isDocked?: boolean;
 }
@@ -27,12 +28,16 @@ interface StepperToolProps {
 export const StepperTool: React.FC<StepperToolProps> = ({
   isOpen,
   onClose,
-  character,
-  derived,
-  onUpdateCharacter,
+  character: propCharacter,
+  derived: propDerived,
+  onUpdateCharacter: propOnUpdateCharacter,
   theme = 'parchment',
   isDocked = false,
 }) => {
+  const ctx = useCharacter();
+  const character = propCharacter ?? ctx.character;
+  const derived = propDerived ?? ctx.derived;
+  const onUpdateCharacter = propOnUpdateCharacter ?? ctx.updateCharacter;
   const [inputText, setInputText] = useState('');
   const [activeAlerts, setActiveAlerts] = useState<string[]>([]);
   const [stepLog, setStepLog] = useState<Array<{ round: number; message: string; type: 'apply' | 'track' | 'alert' }>>([]);

@@ -79,6 +79,7 @@ import {
 } from '../../engine/sotEngine';
 import { evaluateFormula, buildFormulaContext } from '../../engine/formula';
 import { AppleEyeIcon } from '../common/AppleEyeIcon';
+import { useCharacter } from '../../context/CharacterContext';
 
 export type AICompanionTab =
   | 'permissions'
@@ -91,8 +92,8 @@ export type MacroDestination = 'copy' | 'dsl_studio' | 'buff_box' | 'stepper';
 interface AICompanionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  character: PF1Character;
-  onUpdateCharacter: (updater: (prev: PF1Character) => PF1Character) => void;
+  character?: PF1Character;
+  onUpdateCharacter?: (updater: (prev: PF1Character) => PF1Character) => void;
   onOpenJournal?: () => void;
   onOpenAddClass?: () => void;
   onOpenBuffBox?: () => void;
@@ -224,14 +225,18 @@ const FIELD_PERMISSION_DEFINITIONS: Array<{
 export const AICompanionModal: React.FC<AICompanionModalProps> = ({
   isOpen,
   onClose,
-  character,
-  onUpdateCharacter,
+  character: propCharacter,
+  onUpdateCharacter: propOnUpdateCharacter,
   onOpenJournal,
   onOpenAddClass,
   onOpenCompleteSheet,
   initialTab = 'permissions',
-  theme = 'parchment',
+  theme: propTheme,
 }) => {
+  const ctx = useCharacter();
+  const character = propCharacter ?? ctx.character;
+  const onUpdateCharacter = propOnUpdateCharacter ?? ctx.updateCharacter;
+  const theme = propTheme ?? ctx.layout.theme;
   const normalizeTab = (tab?: string): AICompanionTab => {
     if (tab === 'lookup' || tab === 'sot' || tab === 'lookup_sot') {
       return 'lookup_sot';

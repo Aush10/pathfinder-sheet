@@ -14,6 +14,7 @@ import {
   Check,
 } from 'lucide-react';
 import { PF1Character, DeckState } from '../../types/character';
+import { useCharacter } from '../../context/CharacterContext';
 
 // Standard 52 playing cards preset
 const STANDARD_52_CARDS = [
@@ -62,18 +63,21 @@ const PRESET_FILES: Record<string, string[]> = {
 interface DeckToolProps {
   isOpen: boolean;
   onClose: () => void;
-  character: PF1Character;
-  onUpdateCharacter: (updater: (prev: PF1Character) => PF1Character) => void;
+  character?: PF1Character;
+  onUpdateCharacter?: (updater: (prev: PF1Character) => PF1Character) => void;
   isDocked?: boolean;
 }
 
 export const DeckTool: React.FC<DeckToolProps> = ({
   isOpen,
   onClose,
-  character,
-  onUpdateCharacter,
+  character: propCharacter,
+  onUpdateCharacter: propOnUpdateCharacter,
   isDocked = false,
 }) => {
+  const ctx = useCharacter();
+  const character = propCharacter ?? ctx.character;
+  const onUpdateCharacter = propOnUpdateCharacter ?? ctx.updateCharacter;
   const [commandInput, setCommandInput] = useState('');
   const [feedbackMsg, setFeedbackMsg] = useState<string>('');
   const [editingFile, setEditingFile] = useState<'active' | 'dead' | null>(null);

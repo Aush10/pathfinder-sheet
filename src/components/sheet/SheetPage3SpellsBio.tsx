@@ -16,24 +16,30 @@ import { DerivedCombatStats } from '../../engine/pf1eMath';
 import { ConditionDebuffBar } from '../tools/ConditionDebuffBar';
 import { ProfileModule } from './ProfileModule';
 import { NotesModule } from './NotesModule';
+import { useCharacter } from '../../context/CharacterContext';
 
 interface SheetPage3SpellsBioProps {
-  character: PF1Character;
-  derived: DerivedCombatStats;
-  theme: string;
+  character?: PF1Character;
+  derived?: DerivedCombatStats;
+  theme?: string;
   fontClass: string;
-  onUpdateCharacter: (updater: (prev: PF1Character) => PF1Character) => void;
+  onUpdateCharacter?: (updater: (prev: PF1Character) => PF1Character) => void;
   visibleModules: Record<string, boolean>;
 }
 
 export const SheetPage3SpellsBio: React.FC<SheetPage3SpellsBioProps> = ({
-  character,
-  derived,
-  theme,
+  character: propCharacter,
+  derived: propDerived,
+  theme: propTheme,
   fontClass,
-  onUpdateCharacter,
+  onUpdateCharacter: propOnUpdateCharacter,
   visibleModules,
 }) => {
+  const ctx = useCharacter();
+  const character = propCharacter ?? ctx.character;
+  const derived = propDerived ?? ctx.derived;
+  const theme = propTheme ?? ctx.layout.theme;
+  const onUpdateCharacter = propOnUpdateCharacter ?? ctx.updateCharacter;
   const [selectedSpellLevel, setSelectedSpellLevel] = useState<number | 'all'>('all');
   const [statblockCopied, setStatblockCopied] = useState(false);
 

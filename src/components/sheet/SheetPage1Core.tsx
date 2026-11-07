@@ -29,15 +29,16 @@ import { BuffBoxModule } from './BuffBoxModule';
 import { QuickModularTools } from '../workspace/QuickModularTools';
 import { FieldCallTooltip } from '../common/FieldCallTooltip';
 import { IdentityLoadFields } from '../storage/IdentityLoadFields';
+import { useCharacter } from '../../context/CharacterContext';
 
 interface SheetPage1CoreProps {
-  character: PF1Character;
-  derived: DerivedCombatStats;
-  theme: string;
+  character?: PF1Character;
+  derived?: DerivedCombatStats;
+  theme?: string;
   fontClass: string;
-  onUpdateCharacter: (updater: (prev: PF1Character) => PF1Character) => void;
+  onUpdateCharacter?: (updater: (prev: PF1Character) => PF1Character) => void;
   onRollFormula: (formula: string, label?: string) => void;
-  visibleModules: Record<string, boolean>;
+  visibleModules?: Record<string, boolean>;
   onOpenCMBt?: () => void;
   onOpenNewSheet?: () => void;
   onOpenImageBrowser?: (config?: {
@@ -48,17 +49,23 @@ interface SheetPage1CoreProps {
 }
 
 export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
-  character,
-  derived,
-  theme,
+  character: propCharacter,
+  derived: propDerived,
+  theme: propTheme,
   fontClass,
-  onUpdateCharacter,
+  onUpdateCharacter: propOnUpdateCharacter,
   onRollFormula,
-  visibleModules,
+  visibleModules: propVisibleModules,
   onOpenCMBt,
   onOpenNewSheet,
   onOpenImageBrowser,
 }) => {
+  const ctx = useCharacter();
+  const character = propCharacter ?? ctx.character;
+  const derived = propDerived ?? ctx.derived;
+  const theme = propTheme ?? ctx.layout.theme;
+  const visibleModules = propVisibleModules ?? ctx.layout.visibleModules;
+  const onUpdateCharacter = propOnUpdateCharacter ?? ctx.updateCharacter;
   const abilitiesList: AbilityName[] = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
   const [damageInput, setDamageInput] = useState<number>(5);
   const [healInput, setHealInput] = useState<number>(5);

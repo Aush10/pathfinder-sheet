@@ -2,12 +2,13 @@ import React, { useState } from 'react';
 import { Calculator, X, Check, RotateCcw, Sparkles } from 'lucide-react';
 import { AbilityName, PF1Character } from '../../types/character';
 import { POINT_BUY_COST_TABLE, POINT_BUY_PRESETS, getPointBuyCost } from '../../engine/pf1eMath';
+import { useCharacter } from '../../context/CharacterContext';
 
 interface PointBuyModalProps {
   isOpen: boolean;
   onClose: () => void;
-  character: PF1Character;
-  onApplyBaseScores: (scores: {
+  character?: PF1Character;
+  onApplyBaseScores?: (scores: {
     bases: Record<AbilityName, number>;
     asi: Record<AbilityName, number>;
   }) => void;
@@ -16,9 +17,12 @@ interface PointBuyModalProps {
 export const PointBuyModal: React.FC<PointBuyModalProps> = ({
   isOpen,
   onClose,
-  character,
-  onApplyBaseScores,
+  character: propCharacter,
+  onApplyBaseScores: propOnApplyBaseScores,
 }) => {
+  const ctx = useCharacter();
+  const character = propCharacter ?? ctx.character;
+  const onApplyBaseScores = propOnApplyBaseScores ?? ctx.applyBaseScores;
   const abilities: AbilityName[] = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
 
   // Base scores (clamped 6 to 18)

@@ -1,22 +1,27 @@
 import React, { useState } from 'react';
 import { Heart, Plus, Minus, ShieldAlert, Sparkles, X, RotateCcw } from 'lucide-react';
 import { PF1Character } from '../../types/character';
+import { useCharacter } from '../../context/CharacterContext';
 
 interface QuickHPBarProps {
-  character: PF1Character;
-  hpStatus: { label: string; color: string; percent: number };
-  onUpdateHP: (updates: { hpCurrent?: number; hpNonlethal?: number; hpTemp?: number }) => void;
+  character?: PF1Character;
+  hpStatus?: { label: string; color: string; percent: number };
+  onUpdateHP?: (updates: { hpCurrent?: number; hpNonlethal?: number; hpTemp?: number }) => void;
   onClose?: () => void;
   isCompact?: boolean;
 }
 
 export const QuickHPBar: React.FC<QuickHPBarProps> = ({
-  character,
-  hpStatus,
-  onUpdateHP,
+  character: propCharacter,
+  hpStatus: propHpStatus,
+  onUpdateHP: propOnUpdateHP,
   onClose,
   isCompact = false,
 }) => {
+  const ctx = useCharacter();
+  const character = propCharacter ?? ctx.character;
+  const hpStatus = propHpStatus ?? ctx.derived.hpStatus;
+  const onUpdateHP = propOnUpdateHP ?? ctx.updateHP;
   const [deltaAmount, setDeltaAmount] = useState<number>(5);
 
   const applyDamage = (amount: number) => {

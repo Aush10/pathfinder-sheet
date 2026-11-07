@@ -48,14 +48,16 @@ import {
   loadAllHostDeviceSrdDocs,
 } from '../../engine/sotEngine';
 import { AppleEyeIcon } from '../common/AppleEyeIcon';
+import { useCharacter } from '../../context/CharacterContext';
+import { applyCareerProgressionToCharacter } from '../../engine/characterIntegration';
 
 interface AddClassModalProps {
   isOpen: boolean;
   onClose: () => void;
-  character: PF1Character;
-  onUpdateCharacter: (updater: (prev: PF1Character) => PF1Character) => void;
+  character?: PF1Character;
+  onUpdateCharacter?: (updater: (prev: PF1Character) => PF1Character) => void;
   onOpenAITool?: (initialTab?: string) => void;
-  theme: string;
+  theme?: string;
 }
 
 // Built-in starter kit equipment profiles
@@ -193,11 +195,15 @@ export function parseClassProgressionGrid(raw: string): ClassGridRow[] {
 export const AddClassModal: React.FC<AddClassModalProps> = ({
   isOpen,
   onClose,
-  character,
-  onUpdateCharacter,
+  character: propCharacter,
+  onUpdateCharacter: propOnUpdateCharacter,
   onOpenAITool,
-  theme,
+  theme: propTheme,
 }) => {
+  const ctx = useCharacter();
+  const character = propCharacter ?? ctx.character;
+  const onUpdateCharacter = propOnUpdateCharacter ?? ctx.updateCharacter;
+  const theme = propTheme ?? ctx.layout.theme;
   const [modalTab, setModalTab] = useState<'grids' | 'career' | 'variants'>('career');
 
   // Check if AI Listener is active for Add Class
@@ -386,42 +392,9 @@ export const AddClassModal: React.FC<AddClassModalProps> = ({
     updateCareerData({ levels: updated });
   };
 
-  // Sync Career Calculations directly into character sheet stats
+  // Sync Career Calculations directly into character sheet stats via the integration layer
   const handleSyncCareerToSheet = () => {
-    onUpdateCharacter((prev) => {
-      // Merge unique new abilities
-      const combinedAbilities = [...prev.featsAndAbilities];
-      careerResult.allFeatures.forEach((feat) => {
-        if (!combinedAbilities.some((existing) => existing.toLowerCase() === feat.toLowerCase())) {
-          combinedAbilities.push(feat);
-        }
-      });
-
-      return {
-        ...prev,
-        level: careerResult.totalLevel,
-        characterClass: careerResult.classSummaryTitle,
-        baseAttackBonus: careerResult.totalBab,
-        saves: {
-          ...prev.saves,
-          fortitude: { ...prev.saves.fortitude, base: careerResult.fortBase },
-          reflex: { ...prev.saves.reflex, base: careerResult.refBase },
-          will: { ...prev.saves.will, base: careerResult.willBase },
-        },
-        hpTotalMax: careerResult.totalHp,
-        hitDice: careerResult.hitDiceString,
-        hpBreakdown: {
-          hitDiceCount: careerResult.totalLevel,
-          hitDiceSize: prev.hpBreakdown?.hitDiceSize || 10,
-          hitDiceRolledBase: careerResult.totalHp,
-          additionalBonuses: prev.hpBreakdown?.additionalBonuses || [],
-          calcMethod: prev.hpBreakdown?.calcMethod || 'average',
-        },
-        favoredClassSkillRanks: careerResult.levelBreakdown.filter((l) => l.hitDie > 0).length,
-        featsAndAbilities: combinedAbilities,
-        careerData: careerData,
-      };
-    });
+    onUpdateCharacter((prev) => applyCareerProgressionToCharacter(prev, careerData).updatedCharacter);
 
     setSuccessMessage(
       `Synced Career to Sheet! Total Level: ${careerResult.totalLevel} (${careerResult.classSummaryTitle}), BAB: ${careerResult.babString}, Saves: Fort +${careerResult.fortBase}/Ref +${careerResult.refBase}/Will +${careerResult.willBase}, HP: ${careerResult.totalHp} (${careerResult.hitDiceString}).`

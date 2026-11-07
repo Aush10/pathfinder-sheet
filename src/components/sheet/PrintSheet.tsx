@@ -3,10 +3,11 @@ import { Printer, ArrowLeft, Eye } from 'lucide-react';
 import { PF1Character, AbilityName } from '../../types/character';
 import { DerivedCombatStats, evaluateConditions } from '../../engine/pf1eMath';
 import { buildFormulaContext, evaluateFormula } from '../../engine/formula';
+import { useCharacter } from '../../context/CharacterContext';
 
 export interface PrintSheetProps {
-  character: PF1Character;
-  derived: DerivedCombatStats;
+  character?: PF1Character;
+  derived?: DerivedCombatStats;
   isReadOnlySnapshot?: boolean;
   onExitPrintView?: () => void;
 }
@@ -92,11 +93,14 @@ function formatStaticFormulaDisplay(
  * 3. Bio / Profile
  */
 export const PrintSheet: React.FC<PrintSheetProps> = ({
-  character,
-  derived,
+  character: propCharacter,
+  derived: propDerived,
   isReadOnlySnapshot = false,
   onExitPrintView,
 }) => {
+  const ctx = useCharacter();
+  const character = propCharacter ?? ctx.character;
+  const derived = propDerived ?? ctx.derived;
   const cond = evaluateConditions(character.conditions);
   const formulaContext = buildFormulaContext(character, cond, derived);
   const abilitiesList: AbilityName[] = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];

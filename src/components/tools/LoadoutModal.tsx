@@ -22,15 +22,16 @@ import {
   Bookmark,
 } from 'lucide-react';
 import { PF1Character, LoadoutSectionKey } from '../../types/character';
+import { useCharacter } from '../../context/CharacterContext';
 
 interface LoadoutModalProps {
   isOpen: boolean;
   onClose: () => void;
-  character: PF1Character;
-  onUpdateCharacter: (updater: (prev: PF1Character) => PF1Character) => void;
-  onExportCSV: () => void;
+  character?: PF1Character;
+  onUpdateCharacter?: (updater: (prev: PF1Character) => PF1Character) => void;
+  onExportCSV?: () => void;
   onPrint: () => void;
-  theme: string;
+  theme?: string;
 }
 
 interface SectionMeta {
@@ -59,12 +60,17 @@ const SECTIONS: SectionMeta[] = [
 export const LoadoutModal: React.FC<LoadoutModalProps> = ({
   isOpen,
   onClose,
-  character,
-  onUpdateCharacter,
-  onExportCSV,
+  character: propCharacter,
+  onUpdateCharacter: propOnUpdateCharacter,
+  onExportCSV: propOnExportCSV,
   onPrint,
-  theme,
+  theme: propTheme,
 }) => {
+  const ctx = useCharacter();
+  const character = propCharacter ?? ctx.character;
+  const onUpdateCharacter = propOnUpdateCharacter ?? ctx.updateCharacter;
+  const onExportCSV = propOnExportCSV ?? ctx.exportCSV;
+  const theme = propTheme ?? ctx.layout.theme;
   const [activeTab, setActiveTab] = useState<'export' | 'import' | 'presets'>('export');
 
   // Export selection state

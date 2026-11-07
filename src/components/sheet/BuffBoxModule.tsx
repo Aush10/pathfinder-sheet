@@ -23,6 +23,7 @@ import {
 } from '../../types/character';
 import { computeBuffBoxTotals } from '../../engine/pf1eMath';
 import { executeMacaroni, pickQuirkyMessage } from '../../engine/macaroni';
+import { useOptionalCharacter } from '../../context/CharacterContext';
 
 export const BUFF_BONUS_TYPES: BuffBonusType[] = [
   'Untyped',        // Row 1
@@ -205,7 +206,7 @@ const PRESET_TEMPLATES: Array<{
 interface BuffBoxModuleProps {
   buffBox?: BuffBoxData;
   customBuffs?: CustomBuffEffect[];
-  onUpdateBuffBox: (newBox: BuffBoxData) => void;
+  onUpdateBuffBox?: (newBox: BuffBoxData) => void;
   onUpdateCustomBuffs?: (newBuffs: CustomBuffEffect[]) => void;
   abilities?: PF1Character['abilities'];
   onUpdateCharacter?: (updater: (prev: PF1Character) => PF1Character) => void;
@@ -216,16 +217,23 @@ interface BuffBoxModuleProps {
 }
 
 export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
-  buffBox,
-  customBuffs = [],
-  onUpdateBuffBox,
-  onUpdateCustomBuffs,
-  onUpdateCharacter,
-  theme = 'parchment',
+  buffBox: propBuffBox,
+  customBuffs: propCustomBuffs,
+  onUpdateBuffBox: propOnUpdateBuffBox,
+  onUpdateCustomBuffs: propOnUpdateCustomBuffs,
+  onUpdateCharacter: propOnUpdateCharacter,
+  theme: propTheme,
   fontClass = '',
   isToolModal = false,
   onCloseModal,
 }) => {
+  const ctx = useOptionalCharacter();
+  const buffBox = propBuffBox ?? ctx?.character.buffBox;
+  const customBuffs = propCustomBuffs ?? ctx?.character.customBuffs ?? [];
+  const onUpdateBuffBox = propOnUpdateBuffBox ?? ctx?.updateBuffBox ?? (() => {});
+  const onUpdateCustomBuffs = propOnUpdateCustomBuffs ?? ctx?.updateCustomBuffs;
+  const onUpdateCharacter = propOnUpdateCharacter ?? ctx?.updateCharacter;
+  const theme = propTheme ?? ctx?.layout.theme ?? 'parchment';
   const [viewMode, setViewMode] = useState<'expanded' | 'rollup' | 'icon'>(
     isToolModal ? 'expanded' : 'rollup'
   );

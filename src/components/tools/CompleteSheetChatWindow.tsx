@@ -30,12 +30,13 @@ import {
 } from '../../engine/aiService';
 import { sanitizeSrdDocument } from '../../engine/sotEngine';
 import { AppleEyeIcon } from '../common/AppleEyeIcon';
+import { useCharacter } from '../../context/CharacterContext';
 
 interface CompleteSheetChatWindowProps {
   isOpen: boolean;
   onClose: () => void;
-  character: PF1Character;
-  onUpdateCharacter: (updater: (prev: PF1Character) => PF1Character) => void;
+  character?: PF1Character;
+  onUpdateCharacter?: (updater: (prev: PF1Character) => PF1Character) => void;
   onOpenSOTCatalogue?: () => void;
   theme?: ThemeMode;
 }
@@ -43,11 +44,15 @@ interface CompleteSheetChatWindowProps {
 export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = ({
   isOpen,
   onClose,
-  character,
-  onUpdateCharacter,
+  character: propCharacter,
+  onUpdateCharacter: propOnUpdateCharacter,
   onOpenSOTCatalogue,
-  theme = 'blueprint',
+  theme: propTheme,
 }) => {
+  const ctx = useCharacter();
+  const character = propCharacter ?? ctx.character;
+  const onUpdateCharacter = propOnUpdateCharacter ?? ctx.updateCharacter;
+  const theme = propTheme ?? ctx.layout.theme;
   // Draggable window coordinates
   const [position, setPosition] = useState<{ x: number; y: number }>(() => {
     const defaultX = Math.max(16, window.innerWidth - 440);

@@ -13,26 +13,33 @@ import {
 import { PF1Character, SkillItem, InventoryItem, AbilityName, SkillPointsConfig } from '../../types/character';
 import { DerivedCombatStats } from '../../engine/pf1eMath';
 import { FieldCallTooltip } from '../common/FieldCallTooltip';
+import { useCharacter } from '../../context/CharacterContext';
 
 interface SheetPage2SkillsGearProps {
-  character: PF1Character;
-  derived: DerivedCombatStats;
-  theme: string;
+  character?: PF1Character;
+  derived?: DerivedCombatStats;
+  theme?: string;
   fontClass: string;
-  onUpdateCharacter: (updater: (prev: PF1Character) => PF1Character) => void;
+  onUpdateCharacter?: (updater: (prev: PF1Character) => PF1Character) => void;
   onRollFormula: (formula: string, label?: string) => void;
-  visibleModules: Record<string, boolean>;
+  visibleModules?: Record<string, boolean>;
 }
 
 export const SheetPage2SkillsGear: React.FC<SheetPage2SkillsGearProps> = ({
-  character,
-  derived,
-  theme,
+  character: propCharacter,
+  derived: propDerived,
+  theme: propTheme,
   fontClass,
-  onUpdateCharacter,
+  onUpdateCharacter: propOnUpdateCharacter,
   onRollFormula,
-  visibleModules,
+  visibleModules: propVisibleModules,
 }) => {
+  const ctx = useCharacter();
+  const character = propCharacter ?? ctx.character;
+  const derived = propDerived ?? ctx.derived;
+  const theme = propTheme ?? ctx.layout.theme;
+  const onUpdateCharacter = propOnUpdateCharacter ?? ctx.updateCharacter;
+  const visibleModules = propVisibleModules ?? ctx.layout.visibleModules;
   const [skillSearch, setSkillSearch] = useState('');
 
   const isParchment = theme === 'parchment';

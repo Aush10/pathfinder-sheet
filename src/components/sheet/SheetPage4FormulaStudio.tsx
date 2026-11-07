@@ -44,22 +44,27 @@ import {
 } from '../../engine/aiService';
 import { extractMacaroniSuggestionsFromSrd } from '../../engine/sotEngine';
 import { AppleEyeIcon } from '../common/AppleEyeIcon';
+import { useCharacter } from '../../context/CharacterContext';
 
 interface SheetPage4FormulaStudioProps {
-  character: PF1Character;
-  theme: string;
+  character?: PF1Character;
+  theme?: string;
   fontClass: string;
-  onUpdateCharacter: (updater: (prev: PF1Character) => PF1Character) => void;
+  onUpdateCharacter?: (updater: (prev: PF1Character) => PF1Character) => void;
   onRollFormula: (formula: string, label?: string) => void;
 }
 
 export const SheetPage4FormulaStudio: React.FC<SheetPage4FormulaStudioProps> = ({
-  character,
-  theme,
+  character: propCharacter,
+  theme: propTheme,
   fontClass,
-  onUpdateCharacter,
+  onUpdateCharacter: propOnUpdateCharacter,
   onRollFormula,
 }) => {
+  const ctx = useCharacter();
+  const character = propCharacter ?? ctx.character;
+  const theme = propTheme ?? ctx.layout.theme;
+  const onUpdateCharacter = propOnUpdateCharacter ?? ctx.updateCharacter;
   const [activeTab, setActiveTab] = useState<'macros' | 'ui_styler' | 'bible'>('macros');
   const [testExpression, setTestExpression] = useState('MageArmor:|<^{7:2}+4>|$');
   const [lastQuirkyNote, setLastQuirkyNote] = useState<string>(

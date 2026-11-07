@@ -9,24 +9,30 @@ import {
   ShieldAlert,
   Check,
 } from 'lucide-react';
+import { useCharacter } from '../../context/CharacterContext';
 
 interface NewSheetModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirmBlank: () => void;
-  onConfirmDefault: () => void;
-  onExportBackup: () => void;
-  characterName: string;
+  onConfirmBlank?: () => void;
+  onConfirmDefault?: () => void;
+  onExportBackup?: () => void;
+  characterName?: string;
 }
 
 export const NewSheetModal: React.FC<NewSheetModalProps> = ({
   isOpen,
   onClose,
-  onConfirmBlank,
-  onConfirmDefault,
-  onExportBackup,
-  characterName,
+  onConfirmBlank: propOnConfirmBlank,
+  onConfirmDefault: propOnConfirmDefault,
+  onExportBackup: propOnExportBackup,
+  characterName: propCharacterName,
 }) => {
+  const ctx = useCharacter();
+  const onConfirmBlank = propOnConfirmBlank ?? ctx.resetToBlankSheet;
+  const onConfirmDefault = propOnConfirmDefault ?? ctx.resetToDefaultSheet;
+  const onExportBackup = propOnExportBackup ?? ctx.exportJSON;
+  const characterName = propCharacterName ?? ctx.character.name;
   if (!isOpen) return null;
 
   return (

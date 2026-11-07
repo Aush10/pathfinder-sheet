@@ -2,6 +2,7 @@ import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import { StorageProvider } from './storage/StorageContext';
+import { CharacterProvider } from './context/CharacterContext';
 import './index.css';
 
 interface Props {
@@ -80,7 +81,9 @@ class RootErrorBoundary extends Component<Props, State> {
 createRoot(document.getElementById('root')!).render(
   <RootErrorBoundary>
     <StorageProvider>
-      <App />
+      <CharacterProvider>
+        <App />
+      </CharacterProvider>
     </StorageProvider>
   </RootErrorBoundary>
 );

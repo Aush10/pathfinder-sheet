@@ -16,14 +16,15 @@ import {
 } from 'lucide-react';
 import { PF1Character } from '../../types/character';
 import { DerivedCombatStats } from '../../engine/pf1eMath';
+import { useCharacter } from '../../context/CharacterContext';
 
 interface CMBToolProps {
   isOpen: boolean;
   onClose: () => void;
-  character: PF1Character;
-  derived: DerivedCombatStats;
-  theme: string;
-  onUpdateCharacter: (updater: (prev: PF1Character) => PF1Character) => void;
+  character?: PF1Character;
+  derived?: DerivedCombatStats;
+  theme?: string;
+  onUpdateCharacter?: (updater: (prev: PF1Character) => PF1Character) => void;
   onRollFormula: (formula: string, label?: string) => void;
 }
 
@@ -43,12 +44,17 @@ export type ManeuverKey =
 export const CMBTool: React.FC<CMBToolProps> = ({
   isOpen,
   onClose,
-  character,
-  derived,
-  theme,
-  onUpdateCharacter,
+  character: propCharacter,
+  derived: propDerived,
+  theme: propTheme,
+  onUpdateCharacter: propOnUpdateCharacter,
   onRollFormula,
 }) => {
+  const ctx = useCharacter();
+  const character = propCharacter ?? ctx.character;
+  const derived = propDerived ?? ctx.derived;
+  const theme = propTheme ?? ctx.layout.theme;
+  const onUpdateCharacter = propOnUpdateCharacter ?? ctx.updateCharacter;
   const [activeTab, setActiveTab] = useState<'grapple' | 'allManeuvers' | 'flowchart'>('grapple');
   const [selectedManeuver, setSelectedManeuver] = useState<ManeuverKey>('grapple');
 

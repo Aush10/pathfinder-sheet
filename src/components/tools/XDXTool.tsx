@@ -17,13 +17,14 @@ import { PF1Character, XdxMacroEntry } from '../../types/character';
 import { DerivedCombatStats, evaluateConditions } from '../../engine/pf1eMath';
 import { executeMacaroni, applyMacaroniToCharacter } from '../../engine/macaroni';
 import { buildFormulaContext } from '../../engine/formula';
+import { useCharacter } from '../../context/CharacterContext';
 
 interface XDXToolProps {
   isOpen: boolean;
   onClose: () => void;
-  character: PF1Character;
-  derived: DerivedCombatStats;
-  onUpdateCharacter: (updater: (prev: PF1Character) => PF1Character) => void;
+  character?: PF1Character;
+  derived?: DerivedCombatStats;
+  onUpdateCharacter?: (updater: (prev: PF1Character) => PF1Character) => void;
   isDocked?: boolean;
 }
 
@@ -41,11 +42,15 @@ interface RollLogItem {
 export const XDXTool: React.FC<XDXToolProps> = ({
   isOpen,
   onClose,
-  character,
-  derived,
-  onUpdateCharacter,
+  character: propCharacter,
+  derived: propDerived,
+  onUpdateCharacter: propOnUpdateCharacter,
   isDocked = false,
 }) => {
+  const ctx = useCharacter();
+  const character = propCharacter ?? ctx.character;
+  const derived = propDerived ?? ctx.derived;
+  const onUpdateCharacter = propOnUpdateCharacter ?? ctx.updateCharacter;
   const [macroInput, setMacroInput] = useState('');
   const [rollLogs, setRollLogs] = useState<RollLogItem[]>([
     {

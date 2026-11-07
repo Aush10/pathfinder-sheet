@@ -31,11 +31,12 @@ import {
 import { ThemeMode, SheetFont, WorkspaceLayout, PF1Character } from '../../types/character';
 import { GLYPH_STYLE_OPTIONS, getGlyphUrl, type GlyphStyle } from '../../data/glyphs';
 import { AppleEyeIcon } from '../common/AppleEyeIcon';
+import { useCharacter } from '../../context/CharacterContext';
 
 interface BlueprintSidebarProps {
-  layout: WorkspaceLayout;
-  onUpdateLayout: (updates: Partial<WorkspaceLayout>) => void;
-  character: PF1Character;
+  layout?: WorkspaceLayout;
+  onUpdateLayout?: (updates: Partial<WorkspaceLayout>) => void;
+  character?: PF1Character;
   onOpenPointBuy: () => void;
   onOpenDiceRoller?: () => void;
   onOpenQuickHP: () => void;
@@ -54,16 +55,16 @@ interface BlueprintSidebarProps {
   onOpenNewSheet?: () => void;
   onOpenImageBrowser?: () => void;
   onExportStandaloneHTML?: () => void;
-  onExportJSON: () => void;
-  onImportJSON: () => void;
-  onExportCSV: () => void;
+  onExportJSON?: () => void;
+  onImportJSON?: () => void;
+  onExportCSV?: () => void;
   onPrint: () => void;
 }
 
 export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
-  layout,
-  onUpdateLayout,
-  character,
+  layout: propLayout,
+  onUpdateLayout: propOnUpdateLayout,
+  character: propCharacter,
   onOpenPointBuy,
   onOpenDiceRoller,
   onOpenQuickHP,
@@ -81,12 +82,20 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
   onInstallAITool,
   onOpenNewSheet,
   onOpenImageBrowser,
-  onExportStandaloneHTML,
-  onExportJSON,
-  onImportJSON,
-  onExportCSV,
+  onExportStandaloneHTML: propOnExportStandaloneHTML,
+  onExportJSON: propOnExportJSON,
+  onImportJSON: propOnImportJSON,
+  onExportCSV: propOnExportCSV,
   onPrint,
 }) => {
+  const ctx = useCharacter();
+  const layout = propLayout ?? ctx.layout;
+  const onUpdateLayout = propOnUpdateLayout ?? ctx.updateLayout;
+  const character = propCharacter ?? ctx.character;
+  const onExportStandaloneHTML = propOnExportStandaloneHTML ?? ctx.exportStandaloneHTML;
+  const onExportJSON = propOnExportJSON ?? ctx.exportJSON;
+  const onImportJSON = propOnImportJSON ?? ctx.importJSON;
+  const onExportCSV = propOnExportCSV ?? ctx.exportCSV;
   const activeGlyphStyle: GlyphStyle = layout.glyphStyle ?? '01-flat-enamel';
   const toggleModule = (key: keyof WorkspaceLayout['visibleModules']) => {
     onUpdateLayout({
