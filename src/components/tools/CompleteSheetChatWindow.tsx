@@ -198,12 +198,13 @@ export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = (
       }
     } catch (err) {
       console.error('Error during Complete Sheet converse:', err);
+      const detail = err instanceof Error ? err.message : String(err);
       setMessages((prev) => [
         ...prev,
         {
           id: `msg-err-${Date.now()}`,
           role: 'model',
-          text: `Whoops! Encountered an issue connecting to the AI build engine. Check your connection or Secrets in settings, or try rephrasing your concept.`,
+          text: `AI build engine error: ${detail}`,
           timestamp: Date.now(),
         },
       ]);

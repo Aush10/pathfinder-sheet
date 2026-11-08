@@ -33,10 +33,10 @@ import { evaluateConditions } from '../../engine/pf1eMath';
 import {
   executeMacaroni,
   resolveUiMakePreset,
-  applyMacaroniToCharacter,
   BUFF_MATRIX_COLUMNS,
   BUFF_MATRIX_ROWS,
 } from '../../engine/macaroni';
+import { projectMacaroniResult } from '../../engine/characterIntegration';
 import {
   executeScratchpadAIMacro,
   DEFAULT_AI_MODULE_SETTINGS,
@@ -88,9 +88,13 @@ export const SheetPage4FormulaStudio: React.FC<SheetPage4FormulaStudioProps> = (
       setLastQuirkyNote('Enable Scratchpad AI in AI Listener -> Module Permissions first.');
       return;
     }
-    const res = await executeScratchpadAIMacro(scratchpadText, character);
-    setScratchpadText(res.updatedText);
-    if (res.generatedReply) setLastQuirkyNote(res.generatedReply);
+    try {
+      const res = await executeScratchpadAIMacro(scratchpadText, character);
+      setScratchpadText(res.updatedText);
+      if (res.generatedReply) setLastQuirkyNote(res.generatedReply);
+    } catch (err) {
+      setLastQuirkyNote(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const isParchment = theme === 'parchment';
@@ -122,8 +126,11 @@ export const SheetPage4FormulaStudio: React.FC<SheetPage4FormulaStudioProps> = (
     : 'bg-white border-neutral-400 text-black';
 
   // Formula Context
+  // Pass the derived view so #AC, #FORT, #MATTACK, #CMB and friends resolve to
+  // the same buff-adjusted numbers the sheet displays instead of recomputing
+  // pre-buff approximations.
   const cond = evaluateConditions(character.conditions);
-  const context = buildFormulaContext(character, cond);
+  const context = buildFormulaContext(character, cond, ctx.derived);
 
   const setField = <K extends keyof PF1Character>(key: K, value: PF1Character[K]) => {
     onUpdateCharacter((prev) => ({ ...prev, [key]: value }));
@@ -413,9 +420,10 @@ export const SheetPage4FormulaStudio: React.FC<SheetPage4FormulaStudioProps> = (
       (outcome.stateMutations && outcome.stateMutations.length > 0)
     ) {
       onUpdateCharacter((prev) => {
-        const applied = applyMacaroniToCharacter(prev, outcome);
-        setLastQuirkyNote(`${applied.statusMessage} — 🧀 ${applied.quirkyMessage}`);
-        return applied.updatedCharacter;
+        const applied = projectMacaroniResult(prev, outcome);
+        const cheer = outcome.quirkyMessage ? ` — 🧀 ${outcome.quirkyMessage}` : '';
+        setLastQuirkyNote(`${applied.statusMessage}${cheer}`);
+        return applied.character;
       });
     } else if (outcome.quirkyMessage) {
       setLastQuirkyNote(`🧀 ${outcome.quirkyMessage}`);

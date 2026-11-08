@@ -8,21 +8,36 @@
  * and the calculation engines (`pf1eMath.ts`, `multiclassCalculator.ts`, `macaroni/`,
  * `sotEngine.ts`).
  *
- * INTEGRATION LAYER ENTRY POINT:
- * ------------------------------
- * Look at `resolveIntegratedCharacterView()` and `applyCareerProgressionToCharacter()`
- * below. Future cross-cutting derivations that map calculated outputs from:
- *   1. Career Progression & Class Grids (`calculateCareerProgression`, `customClassGrids`)
- *   2. Buff Box & Custom Active Buffs (`computeBuffBoxTotals`, `customBuffs`)
- *   3. Macaroni DSL Formula Evaluations (`evaluateMacaroni`, `@buff`, `<?>`)
- *   4. Odd-Level Feat Slot Synchronization (`syncOddLevelFeats`)
- * into the canonical `PF1Character` and `DerivedCombatStats` fields consumed by
- * Sheet Pages 1–4 should be registered here.
+ * INTEGRATION LAYER ENTRY POINTS:
+ * -------------------------------
+ * Read side — `resolveIntegratedCharacterView()` is the single selector that
+ * turns raw `PF1Character` state into everything the sheet displays:
+ *   - `computeDerivedCharacterStats` (pf1eMath) resolves AC, attacks, saves,
+ *     CMB/CMD, HP, encumbrance, and skill points.
+ *   - `resolveBuffProjection` (buffProjection) applies Pathfinder bonus
+ *     stacking to the Buff Box matrix and every active custom buff, exposing
+ *     both the resolved totals and the audit trail of suppressed bonuses.
+ *   - `calculateCareerProgression` resolves multiclass/gestalt progression.
+ *
+ * Write side — state changes are funnelled through the apply* helpers below so
+ * no surface mutates a character ad hoc:
+ *   - `applyCareerProgressionToCharacter` syncs class grids into BAB, saves,
+ *     HP, skills, and feats.
+ *   - `applyBuffBoxToCharacter` / `applyCustomBuffsWithInventorySync` keep the
+ *     Buff Box and inventory item buffs consistent.
+ *   - `projectMacaroniResult` is the only path from Macaroni output to sheet
+ *     state: buff constructs land in the Buff Box, core fields are applied
+ *     directly, and stat mutations become live, removable "Macro:" buffs.
+ *
+ * New cross-cutting derivations belong here rather than in components, so the
+ * sheet, the printable export, and the Macaroni formula context all read the
+ * same resolved numbers.
  */
 
 import {
   AbilityName,
   BuffBoxData,
+  BuffStatTarget,
   CareerProgressionData,
   CharacterClassEntry,
   CustomBuffEffect,
@@ -44,6 +59,11 @@ import {
   CalculatedCareerResult,
   calculateCareerProgression,
 } from './multiclassCalculator';
+import {
+  applyMacaroniToCharacter,
+  resolveBuffStatTarget,
+  type MacaroniExecutionResult,
+} from './macaroni';
 
 export const LOCAL_STORAGE_CHARACTER_KEY = 'pf1e_character_data_v1';
 export const LOCAL_STORAGE_LAYOUT_KEY = 'pf1e_workspace_layout_v1';
@@ -162,15 +182,16 @@ export function loadInitialLayoutState(): WorkspaceLayout {
 
 /**
  * ============================================================================
- * FUTURE INTEGRATION LAYER HOOK / SELECTOR PIPELINE
+ * INTEGRATION SELECTOR PIPELINE
  * ============================================================================
- * Single integration point that takes the current `PF1Character` state and
- * computes all derived combat, skill, encumbrance, Buff Box, and career
- * progression statistics.
+ * Takes the current `PF1Character` state and computes all derived combat,
+ * skill, encumbrance, Buff Box, and career progression statistics. Sheet pages,
+ * the printable sheet, and the Macaroni formula context all consume this view
+ * so a buff that raises AC raises it everywhere at once.
  *
- * When expanding the integration layer to automatically project career grids,
- * Buff Box matrices, or Macaroni DSL outputs onto sheet-displayed fields,
- * add the mapping selectors inside `resolveIntegratedCharacterView`.
+ * `derived.buffProjection` carries the per-stat audit trail (which buff
+ * applied, which was suppressed by stacking) for UI that needs to explain a
+ * number rather than just print it.
  */
 export interface IntegratedCharacterView {
   character: PF1Character;
@@ -430,6 +451,100 @@ export function applyCustomBuffsWithInventorySync(
     customBuffs: newBuffs,
     inventory: updatedInventory,
   };
+}
+
+/** Prefix used to identify buffs that were materialised from an inline macro. */
+export const MACARONI_MUTATOR_PREFIX = 'macaroni-mutator:';
+
+export interface MacaroniProjectionResult {
+  character: PF1Character;
+  statusMessage: string;
+  didMutate: boolean;
+}
+
+/**
+ * Projects a finished Macaroni run onto the character.
+ *
+ * This is the single integration point for macro output. The Macaroni engine
+ * resolves `<^...>` buff constructs, dice, and numeric pushes; this function
+ * decides what reaches the sheet:
+ *
+ * 1. `<^...>` buff constructs become Buff Box entries (named buffs) or typed
+ *    matrix cells, so they flow through bonus stacking into AC, attacks,
+ *    saves, and HP.
+ * 2. Core field mutations (`HP`, `THP`, `GP`) are applied directly.
+ * 3. Any remaining `^`/`>>` mutation that targets a Buff Box stat (`AC`,
+ *    `FORT`, `STR`, ...) becomes a live "Macro:" buff, so a macro that says
+ *    `AC^+2` is visible on the sheet and removable from the Buff Box instead
+ *    of being silently discarded.
+ */
+export function projectMacaroniResult(
+  character: PF1Character,
+  result: MacaroniExecutionResult
+): MacaroniProjectionResult {
+  const engineApplied = applyMacaroniToCharacter(character, result);
+  let nextCharacter = engineApplied.updatedCharacter;
+  const notes: string[] = engineApplied.didMutate ? [engineApplied.statusMessage] : [];
+  let didMutate = engineApplied.didMutate;
+
+  const deltasByStat = new Map<BuffStatTarget, number>();
+
+  for (const mutation of result.stateMutations || []) {
+    const field = mutation.field.toLowerCase().replace(/^~/, '');
+    if (['hp', 'hp_current', 'thp', 'temp_hp', 'gp', 'gold'].includes(field)) {
+      continue; // already applied by the engine
+    }
+
+    const stat = resolveBuffStatTarget(field);
+    if (!stat || !mutation.delta) continue;
+
+    deltasByStat.set(stat, (deltasByStat.get(stat) || 0) + mutation.delta);
+  }
+
+  if (deltasByStat.size > 0) {
+    const currentBuffs = [...(nextCharacter.customBuffs || [])];
+
+    deltasByStat.forEach((delta, stat) => {
+      const id = `${MACARONI_MUTATOR_PREFIX}${stat}`;
+      const existingIndex = currentBuffs.findIndex((buff) => buff.id === id);
+      const label = stat.replace(/_/g, ' ').toUpperCase();
+
+      if (existingIndex >= 0) {
+        const merged = (currentBuffs[existingIndex].values[stat] || 0) + delta;
+        if (merged === 0) {
+          currentBuffs.splice(existingIndex, 1);
+          notes.push(`${label} modifier cleared`);
+        } else {
+          currentBuffs[existingIndex] = {
+            ...currentBuffs[existingIndex],
+            values: { [stat]: merged },
+          };
+          notes.push(`${label} ${merged >= 0 ? '+' : ''}${merged} (live on sheet)`);
+        }
+        return;
+      }
+
+      if (delta === 0) return;
+
+      currentBuffs.unshift({
+        id,
+        name: `Macro: ${label}`,
+        category: 'activatable',
+        bonusType: 'Untyped',
+        isActive: true,
+        values: { [stat]: delta },
+        notes: 'Created by an inline Macaroni mutation. Toggle off or delete to clear.',
+      });
+      notes.push(`${label} ${delta >= 0 ? '+' : ''}${delta} applied`);
+    });
+
+    nextCharacter = { ...nextCharacter, customBuffs: currentBuffs };
+    didMutate = true;
+  }
+
+  const statusMessage = notes.length > 0 ? notes.join(' • ') : engineApplied.statusMessage;
+
+  return { character: nextCharacter, statusMessage, didMutate };
 }
 
 /**

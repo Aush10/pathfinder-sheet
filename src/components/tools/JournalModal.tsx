@@ -88,6 +88,7 @@ export const JournalModal: React.FC<JournalModalProps> = ({
   const [isVoiceDrawerOpen, setIsVoiceDrawerOpen] = useState(false);
   const [voiceSessionPrompt, setVoiceSessionPrompt] = useState('');
   const [isGeneratingVoice, setIsGeneratingVoice] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
 
   // Local Pencil Sketch Generator Drawer State (Hidden if journalSketch permission is off)
   const [isSketchDrawerOpen, setIsSketchDrawerOpen] = useState(false);
@@ -212,6 +213,7 @@ export const JournalModal: React.FC<JournalModalProps> = ({
   const handleGenerateVoiceEntry = async (mode: 'new_entry' | 'append_current') => {
     if (!voiceSessionPrompt.trim()) return;
     setIsGeneratingVoice(true);
+    setVoiceError(null);
     try {
       const combinedVoiceInstruction = activeVoiceSample
         ? `${activeVoiceTone}. Voice behavior sample: "${activeVoiceSample}"`
@@ -258,6 +260,8 @@ export const JournalModal: React.FC<JournalModalProps> = ({
 
       setVoiceSessionPrompt('');
       setIsVoiceDrawerOpen(false);
+    } catch (err) {
+      setVoiceError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsGeneratingVoice(false);
     }
@@ -598,6 +602,12 @@ export const JournalModal: React.FC<JournalModalProps> = ({
                     }`}
                   />
                 </div>
+
+                {voiceError && (
+                  <div className="p-2.5 rounded-lg border bg-rose-950/30 border-rose-500/50 text-rose-400 text-xs font-mono">
+                    {voiceError}
+                  </div>
+                )}
 
                 <div className="flex items-center justify-end gap-2">
                   <button

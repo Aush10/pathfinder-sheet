@@ -424,6 +424,9 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
         actionEconomy: lookupActionModifier.trim() || undefined,
       });
       setLookupResult(res);
+    } catch (err) {
+      setLookupResult(null);
+      setLookupApplyNotice(err instanceof Error ? err.message : String(err));
     } finally {
       setIsLookingUp(false);
     }
@@ -935,6 +938,8 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
       if (macroDestination !== 'copy' && permCheck.allowed) {
         dispatchMacroToDestination(macroDestination, dslRes, buffRes);
       }
+    } catch (err) {
+      setPermissionWarningMessage(err instanceof Error ? err.message : String(err));
     } finally {
       setIsGeneratingMacro(false);
     }
@@ -1010,11 +1015,15 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
 
   const handleTestMacro = () => {
     if (!macroResult) return;
-    const context = buildFormulaContext(character, {
-      strPenalty: 0,
-      dexPenalty: 0,
-      attackPenalty: 0,
-    });
+    const context = buildFormulaContext(
+      character,
+      {
+        strPenalty: 0,
+        dexPenalty: 0,
+        attackPenalty: 0,
+      },
+      ctx.derived
+    );
     const evalRes = evaluateFormula(macroResult.formula, context);
     if (evalRes.isError) {
       setMacroTestOutput(`Error: ${evalRes.errorMessage}`);
@@ -1562,6 +1571,14 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
                       ))}
                     </div>
                   </div>
+
+                  {/* Lookup Error Notice (when lookupResult is null) */}
+                  {!lookupResult && lookupApplyNotice && (
+                    <div className="p-3 rounded-xl border bg-rose-950/30 border-rose-500/50 text-rose-300 text-xs font-mono flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-400" />
+                      <div>{lookupApplyNotice}</div>
+                    </div>
+                  )}
 
                   {/* Lookup Result Display */}
                   {lookupResult && (

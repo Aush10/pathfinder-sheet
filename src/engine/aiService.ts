@@ -251,19 +251,34 @@ async function callServerGeminiGenerate(params: {
   systemInstruction?: string;
   responseMimeType?: string;
   urls?: string[];
-}): Promise<string | null> {
-  try {
-    const response = await fetch('/api/gemini/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params),
-    });
-    if (!response.ok) return null;
-    const data = await response.json();
-    return typeof data.text === 'string' && data.text.trim() ? data.text.trim() : null;
-  } catch {
-    return null;
+}): Promise<string> {
+  const response = await fetch('/api/gemini/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => '');
+    let message = errorBody.trim();
+    try {
+      const parsed = JSON.parse(message) as { error?: string };
+      message = parsed.error || message;
+    } catch {
+      // Keep the raw response when it is not JSON.
+    }
+    throw new Error(
+      `Gemini request failed (${response.status} ${response.statusText})${
+        message ? `: ${message}` : ''
+      }`
+    );
   }
+
+  const data = await response.json();
+  if (typeof data.text !== 'string' || !data.text.trim()) {
+    throw new Error('Gemini request succeeded but returned no text.');
+  }
+  return data.text.trim();
 }
 
 // Helper to extract JSON from a string that might contain markdown fences
@@ -905,158 +920,91 @@ export async function lookupRulesWithSOT(
   // =========================================================================
   // STEP 2 & 3: CHECK SOT LINKS NEXT, THEN VERIFIED ONLINE SRD VIA GEMINI
   // =========================================================================
-  try {
-    const response = await fetch('/api/gemini/lookup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query: cleanQuery || modifierTerms.join(' '),
-        category: categoryFilter,
-        modifiers: modifiers || {},
-        sotOverridePages: (sot.overridePages || []).filter((p) => p.isOverride),
-        sotWeblinks: (sot.weblinks || []).filter((l) => l.isActive),
-        characterSummary: `${character.name || 'Character'} (Lvl ${character.level} ${character.characterClass})`,
-      }),
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      const parsed = data.text ? safeParseJson<any>(data.text) : null;
-      if (parsed && typeof parsed.matched === 'boolean') {
-        if (!parsed.matched) {
-          return {
-            matched: false,
-            title: cleanQuery,
-            category: categoryFilter !== 'All' ? (categoryFilter as SOTCategory) : 'Feat',
-            sourceAuthority: 'Online SRD',
-            prerequisites: '',
-            actionType: 'Standard',
-            summary: '',
-            fullDescription: '',
-            suggestedMacro: '',
-            sourceNotes:
-              parsed.sourceNotes ||
-              `No verified match found in SOT Docs, SOT Weblinks, or Pathfinder 1e SRD for "${cleanQuery}". Fields were left unchanged.`,
-            sourceUrls: [],
-          };
-        }
-
-        if (parsed.title) {
-          return {
-            matched: true,
-            title: parsed.title,
-            category:
-              parsed.category || (categoryFilter !== 'All' ? (categoryFilter as SOTCategory) : 'Feat'),
-            featType: parsed.featType || modifiers?.featType || 'Combat',
-            macroKey:
-              parsed.macroKey ||
-              parsed.title
-                .toUpperCase()
-                .replace(/[^A-Z0-9]+/g, '_')
-                .replace(/^_|_$/g, ''),
-            sourceAuthority: parsed.sourceAuthority || 'Online SRD',
-            prerequisites: parsed.prerequisites || 'None',
-            actionType: parsed.actionType || 'Standard',
-            range: parsed.range || undefined,
-            duration: parsed.duration || undefined,
-            saveDC: parsed.saveDC || undefined,
-            hasResourcePool: Boolean(parsed.hasResourcePool),
-            resourceMax: parsed.resourceMax ? Number(parsed.resourceMax) : undefined,
-            summary: parsed.summary || '',
-            fullDescription: parsed.fullDescription || parsed.summary || '',
-            suggestedMacro: parsed.suggestedMacro || '',
-            sourceNotes: parsed.sourceNotes || 'Verified via SOT Weblinks & Online PF1e SRD',
-            sourceUrls: Array.isArray(data.sourceUrls) && data.sourceUrls.length > 0
-              ? data.sourceUrls
-              : activeSotUrls,
-          };
-        }
-      }
-    }
-  } catch (err) {
-    console.warn('Online lookup fallback to local verified PF1e compendium:', err);
-  }
-
-  // =========================================================================
-  // OFFLINE VERIFIED PF1E COMPENDIUM CHECK (NO GUESSING OR FABRICATING!)
-  // =========================================================================
-  // Check SOT Weblinks first if the query matches a saved SOT Weblink title or notes
-  const matchedWeblink = (sot.weblinks || []).find(
-    (l) =>
-      l.isActive &&
-      cleanQuery.length >= 3 &&
-      (l.title.toLowerCase().includes(lowerQuery) ||
-        (l.notes && l.notes.toLowerCase().includes(lowerQuery)))
-  );
-
-  // Check verified PF1e compendium using Name query + modifiers
-  const verifiedEntry = VERIFIED_PF1E_COMPENDIUM.find((entry) => {
-    const nameMatched =
-      cleanQuery.length >= 2 &&
-      (entry.title.toLowerCase() === lowerQuery ||
-        entry.title.toLowerCase().includes(lowerQuery) ||
-        entry.keywords.some((kw) => lowerQuery.includes(kw) || kw.includes(lowerQuery)) ||
-        (modifiers?.macroKey &&
-          entry.macroKey.toLowerCase() === String(modifiers.macroKey).trim().toLowerCase()));
-
-    if (nameMatched) return true;
-
-    // If Name is empty or partial, check if modifiers uniquely identify an entry
-    if (modifierTerms.length > 0) {
-      return modifierTerms.some(
-        (term) =>
-          entry.summary.toLowerCase().includes(term) ||
-          entry.fullDescription.toLowerCase().includes(term) ||
-          entry.prerequisites.toLowerCase().includes(term)
-      );
-    }
-    return false;
+  const response = await fetch('/api/gemini/lookup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      query: cleanQuery || modifierTerms.join(' '),
+      category: categoryFilter,
+      modifiers: modifiers || {},
+      sotOverridePages: (sot.overridePages || []).filter((p) => p.isOverride),
+      sotWeblinks: (sot.weblinks || []).filter((l) => l.isActive),
+      characterSummary: `${character.name || 'Character'} (Lvl ${character.level} ${character.characterClass})`,
+    }),
   });
 
-  if (verifiedEntry) {
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => '');
+    let message = errorBody.trim();
+    try {
+      const parsedErr = JSON.parse(message) as { error?: string };
+      message = parsedErr.error || message;
+    } catch {
+      // Keep raw response when not JSON
+    }
+    throw new Error(
+      `Gemini lookup failed (${response.status} ${response.statusText})${
+        message ? `: ${message}` : ''
+      }`
+    );
+  }
+
+  const data = await response.json();
+  const parsed = data.text ? safeParseJson<any>(data.text) : null;
+  if (!parsed || typeof parsed.matched !== 'boolean') {
+    throw new Error('Gemini lookup succeeded but returned invalid JSON.');
+  }
+
+  if (!parsed.matched) {
     return {
-      matched: true,
-      title: verifiedEntry.title,
-      category: verifiedEntry.category,
-      featType: verifiedEntry.featType,
-      macroKey: verifiedEntry.macroKey,
-      sourceAuthority: matchedWeblink ? 'SOT Weblink' : 'Online SRD',
-      prerequisites: verifiedEntry.prerequisites,
-      actionType: verifiedEntry.actionType,
-      range: verifiedEntry.range,
-      duration: verifiedEntry.duration,
-      saveDC: verifiedEntry.saveDC,
-      hasResourcePool: verifiedEntry.hasResourcePool,
-      resourceMax: verifiedEntry.resourceMax,
-      summary: verifiedEntry.summary,
-      fullDescription: verifiedEntry.fullDescription,
-      suggestedMacro: verifiedEntry.suggestedMacro,
-      sourceNotes: matchedWeblink
-        ? `Matched via SOT Link ("${matchedWeblink.title}") & ${verifiedEntry.sourceNotes}`
-        : verifiedEntry.sourceNotes,
-      sourceUrls: [
-        { title: `d20PFSRD: ${verifiedEntry.title}`, uri: verifiedEntry.srdUrl },
-        ...activeSotUrls,
-      ],
+      matched: false,
+      title: cleanQuery,
+      category: categoryFilter !== 'All' ? (categoryFilter as SOTCategory) : 'Feat',
+      sourceAuthority: 'Online SRD',
+      prerequisites: '',
+      actionType: 'Standard',
+      summary: '',
+      fullDescription: '',
+      suggestedMacro: '',
+      sourceNotes:
+        parsed.sourceNotes ||
+        `No verified match found in SOT Docs, SOT Weblinks, or Pathfinder 1e SRD for "${cleanQuery}". Fields were left unchanged.`,
+      sourceUrls: [],
     };
   }
 
-  // STRICT NO-GUESSING POLICY: If no proper match was found in SOT Docs, SOT Weblinks, or Verified SRD,
-  // return matched: false and do NOT make up fields!
+  if (!parsed.title) {
+    throw new Error('Gemini lookup matched an entry without a valid title.');
+  }
+
   return {
-    matched: false,
-    title: cleanQuery,
-    category: categoryFilter !== 'All' ? (categoryFilter as SOTCategory) : 'Feat',
-    sourceAuthority: 'Online SRD',
-    prerequisites: '',
-    actionType: 'Standard',
-    summary: '',
-    fullDescription: '',
-    suggestedMacro: '',
-    sourceNotes: `No verified match found in SOT Docs, SOT Links, or PF1e SRD for "${
-      cleanQuery || modifierTerms.join(', ')
-    }". Fields were not populated to avoid guessing.`,
-    sourceUrls: [],
+    matched: true,
+    title: parsed.title,
+    category:
+      parsed.category || (categoryFilter !== 'All' ? (categoryFilter as SOTCategory) : 'Feat'),
+    featType: parsed.featType || modifiers?.featType || 'Combat',
+    macroKey:
+      parsed.macroKey ||
+      parsed.title
+        .toUpperCase()
+        .replace(/[^A-Z0-9]+/g, '_')
+        .replace(/^_|_$/g, ''),
+    sourceAuthority: parsed.sourceAuthority || 'Online SRD',
+    prerequisites: parsed.prerequisites || 'None',
+    actionType: parsed.actionType || 'Standard',
+    range: parsed.range || undefined,
+    duration: parsed.duration || undefined,
+    saveDC: parsed.saveDC || undefined,
+    hasResourcePool: Boolean(parsed.hasResourcePool),
+    resourceMax: parsed.resourceMax ? Number(parsed.resourceMax) : undefined,
+    summary: parsed.summary || '',
+    fullDescription: parsed.fullDescription || parsed.summary || '',
+    suggestedMacro: parsed.suggestedMacro || '',
+    sourceNotes: parsed.sourceNotes || 'Verified via SOT Weblinks & Online PF1e SRD',
+    sourceUrls:
+      Array.isArray(data.sourceUrls) && data.sourceUrls.length > 0
+        ? data.sourceUrls
+        : activeSotUrls,
   };
 }
 
@@ -1110,95 +1058,22 @@ Return ONLY a valid JSON object with these keys:
     urls: activeUrls,
   });
 
-  if (serverText) {
-    const parsed = safeParseJson<any>(serverText);
-    if (parsed && parsed.formula) {
-      const rawCat = String(parsed.category || 'action').toLowerCase();
-      const validCat: MacaroniCategory = ['action', 'step', 'logic', 'placeholder'].includes(rawCat)
-        ? (rawCat as MacaroniCategory)
-        : 'action';
-      return {
-        formula: parsed.formula,
-        name: (parsed.name || 'custom_macro').replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase(),
-        description: parsed.description || prompt,
-        category: validCat,
-        explanation: parsed.explanation || 'Calculated using Pathfinder 1e Macaroni grammar & SOT context.',
-      };
-    }
+  const parsed = safeParseJson<any>(serverText);
+  if (!parsed || typeof parsed.formula !== 'string' || !parsed.formula.trim()) {
+    throw new Error('Gemini returned an invalid macro JSON response (missing "formula" field).');
   }
 
-  const lower = prompt.toLowerCase();
-  if (lower.includes('power attack')) {
-    const bab = character.baseAttackBonus || 1;
-    const penalty = 1 + Math.floor(bab / 4);
-    const bonus = penalty * 2;
-    return {
-      formula: `[1d20 + #BAB + #STR - ${penalty}] "to hit" & [1d8 + #STR + ${bonus}] "slashing"`,
-      name: 'power_attack',
-      description: `Power Attack (BAB +${bab}: -${penalty} attack, +${bonus} damage)`,
-      category: 'action',
-      explanation: `Uses Macaroni [] evaluation brackets and & multi-slot separator (.1 attack, .2 damage) with PF1e Power Attack scaling.`,
-    };
-  }
-
-  if (lower.includes('sneak attack')) {
-    const dice = Math.ceil(character.level / 2);
-    return {
-      formula: `[1d20 + #BAB + #DEX + 2] "flanking to hit" & [1d6 + #STR] "blade" & [${dice}d6] "sneak precision"`,
-      name: 'flanking_sneak_attack',
-      description: `Flanking Sneak Attack (+2 to hit, +${dice}d6 precision damage)`,
-      category: 'action',
-      explanation: `Separates attack (.1), weapon damage (.2), and ${dice}d6 sneak precision damage (.3) using & so crits only multiply weapon damage.`,
-    };
-  }
-
-  if (lower.includes('smite') || lower.includes('smite evil')) {
-    return {
-      formula: `[1d20 + #BAB + #CHA] "smite to hit" & [1d8 + #STR + #LEVEL] "sacred damage" & <11"Smite Evil Unleashed!">`,
-      name: 'smite_evil',
-      description: `Smite Evil (+#CHA to hit, +#LEVEL to damage, +Alert)`,
-      category: 'action',
-      explanation: `Adds #CHA to attack, #LEVEL to damage, and fires a Tag 11 UI Make alert card.`,
-    };
-  }
-
-  if (lower.includes('fireball') || lower.includes('dragon') || lower.includes('breath')) {
-    const diceCount = Math.min(10, Math.max(1, character.level));
-    return {
-      formula: `[${diceCount}d6 + (floor(#LEVEL / 2) * 2)] "fire damage" & "Reflex DC" [10 + floor(#LEVEL / 2) + #CON]`,
-      name: 'draconic_fire_burst',
-      description: `Area fire blast (${diceCount}d6 + scaling DC)`,
-      category: 'action',
-      explanation: `Rolls ${diceCount}d6 fire damage in slot .1 and calculates the Reflex Save DC in slot .2.`,
-    };
-  }
-
-  if (lower.includes('cure') || lower.includes('heal')) {
-    return {
-      formula: `[1d8 + min(5, #CL)] "HP healed" & HP^+1d8`,
-      name: 'cure_light_wounds',
-      description: 'Cure Light Wounds: [1d8 + min(5, #CL)] hit points',
-      category: 'action',
-      explanation: 'Evaluates 1d8 + caster level (capped at +5) and uses ^ mutator syntax.',
-    };
-  }
-
-  if (lower.includes('step') || lower.includes('countdown') || lower.includes('round')) {
-    return {
-      formula: `this: 10-1! | this=0 | $`,
-      name: 'buff_countdown',
-      description: '10-round self-altering stepper countdown that terminates with $ at 0',
-      category: 'step',
-      explanation: 'Uses ! to advance the stepper count each round and pipes | this=0 | $ to finish at zero.',
-    };
-  }
-
+  const rawCat = String(parsed.category || 'action').toLowerCase();
+  const validCat: MacaroniCategory = ['action', 'step', 'logic', 'placeholder'].includes(rawCat)
+    ? (rawCat as MacaroniCategory)
+    : 'action';
   return {
-    formula: `[1d20 + #BAB + #STR] "to hit" & [1d8 + #STR] "damage"`,
-    name: 'standard_attack_macro',
-    description: `Standard Melee Attack with #BAB and #STR`,
-    category: 'action',
-    explanation: `Evaluates [1d20 + #BAB + #STR] in slot .1 and [1d8 + #STR] in slot .2.`,
+    formula: parsed.formula,
+    name: (parsed.name || 'custom_macro').replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase(),
+    description: parsed.description || prompt,
+    category: validCat,
+    explanation:
+      parsed.explanation || 'Calculated using Pathfinder 1e Macaroni grammar & SOT context.',
   };
 }
 
@@ -1252,146 +1127,21 @@ Return ONLY valid JSON with these keys:
     responseMimeType: 'application/json',
   });
 
-  if (serverText) {
-    const parsed = safeParseJson<any>(serverText);
-    if (parsed && parsed.name) {
-      return {
-        name: parsed.name || 'CustomBuff',
-        category: parsed.category || 'activatable',
-        bonusType: parsed.bonusType || 'Untyped',
-        values: parsed.values || { ac: 4 },
-        macaroniSyntax: parsed.macaroniSyntax || 'CustomBuff:|<^AC+4>|$',
-        coordinateSyntax: parsed.coordinateSyntax || 'CustomBuff:|<^{7:1}+4>|$',
-        allCapsSyntax: parsed.allCapsSyntax || 'CustomBuff:|<^UNTYPEDBONUSTOAC+4>|$',
-        explanation: parsed.explanation || 'Applies modifiers directly to the 19x19 Buff Box.',
-        quirkyQuote: parsed.quirkyQuote || 'Aged Golarion cheddar: +4 to survival!',
-      };
-    }
-  }
-
-  const lower = prompt.toLowerCase();
-  if (lower.includes('mage armor') || (lower.includes('armor') && lower.includes('+4'))) {
-    return {
-      name: 'MageArmor',
-      category: 'activatable',
-      bonusType: 'Enhancement',
-      values: { ac: 4 },
-      macaroniSyntax: 'MageArmor:|<^AC.Enhancement+4>|$',
-      coordinateSyntax: 'MageArmor:|<^{7:2}+4>|$',
-      allCapsSyntax: 'MageArmor:|<^ENHANCEMENTBONUSTOAC+4>|$',
-      explanation: 'Targets Column 7 (AC), Row 2 (Enhancement) with +4. Terminated with $ so re-running will not double-stack.',
-      quirkyQuote: 'Invisible force-cheese! Incorporeal touch attacks hate this one weird trick.',
-    };
-  }
-
-  if (lower.includes('+10') && lower.includes('ac')) {
-    return {
-      name: 'SustainedWard',
-      category: 'activatable',
-      bonusType: 'Untyped',
-      values: { ac: 10 },
-      macaroniSyntax: 'SustainedWard:|<^AC+10>|$',
-      coordinateSyntax: 'SustainedWard:|<^{7:1}+10>|$',
-      allCapsSyntax: 'SustainedWard:|<^UNTYPEDBONUSTOAC+10>|$',
-      explanation: 'Creates a sustained +10 Untyped bonus to AC at Matrix {7:1} (Column 7: AC, Row 1: Untyped) and locks with $.',
-      quirkyQuote: '+10 Untyped AC?! The GM just flipped the bestiary to the CR 20 pages.',
-    };
-  }
-
-  if (lower.includes('bard') || lower.includes('inspire') || lower.includes('inspiration')) {
-    return {
-      name: 'BardicInspiration',
-      category: 'activatable',
-      bonusType: 'Competence',
-      values: { mattack: 2, rattack: 2, will: 2 },
-      macaroniSyntax: 'BardicInspiration: <^MATTACK.Competence+2, RATTACK.Competence+2, WILL.Morale+2>',
-      coordinateSyntax: 'BardicInspiration: <^{2:4}+2, {3:4}+2, {6:11}+2>',
-      allCapsSyntax: 'BardicInspiration: <^COMPETENCEBONUSTOMATTACK+2, COMPETENCEBONUSTORATTACK+2>',
-      explanation: 'Applies +2 Competence to Melee Attack {2:4} and Ranged Attack {3:4}, plus +2 Morale to Will {6:11}.',
-      quirkyQuote: 'Lute solo intensifies! Everyone gets +2 extra sharp competence.',
-    };
-  }
-
-  if (lower.includes('rage') || lower.includes('barbarian')) {
-    return {
-      name: 'BarbarianRage',
-      category: 'activatable',
-      bonusType: 'Morale',
-      values: { str: 4, con: 4, will: 2, ac: -2 },
-      macaroniSyntax: 'BarbarianRage: <^STR.Morale+4, CON.Morale+4, WILL.Morale+2, AC-2>',
-      coordinateSyntax: 'BarbarianRage: <^{8:11}+4, {10:11}+4, {6:11}+2, {7:1}-2>',
-      allCapsSyntax: 'BarbarianRage: <^MORALEBONUSTOSTR+4, MORALEBONUSTOCON+4, MORALEBONUSTOWILL+2>',
-      explanation: 'Grants +4 Morale to STR {8:11} and CON {10:11}, +2 Morale to Will {6:11}, and -2 penalty to AC {7:1}.',
-      quirkyQuote: 'Too angry to do algebra! Smash first, count morale bonuses later.',
-    };
-  }
-
-  if (lower.includes('dodge')) {
-    return {
-      name: 'DodgeFeat',
-      category: 'permanent',
-      bonusType: 'Dodge',
-      values: { ac: 2 },
-      macaroniSyntax: 'DodgeFeat:|<^AC.Dodge+2>|$',
-      coordinateSyntax: 'DodgeFeat:|<^{7:6}+2>|$',
-      allCapsSyntax: 'DodgeFeat:|<^DODGEBONUSTOAC+2>|$',
-      explanation: 'Permanent +2 Dodge bonus to AC at Matrix {7:6} (Column 7: AC, Row 6: Dodge), locked with $.',
-      quirkyQuote: 'Dodge bonuses stack with everything—the purest form of Pathfinder cheese!',
-    };
-  }
-
-  if (lower.includes('grapple')) {
-    return {
-      name: 'Grappled',
-      category: 'debuff',
-      bonusType: 'Untyped',
-      values: { dex: -4, mattack: -2, rattack: -2 },
-      macaroniSyntax: 'Grappled: <^DEX-4, MATTACK-2, RATTACK-2>',
-      coordinateSyntax: 'Grappled: <^{9:1}-4, {2:1}-2, {3:1}-2>',
-      allCapsSyntax: 'Grappled: <^UNTYPEDPENALTYTODEX-4, UNTYPEDPENALTYTOMATTACK-2>',
-      explanation: 'Applies -4 penalty to Dexterity {9:1} and -2 penalty to Melee {2:1} & Ranged {3:1} attacks.',
-      quirkyQuote: 'Someone brought a tentacle monster to a sword fight. Check your CMD!',
-    };
-  }
-
-  if (lower.includes('sicken')) {
-    return {
-      name: 'Sickened',
-      category: 'debuff',
-      bonusType: 'Untyped',
-      values: { mattack: -2, rattack: -2, fort: -2, ref: -2, will: -2 },
-      macaroniSyntax: 'Sickened: <^MATTACK-2, RATTACK-2, FORT-2, REF-2, WILL-2>',
-      coordinateSyntax: 'Sickened: <^{2:1}-2, {3:1}-2, {4:1}-2, {5:1}-2, {6:1}-2>',
-      allCapsSyntax: 'Sickened: <^UNTYPEDPENALTYTOMATTACK-2, UNTYPEDPENALTYTOFORT-2>',
-      explanation: 'Applies -2 untyped penalty across Attacks and all three Saving Throws.',
-      quirkyQuote: 'Never eat the goblin-aged Limburger found in a chest.',
-    };
-  }
-
-  if (lower.includes('shaken') || lower.includes('fear')) {
-    return {
-      name: 'Shaken',
-      category: 'debuff',
-      bonusType: 'Untyped',
-      values: { mattack: -2, rattack: -2, fort: -2, ref: -2, will: -2 },
-      macaroniSyntax: 'Shaken: <^MATTACK-2, RATTACK-2, FORT-2, REF-2, WILL-2>',
-      coordinateSyntax: 'Shaken: <^{2:1}-2, {3:1}-2, {4:1}-2, {5:1}-2, {6:1}-2>',
-      allCapsSyntax: 'Shaken: <^UNTYPEDPENALTYTOMATTACK-2, UNTYPEDPENALTYTOWILL-2>',
-      explanation: 'Applies -2 untyped penalty on attack rolls and saving throws while Shaken.',
-      quirkyQuote: 'Knees weak, greatsword heavy, -2 on saves already (mom’s macaroni).',
-    };
+  const parsed = safeParseJson<any>(serverText);
+  if (!parsed || typeof parsed.name !== 'string' || !parsed.name.trim()) {
+    throw new Error('Gemini returned an invalid buff JSON response (missing "name" field).');
   }
 
   return {
-    name: 'ArcaneBolster',
-    category: 'activatable',
-    bonusType: 'Enhancement',
-    values: { ac: 4, mattack: 2 },
-    macaroniSyntax: 'ArcaneBolster:|<^AC.Enhancement+4, MATTACK.Enhancement+2>|$',
-    coordinateSyntax: 'ArcaneBolster:|<^{7:2}+4, {2:2}+2>|$',
-    allCapsSyntax: 'ArcaneBolster:|<^ENHANCEMENTBONUSTOAC+4>|$',
-    explanation: `Custom buff forged for ${character.name}: +4 Enhancement to AC {7:2} and +2 to Melee Attack {2:2}.`,
-    quirkyQuote: 'Freshly grated arcane Parmesan sprinkled directly onto your combat stats!',
+    name: parsed.name || 'CustomBuff',
+    category: parsed.category || 'activatable',
+    bonusType: parsed.bonusType || 'Untyped',
+    values: parsed.values || { ac: 4 },
+    macaroniSyntax: parsed.macaroniSyntax || 'CustomBuff:|<^AC+4>|$',
+    coordinateSyntax: parsed.coordinateSyntax || 'CustomBuff:|<^{7:1}+4>|$',
+    allCapsSyntax: parsed.allCapsSyntax || 'CustomBuff:|<^UNTYPEDBONUSTOAC+4>|$',
+    explanation: parsed.explanation || 'Applies modifiers directly to the 19x19 Buff Box.',
+    quirkyQuote: parsed.quirkyQuote || 'Aged Golarion cheddar: +4 to survival!',
   };
 }
 
@@ -1443,43 +1193,19 @@ Guidelines:
     responseMimeType: 'application/json',
   });
 
-  if (serverText) {
-    const parsed = safeParseJson<any>(serverText);
-    if (parsed && parsed.content) {
-      return {
-        title: parsed.title || `Entry: ${prompt.substring(0, 30)}...`,
-        sessionDate: parsed.sessionDate || `Session log - ${new Date().toLocaleDateString()}`,
-        content: parsed.content,
-        recalledNotes: Array.isArray(parsed.recalledNotes)
-          ? parsed.recalledNotes
-          : ['Check perimeter at dawn', 'Restock rations'],
-        tags: Array.isArray(parsed.tags) ? parsed.tags : ['Session Log', 'Adventure'],
-      };
-    }
+  const parsed = safeParseJson<any>(serverText);
+  if (!parsed || typeof parsed.content !== 'string' || !parsed.content.trim()) {
+    throw new Error('Gemini returned an invalid journal JSON response (missing "content" field).');
   }
 
-  const isGruff = /gruff|terse|serious|short|veteran/i.test(voice);
-  const title = `The Blood of the Borderland`;
-  const dateStr = `Session ${(character.journal?.length || 0) + 1} - 4714 AR`;
-
-  const content = isGruff
-    ? `Rain soaked through the mail before nightfall. Mud and blood underfoot. We met them near the old crossroads. No speeches. No parley. Just steel meeting iron and the stench of brimstone.\n\n` +
-      `${character.name} held the line. Took a glancing cut across the pauldron, but my return strike ended the discussion. The party survived, though the horses are spooked and the rations are damp.\n\n` +
-      `We made camp behind the crumbled watchtower. Fire's low to keep our presence hidden. Tomorrow we push deeper.`
-    : `The winds carried the smell of ash long before we glimpsed the ruined ramparts. As ${character.name}, oath-bound to ${character.deity || 'the light'}, every step through this forsaken mire tests our resolve.\n\n` +
-      `We encountered resistance where the old stone bridge arches over the gorge. Steel clashed against claws; our companions fought with admirable ferocity. The foe retreated into the gloom, leaving behind cryptic marks etched upon the basalt.\n\n` +
-      `We have secured a temporary camp beneath the ruins. We tend our wounds, record what was witnessed, and prepare for the morrow.`;
-
   return {
-    title,
-    sessionDate: dateStr,
-    content,
-    recalledNotes: [
-      `Cryptic obsidian markings spotted near the bridge`,
-      `Replenish torches and holy water in next settlement`,
-      `Keep second watch vigilant against stealth infiltrators`,
-    ],
-    tags: ['Session Log', 'Combat', 'Travel'],
+    title: parsed.title || `Entry: ${prompt.substring(0, 30)}...`,
+    sessionDate: parsed.sessionDate || `Session log - ${new Date().toLocaleDateString()}`,
+    content: parsed.content,
+    recalledNotes: Array.isArray(parsed.recalledNotes)
+      ? parsed.recalledNotes
+      : ['Check perimeter at dawn', 'Restock rations'],
+    tags: Array.isArray(parsed.tags) ? parsed.tags : ['Session Log', 'Adventure'],
   };
 }
 
@@ -2456,88 +2182,15 @@ Rules based on Macaroni directive (${hasHash ? '#' : ''}AI${terminator}):
     }
   }
 
-  if (generatedLines.length > 0) {
-    const combinedReply = generatedLines.join('\n');
-    const updatedText = `${fullScratchpadText.trimEnd()}\n${combinedReply}`;
-    return {
-      updatedText,
-      generatedReply: combinedReply,
-      matchedPrompt: promptText,
-      directiveType,
-      usedJournalContext: mentionsJournal,
-    };
+  if (generatedLines.length === 0) {
+    throw new Error('Gemini returned no scratchpad output.');
   }
 
-  // Intelligent Local PF1e Conversational & Build Engine
-  let reply = '';
-
-  if (
-    lowerPrompt.includes('what should i make') ||
-    lowerPrompt.includes('what to play') ||
-    lowerPrompt.includes('build idea')
-  ) {
-    reply = "What's the setting of the adventure?";
-  } else if (mentionsJournal) {
-    if (!journalAllowed) {
-      reply =
-        '[AI Blind Spot Notice]: Session Journal is currently in my Blind Spots (Module Permissions). Enable Journal access there if you want me to read your journal setting!';
-    } else {
-      const firstEntry = journalEntries[0];
-      const locName = firstEntry?.location || firstEntry?.title || 'Patrivia Marsh';
-      const noteHint =
-        firstEntry?.recalledNotes?.[0] || 'the local enforcers and treacherous terrain';
-      reply = `I've read your journal entry for ${locName} (${noteHint}).\nTabaxi/Catfolk Rogue? Ailen the Catfolk Thief on the run from the rougarou enforcers—high Stealth, Climb, and Scout archetype for marsh ambushes!`;
-    }
-  } else if (
-    directiveType === 'idea_repeatable' ||
-    directiveType === 'unclosed_repeat' ||
-    lowerPrompt.includes('suggestion') ||
-    lowerPrompt.includes('more human') ||
-    lowerPrompt.includes('couple')
-  ) {
-    const usedText = fullScratchpadText.toLowerCase();
-    const available = REPEATABLE_BUILD_SUGGESTIONS.filter(
-      (s) => !usedText.includes(s.slice(0, 22).toLowerCase())
-    );
-    const pool = available.length > 0 ? available : REPEATABLE_BUILD_SUGGESTIONS;
-
-    if (directiveType === 'unclosed_repeat') {
-      const batch = pool.slice(0, 2);
-      reply = `${batch.join('\n')}\n[Note: Unclosed >>AI repeated 2x (scope-limited to prevent loop crashes; add $ to lock single runs)]`;
-    } else {
-      const nextPick = pool[existingFollowupLines.length % pool.length];
-      reply = nextPick;
-    }
-  } else if (
-    lowerPrompt.includes('fencer') ||
-    lowerPrompt.includes('arcane duelist') ||
-    lowerPrompt.includes('arch') ||
-    lowerPrompt.includes('how is') ||
-    lowerPrompt.includes("how's")
-  ) {
-    if (lowerPrompt.includes('fencer') || lowerPrompt.includes('bard') || lowerPrompt.includes('duelist')) {
-      reply =
-        'Bard Fencer (Arcane Duelist Archetype): Trades Bardic Knowledge & Versatile Performance for a martial edge—grants Arcane Strike (Lvl 1), Combat Casting (Lvl 2), Disruptive (Lvl 6), Spellbreaker (Lvl 10), an Arcane Bond weapon, and Bladethirst (+enhancement/keen/vorpal to your blade) while keeping Inspire Courage!';
-    } else if (lowerPrompt.includes('totemist') || lowerPrompt.includes('warpriest') || lowerPrompt.includes('war priest')) {
-      reply =
-        'Warpriest (Sacred Fist / Totemist style): Uses Fervor to swift-cast divine buffs on yourself while scaling sacred weapon dice and channeling primal blessings in melee.';
-    } else {
-      reply =
-        'That archetype swaps out utility ribbons for focused combat action economy—use the Add Class -> Archetype Shaper to map its level swaps directly onto your progression grid!';
-    }
-  } else if (directiveType === 'flavor_backstory' || lowerPrompt.includes('backstory') || lowerPrompt.includes('memo')) {
-    const nameMatch = promptText.match(/(?:for|about)\s+([a-zA-Z\s]+)/i);
-    const charSubject = nameMatch ? nameMatch[1].trim() : character.name || 'Flyn Penius';
-    const locRef = journalEntries[0]?.location || 'the frontier marshes';
-    reply = `[Backstory Memo — ${charSubject}]: Disgraced conservatory duelist who fled to ${locRef} after besting a corrupt magistrate's nephew in an unsanctioned rapier duel. Armed with a silver-inlaid blade and sharp tavern wit, ${charSubject} turns every skirmish into a theatrical masterclass.`;
-  } else {
-    reply = `[AI Build Advisor]: Based on ${character.name || 'your character'} (Lvl ${character.level} ${character.characterClass}) and your SOT Catalogue, consider pairing high action-economy feats with a 1-level dip or archetype swap in the Add Class tool.`;
-  }
-
-  const updatedText = `${fullScratchpadText.trimEnd()}\n${reply}`;
+  const combinedReply = generatedLines.join('\n');
+  const updatedText = `${fullScratchpadText.trimEnd()}\n${combinedReply}`;
   return {
     updatedText,
-    generatedReply: reply,
+    generatedReply: combinedReply,
     matchedPrompt: promptText,
     directiveType,
     usedJournalContext: mentionsJournal,
@@ -3145,257 +2798,59 @@ Active SOT Weblinks: ${(sot.weblinks || []).filter((w) => w.isActive).map((w) =>
   }
 
   // -------------------------------------------------------------------------
-  // STEP 2: Try Server-Side Gemini Route (/api/gemini/complete-sheet)
+  // STEP 2: Server-Side Gemini Route (/api/gemini/complete-sheet)
   // -------------------------------------------------------------------------
-  try {
-    const res = await fetch('/api/gemini/complete-sheet', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        conversation: messageHistory,
-        characterSummary,
-        sotOverridePages: sot.overridePages || [],
-        sotWeblinks: sot.weblinks || [],
-        allowedFields: permissions,
-      }),
-    });
+  const res = await fetch('/api/gemini/complete-sheet', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      conversation: messageHistory,
+      characterSummary,
+      sotOverridePages: sot.overridePages || [],
+      sotWeblinks: sot.weblinks || [],
+      allowedFields: permissions,
+    }),
+  });
 
-    if (res.ok) {
-      const data = await res.json();
-      if (data && typeof data.rawText === 'string' && data.rawText.trim()) {
-        const parsed = safeParseJson<{
-          replyText?: string;
-          fieldUpdates?: string[];
-          missingSotRequest?: { title: string; category: string; reason?: string } | null;
-        }>(data.rawText);
-
-        if (parsed && parsed.replyText) {
-          replyText = parsed.replyText;
-          fieldUpdates = Array.isArray(parsed.fieldUpdates) ? parsed.fieldUpdates : [];
-          missingSotRequest = parsed.missingSotRequest || null;
-        } else {
-          // If model returned plain text instead of JSON, still use its replyText!
-          replyText = data.rawText.trim();
-        }
-      }
+  if (!res.ok) {
+    const errorBody = await res.text().catch(() => '');
+    let message = errorBody.trim();
+    try {
+      const parsedErr = JSON.parse(message) as { error?: string };
+      message = parsedErr.error || message;
+    } catch {
+      // Keep raw response when not JSON
     }
-  } catch (err) {
-    console.warn('Server Complete Sheet fetch failed, using SOT-grounded conversational engine:', err);
+    throw new Error(
+      `Gemini complete-sheet request failed (${res.status} ${res.statusText})${
+        message ? `: ${message}` : ''
+      }`
+    );
+  }
+
+  const data = await res.json();
+  if (!data || typeof data.rawText !== 'string' || !data.rawText.trim()) {
+    throw new Error('Gemini complete-sheet request succeeded but returned no text.');
+  }
+
+  const parsed = safeParseJson<{
+    replyText?: string;
+    fieldUpdates?: string[];
+    missingSotRequest?: { title: string; category: string; reason?: string } | null;
+  }>(data.rawText);
+
+  if (parsed && parsed.replyText) {
+    replyText = parsed.replyText;
+    fieldUpdates = Array.isArray(parsed.fieldUpdates) ? parsed.fieldUpdates : [];
+    missingSotRequest = parsed.missingSotRequest || null;
+  } else {
+    replyText = data.rawText.trim();
   }
 
   // Always include explicit updates extracted from the player's own message
   for (const du of directUserUpdates) {
     if (!fieldUpdates.includes(du)) {
       fieldUpdates.push(du);
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // STEP 3: Reactive SOT-Grounded Conversational Engine (when offline / 429)
-  // -------------------------------------------------------------------------
-  if (!replyText) {
-    const activePages = (sot.overridePages || []).filter((p) => p.isOverride);
-    const loadedSotTitles = activePages.map((p) => `"${p.title}"`).join(', ') || 'None';
-    const isAskingRandom =
-      isRandomRequested ||
-      /\b(random|roll\s+stat|roll\s+my|roll\s+20|roll\s+array|surprise\s+me|reroll)\b/i.test(cleanPrompt);
-
-    // Check if player is saying "yes" / "sure" / "lock it in" / "do it" to previous AI suggestion
-    const lastModelMsg = [...conversation].reverse().find((m) => m.role === 'model')?.text || '';
-    const isAffirmation =
-      /^(yes|yeah|yep|yup|sure|ok|okay|do it|lock it in|let's do it|lets do it|sounds good|go for it|apply|please|hell yeah|sweet|perfect)\b/i.test(
-        cleanPrompt
-      );
-
-    // Check if user just uploaded a document via Quick SOT Upload
-    const uploadedDocMatch = cleanPrompt.match(/uploaded\s+"([^"]+)"\s+to\s+my\s+SOT/i);
-
-    // Search active SOT Override Pages for a matching Class or Archetype SRD
-    const matchedSotClassDoc = activePages.find((p) => {
-      if (uploadedDocMatch && p.title.toLowerCase() === uploadedDocMatch[1].toLowerCase()) {
-        return true;
-      }
-      const docTitleClean = p.title
-        .replace(/^(?:full\s+class\s+srd|srd|campaign\s+house\s+rule)\s*[:—-]?\s*/i, '')
-        .split('(')[0]
-        .trim()
-        .toLowerCase();
-      if (docTitleClean.length >= 3 && lower.includes(docTitleClean)) {
-        return true;
-      }
-      return (p.tags || []).some((t) => t.length >= 4 && lower.includes(t.toLowerCase()));
-    });
-
-    // Check if user mentioned any canonical PF1e class
-    const mentionedCanonicalClass = CANONICAL_PF1E_CLASSES.find((cls) =>
-      new RegExp(`\\b${cls}\\b`, 'i').test(cleanPrompt)
-    );
-
-    // Check if user mentioned any feat/ability/spell in SOT or Verified Compendium
-    const matchedCompendiumEntries = VERIFIED_PF1E_COMPENDIUM.filter((entry) =>
-      entry.keywords.some((kw) => new RegExp(`\\b${kw}\\b`, 'i').test(cleanPrompt))
-    );
-
-    if (isAskingRandom) {
-      const arrays = [
-        { STR: 16, DEX: 14, CON: 14, INT: 12, WIS: 12, CHA: 8, tag: 'Martial Powerhouse' },
-        { STR: 12, DEX: 18, CON: 14, INT: 14, WIS: 10, CHA: 8, tag: 'Finesse / Agile Skirmisher' },
-        { STR: 14, DEX: 16, CON: 14, INT: 14, WIS: 12, CHA: 8, tag: 'Tactical Slayer / Stalker' },
-        { STR: 10, DEX: 14, CON: 14, INT: 18, WIS: 12, CHA: 10, tag: 'Arcane / Alchemical Scholar' },
-        { STR: 16, DEX: 12, CON: 14, INT: 10, WIS: 10, CHA: 16, tag: 'Divine Champion' },
-      ];
-      const picked = arrays[Math.floor(Math.random() * arrays.length)];
-      fieldUpdates.push(
-        `set stats STR ${picked.STR}, DEX ${picked.DEX}, CON ${picked.CON}, INT ${picked.INT}, WIS ${picked.WIS}, CHA ${picked.CHA}`
-      );
-      replyText = `Rolled a fresh 20-point buy array for you (**${picked.tag}**):\n• **STR ${picked.STR} | DEX ${picked.DEX} | CON ${picked.CON} | INT ${picked.INT} | WIS ${picked.WIS} | CHA ${picked.CHA}**\n\nI've plugged those base scores straight into your sheet! Want to shift any points around (like "set STR to 18") or lock in your class and weapons next?`;
-    } else if (matchedSotClassDoc) {
-      // Parse the matched SOT document for class chassis, skills, HD, and abilities!
-      const docText = matchedSotClassDoc.plainText || matchedSotClassDoc.htmlContent;
-      const srdDetails = parseSrdSkillsAndProficiencies(docText);
-      const inferredClass =
-        mentionedCanonicalClass ||
-        matchedSotClassDoc.title
-          .replace(/^(?:full\s+class\s+srd|srd|class)\s*[:—-]?\s*/i, '')
-          .split('(')[0]
-          .trim() ||
-        'Slayer';
-      const hd = srdDetails.detectedHitDie || 10;
-      const sp = srdDetails.detectedSkillRanksPerLevel || 6;
-      const targetLvl = character.level || 1;
-      const conMod = Math.floor(((character.abilities.CON.base || 10) - 10) / 2);
-      const calcHp = hd + conMod + (targetLvl - 1) * (Math.floor(hd / 2) + 1 + conMod);
-
-      fieldUpdates.push(`set class to ${inferredClass}`);
-      fieldUpdates.push(`set hit die to d${hd}`);
-      fieldUpdates.push(`set max hp to ${Math.max(hd, calcHp)}`);
-      fieldUpdates.push(`set skill points per level to ${sp}`);
-
-      if (srdDetails.cleanedSkillsList.length > 0) {
-        fieldUpdates.push('clear class skills');
-        fieldUpdates.push(`unlock class skills: ${srdDetails.cleanedSkillsList.join(', ')}`);
-      }
-
-      // Extract named (Ex)/(Su)/(Sp) abilities from the SOT doc
-      const extractedAbilities: string[] = [];
-      const abilHeaderRegex = /([A-Z][A-Za-z0-9\s'-]{2,28}\s*\((?:Ex|Su|Sp)\))\s*[:—-]\s*([^\n.]+)/g;
-      let am: RegExpExecArray | null;
-      while ((am = abilHeaderRegex.exec(docText)) !== null && extractedAbilities.length < 4) {
-        const abName = am[1].trim();
-        const abDesc = am[2].trim();
-        fieldUpdates.push(`add action ${abName}: ${abDesc}`);
-        extractedAbilities.push(abName);
-      }
-
-      // Check if Elephant in the Room SOT doc is also active
-      const hasEitr = activePages.some((p) => p.title.toLowerCase().includes('elephant'));
-      if (hasEitr && hd >= 8) {
-        fieldUpdates.push(
-          'add feat Power Attack & Deadly Aim (SOT Override): Free at BAB +1 via Elephant in the Room SOT Override'
-        );
-      }
-
-      replyText = `Awesome—pulling straight from your SOT document **"${matchedSotClassDoc.title}"**!\n\nHere's what I just wired onto your sheet:\n• **Class & Chassis**: **${inferredClass}** (d${hd} Hit Die, **${sp} + INT** skill ranks/level)\n• **Class Skills**: Cleared old checks and unlocked all **${srdDetails.cleanedSkillsList.length} ${inferredClass} class skills** (${srdDetails.cleanedSkillsList.slice(0, 6).join(', ')}${srdDetails.cleanedSkillsList.length > 6 ? '...' : ''})\n${
-        extractedAbilities.length > 0
-          ? `• **Class Abilities Added**: ${extractedAbilities.join(', ')}\n`
-          : ''
-      }${
-        hasEitr
-          ? `• **SOT House Rule Applied**: Added free *Power Attack & Deadly Aim* from your *Elephant in the Room* SOT doc!\n`
-          : ''
-      }\nWhat weapon style or stat array are you feeling for this ${inferredClass}? (e.g. "dual kukris with 18 DEX", "composite longbow sniper", or "greatsword with 18 STR")`;
-    } else if (isAffirmation && lastModelMsg) {
-      // User confirmed the previous suggestion!
-      if (lastModelMsg.toLowerCase().includes('slayer') || character.characterClass.toLowerCase().includes('slayer')) {
-        fieldUpdates.push('set class to Slayer');
-        fieldUpdates.push('set hit die to d10');
-        fieldUpdates.push('set stats STR 14, DEX 18, CON 14, INT 14, WIS 12, CHA 8');
-        fieldUpdates.push('equip weapon Kukri | 1d4 + dex_mod | 18-20/x2 | Melee | Slashing');
-        fieldUpdates.push('equip weapon Off-Hand Kukri | 1d4 + dex_mod | 18-20/x2 | Melee | Slashing');
-        fieldUpdates.push('equip armor Studded Leather | 3 | 5 | -1 | Light');
-        fieldUpdates.push('add feat Two-Weapon Fighting: Reduce two-weapon fighting penalties to -2/-2');
-        fieldUpdates.push('train Stealth, Perception, Acrobatics');
-        replyText = `Locked and loaded! I've outfitted your **Slayer** with an agile 20-point array (**DEX 18, STR 14, CON 14, INT 14, WIS 12**), dual **Kukris** (18–20 crit range), **Studded Leather**, **Two-Weapon Fighting**, and trained **Stealth, Perception, and Acrobatics**.\n\nWant to set a character name, race, or level up to 3rd level to grab *Sneak Attack +1d6*?`;
-      } else {
-        fieldUpdates.push('set stats STR 16, DEX 14, CON 14, INT 12, WIS 12, CHA 10');
-        replyText = `Locked in! I've applied a balanced heroic ability array (**STR 16, DEX 14, CON 14, INT 12, WIS 12, CHA 10**) to your sheet. Tell me what weapons, feats, or skills you want to add next!`;
-      }
-    } else if (matchedCompendiumEntries.length > 0) {
-      const addedNames: string[] = [];
-      const hasEitr = activePages.some((p) => p.title.toLowerCase().includes('elephant'));
-
-      for (const entry of matchedCompendiumEntries) {
-        addedNames.push(entry.title);
-        if (entry.category === 'Feat') {
-          const eitrNote =
-            hasEitr && ['power attack', 'deadly aim', 'combat expertise', 'weapon finesse', 'dodge'].includes(entry.title.toLowerCase())
-              ? ' [SOT Override: Elephant in the Room]'
-              : '';
-          fieldUpdates.push(`add feat ${entry.title}${eitrNote}: ${entry.summary}`);
-        } else if (entry.category === 'Spell') {
-          fieldUpdates.push(`add spell ${entry.title} level 1: ${entry.summary}`);
-        } else {
-          fieldUpdates.push(`add action ${entry.title}: ${entry.summary}`);
-          if (entry.hasResourcePool && entry.resourceMax) {
-            fieldUpdates.push(`add resource ${entry.title} max ${entry.resourceMax}`);
-          }
-        }
-      }
-
-      replyText = `Got it! Added **${addedNames.join(', ')}** straight onto your sheet${
-        hasEitr ? ' (cross-checked with your *Elephant in the Room* SOT Override rules)' : ''
-      }.\n\n${matchedCompendiumEntries.map((e) => `• **${e.title}**: ${e.summary}`).join('\n')}\n\nWhat else should we add to your build?`;
-    } else if (
-      mentionedCanonicalClass &&
-      !activePages.some((p) => p.title.toLowerCase().includes(mentionedCanonicalClass.toLowerCase()))
-    ) {
-      // Player asked for a specific PF1e class (e.g. Fighter, Wizard, Rogue, Paladin, Magus) that isn't in their SOT Override Pages yet!
-      fieldUpdates.push(`set class to ${mentionedCanonicalClass}`);
-      missingSotRequest = {
-        title: `Full Class SRD: ${mentionedCanonicalClass}`,
-        category: 'Full Class SRD',
-        reason: `${mentionedCanonicalClass} SRD table & class skills are not in your loaded SOT docs yet.`,
-      };
-      replyText = `A **${directUserUpdates.find((u) => u.startsWith('set race'))?.replace('set race to ', '') || character.race || 'Human'} ${mentionedCanonicalClass}** sounds badass! I went ahead and updated your Class to **${mentionedCanonicalClass}**${
-        directUserUpdates.length > 0 ? ' along with your other details' : ''
-      } on the sheet.\n\nRight now your SOT Catalogue only has ${loadedSotTitles} loaded. Since I strictly never make up or guess class tables outside your Source of Truth, paste the **${mentionedCanonicalClass}** SRD text into the Quick Upload drawer below and I'll automatically extract its Hit Die, class skills, saves, and level abilities—or tell me your stats and gear directly in plain English!`;
-    } else if (/\b([a-z]+)\s+archetype\b/i.test(cleanPrompt) || lower.includes('stygian')) {
-      const archMatch = cleanPrompt.match(/([A-Za-z'-]+(?:\s+[A-Za-z'-]+)?)\s+archetype/i);
-      const archName = lower.includes('stygian')
-        ? 'Stygian Slayer'
-        : archMatch
-        ? `${archMatch[1].trim()} Archetype`
-        : 'Requested Archetype';
-      missingSotRequest = {
-        title: archName,
-        category: 'Archetype',
-        reason: 'Not found in loaded SOT SRD documents.',
-      };
-      replyText = `**${archName}** is a killer option! However, I don't see **${archName}** in your loaded SOT documents (${loadedSotTitles}) yet. To make sure we never guess numbers or invent rules, paste the archetype text into the Quick Upload drawer below and I'll map its ability swaps straight onto your sheet!`;
-    } else if (directUserUpdates.length > 0) {
-      // The user gave plain English updates (name, race, level, stats, weapons, armor, skills, etc.)!
-      replyText = `Done! I've updated your sheet live based on what you just told me:\n${directUserUpdates
-        .map((u) => `• \`${u}\``)
-        .join('\n')}\n\nYour sheet is now showing **${character.name || 'your character'}** (${character.race} ${character.characterClass} Lvl ${character.level}). Want to dial in ability scores, equip weapons/armor, or pull class features from your SOT Catalogue?`;
-    } else if (
-      /\b(stealth|sneak|assassin|dual|two-weapon|twf|archer|bow|sniper|ranged|tracker|scout|marsh|melee|frontline|tank|dps)\b/i.test(
-        cleanPrompt
-      )
-    ) {
-      // User described a combat style / concept vibe!
-      const isRanged = /\b(archer|bow|sniper|ranged)\b/i.test(cleanPrompt);
-      const isTwoHanded = /\b(greatsword|two-handed|2h|heavy|tank|bruiser)\b/i.test(cleanPrompt);
-
-      if (isRanged) {
-        replyText = `A stealthy ranged sniper fits your loaded **Slayer SRD** + **Elephant in the Room** SOT docs like a glove! With Slayer, you get d10 HD, full BAB, **Studied Target** (+1 attack/damage that scales), and **6 + INT** skill ranks for Stealth, Perception, and Survival—plus free *Deadly Aim* at BAB +1 from your SOT house rules!\n\nSay **"yes"** (or **"build Slayer from SOT"**) and I'll set up your Slayer chassis, unlock all 17 Slayer class skills, and equip a Composite Longbow!`;
-      } else if (isTwoHanded) {
-        replyText = `For a heavy-hitting frontline stalker, your loaded **Slayer SRD** + **Elephant in the Room** SOT docs are brutal: full d10 Hit Die, full BAB, **Studied Target**, Medium Armor proficiency, and automatic **Power Attack** at BAB +1 without spending a feat!\n\nTell me **"lock in Slayer"** or **"equip greatsword and breastplate with 18 STR"** and I'll populate the whole setup live!`;
-      } else {
-        replyText = `An agile skirmisher/flanker is right in the wheelhouse of your loaded **Slayer SRD** and **Elephant in the Room** SOT docs! You get **Weapon Finesse** for free on light weapons, **Studied Target** at 1st level, and **Sneak Attack** at 3rd level.\n\nSay **"yes"** to lock in the agile dual-kukri Slayer build, or tell me any race, name, stats, or class you want!`;
-      }
-    } else {
-      // General conversational reply that directly acknowledges their message and current SOT state
-      replyText = `Got you! Looking at your message (*"${cleanPrompt.slice(0, 80)}"*) and your active SOT Catalogue (${loadedSotTitles}):\n\n• If you want to build using your loaded **Slayer SRD** & **Elephant in the Room** rules, say **"build a Slayer"** or tell me your combat style (e.g. *dual kukris*, *longbow sniper*, or *greatsword*).\n• You can also tell me plain-English updates anytime—like **"name me Kaelen, Tiefling, level 3, STR 14 DEX 18 CON 14"**, **"train Stealth and Perception"**, or **"add feat Toughness"**.\n• Or if you want a different class/archetype, just name it and we'll pop open the Quick SOT Upload drawer!`;
     }
   }
 

@@ -15,8 +15,9 @@ import {
 } from 'lucide-react';
 import { PF1Character, XdxMacroEntry } from '../../types/character';
 import { DerivedCombatStats, evaluateConditions } from '../../engine/pf1eMath';
-import { executeMacaroni, applyMacaroniToCharacter } from '../../engine/macaroni';
+import { executeMacaroni } from '../../engine/macaroni';
 import { buildFormulaContext } from '../../engine/formula';
+import { projectMacaroniResult } from '../../engine/characterIntegration';
 import { useCharacter } from '../../context/CharacterContext';
 
 interface XDXToolProps {
@@ -426,7 +427,8 @@ export const XDXTool: React.FC<XDXToolProps> = ({
     if (!raw.trim()) return;
 
     const cond = evaluateConditions(character.conditions);
-    const context = buildFormulaContext(character, cond);
+    // Resolve #AC/#FORT/#MATTACK/#CMB against the buff-adjusted derived view.
+    const context = buildFormulaContext(character, cond, derived);
 
     const macaroniResult = executeMacaroni(raw, {
       character,
@@ -467,9 +469,9 @@ export const XDXTool: React.FC<XDXToolProps> = ({
       (macaroniResult.stateMutations && macaroniResult.stateMutations.length > 0)
     ) {
       onUpdateCharacter((prev) => {
-        const applied = applyMacaroniToCharacter(prev, macaroniResult);
+        const applied = projectMacaroniResult(prev, macaroniResult);
         pushesOut.push(applied.statusMessage);
-        return applied.updatedCharacter;
+        return applied.character;
       });
     } else if (macaroniResult.appliedPushes && macaroniResult.appliedPushes.length > 0) {
       macaroniResult.appliedPushes.forEach((p) => {

@@ -109,9 +109,13 @@ export const NotesModule: React.FC<NotesModuleProps> = ({
       setAiStatusNote('Scratchpad AI is disabled in AI Listener -> Module Permissions.');
       return;
     }
-    const res = await executeScratchpadAIMacro(rollupNotes.content || '', character);
-    handleContentChange(res.updatedText);
-    setAiStatusNote(res.generatedReply || 'Executed scratchpad AI macro.');
+    try {
+      const res = await executeScratchpadAIMacro(rollupNotes.content || '', character);
+      handleContentChange(res.updatedText);
+      setAiStatusNote(res.generatedReply || 'Executed scratchpad AI macro.');
+    } catch (err) {
+      setAiStatusNote(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const handleInsertBuildPrompt = () => {

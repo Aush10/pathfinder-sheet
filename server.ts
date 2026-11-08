@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
@@ -6,6 +7,36 @@ import { GoogleGenAI } from '@google/genai';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const GEMINI_MODELS_TO_TRY = [
+  process.env.GEMINI_MODEL,
+  'gemini-2.5-flash',
+  'gemini-3.8-flash',
+  'gemini-3.1-flash-lite',
+  'gemini-flash-latest',
+].filter((m): m is string => Boolean(m && m.trim()));
+
+async function generateContentWithFallback(
+  ai: GoogleGenAI,
+  params: { contents: string; config?: Record<string, any> }
+) {
+  let lastError: any = null;
+  for (const modelName of GEMINI_MODELS_TO_TRY) {
+    try {
+      const response = await ai.models.generateContent({
+        model: modelName,
+        contents: params.contents,
+        config: params.config,
+      });
+      if (typeof response.text === 'string' && response.text.trim()) {
+        return response;
+      }
+    } catch (err: any) {
+      lastError = err;
+    }
+  }
+  throw lastError || new Error('All configured Gemini models failed to return text.');
+}
 
 function getAIClient(): GoogleGenAI | null {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -56,8 +87,7 @@ async function startServer() {
         config.responseMimeType = responseMimeType;
       }
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
+      const response = await generateContentWithFallback(ai, {
         contents: fullContents,
         config,
       });
@@ -184,8 +214,7 @@ ${weblinksContext}`;
         tools.push({ urlContext: {} });
       }
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
+      const response = await generateContentWithFallback(ai, {
         contents: userPrompt,
         config: {
           systemInstruction,
@@ -343,32 +372,14 @@ ${weblinksContext}
 === CONVERSATION HISTORY & LATEST PLAYER MESSAGE ===
 ${historyFormatted || 'PLAYER: Hey, I want to build a new character! What should we make?'}`;
 
-      const modelsToTry = ['gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
-      let rawText = '';
-      let lastError: any = null;
-
-      for (const modelName of modelsToTry) {
-        try {
-          const response = await ai.models.generateContent({
-            model: modelName,
-            contents: userPrompt,
-            config: {
-              systemInstruction,
-              responseMimeType: 'application/json',
-            },
-          });
-          if (response.text) {
-            rawText = response.text;
-            break;
-          }
-        } catch (modelErr: any) {
-          lastError = modelErr;
-        }
-      }
-
-      if (!rawText && lastError) {
-        throw lastError;
-      }
+      const response = await generateContentWithFallback(ai, {
+        contents: userPrompt,
+        config: {
+          systemInstruction,
+          responseMimeType: 'application/json',
+        },
+      });
+      const rawText = response.text ?? '';
 
       return res.json({
         rawText,

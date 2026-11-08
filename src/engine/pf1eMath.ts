@@ -3,6 +3,11 @@
  */
 
 import { ConditionState, PF1Character, AbilityName } from '../types/character';
+import {
+  computeStackedBuffTotals,
+  resolveBuffProjection,
+  type BuffProjection,
+} from './buffProjection';
 
 // Standard PF1e Point Buy Cost Table (Score 6 to 18)
 // 6=-5, 7=-4, 8=-2, 9=-1, 10=0, 11=1, 12=2, 13=3, 14=5, 15=7, 16=10, 17=13, 18=17
@@ -228,8 +233,10 @@ export interface DerivedCombatStats {
 
   iterativeAttacks: number[];
 
-  // Buff Box Totals
+  // Buff Box Totals (stacking-resolved)
   buffTotals: Record<import('../types/character').BuffStatTarget, number>;
+  /** Full audit trail of which buff applied and which was suppressed. */
+  buffProjection: BuffProjection;
 
   // HP Breakdown
   hpBreakdownDetails: {
@@ -279,7 +286,12 @@ export interface DerivedCombatStats {
   pointBuySpent: number;
 }
 
-export function computeBuffBoxTotals(
+/**
+ * Legacy naive summation, kept for diagnostics that need the raw total before
+ * stacking rules are applied. Production code should call
+ * `computeBuffBoxTotals` (stacking-aware) instead.
+ */
+export function computeNaiveBuffTotals(
   buffBox?: import('../types/character').BuffBoxData,
   customBuffs?: import('../types/character').CustomBuffEffect[]
 ): Record<import('../types/character').BuffStatTarget, number> {
@@ -353,9 +365,24 @@ export function computeBuffBoxTotals(
   return totals;
 }
 
+/**
+ * Stacking-aware Buff Box totals.
+ *
+ * Pathfinder 1e does not stack two bonuses of the same type; the highest one
+ * applies. Use this entry point anywhere a buff number reaches the sheet so
+ * every surface agrees on the resolved value.
+ */
+export function computeBuffBoxTotals(
+  buffBox?: import('../types/character').BuffBoxData,
+  customBuffs?: import('../types/character').CustomBuffEffect[]
+): Record<import('../types/character').BuffStatTarget, number> {
+  return computeStackedBuffTotals(buffBox, customBuffs);
+}
+
 export function computeDerivedCharacterStats(character: PF1Character): DerivedCombatStats {
   const cond = evaluateConditions(character.conditions);
-  const buffTotals = computeBuffBoxTotals(character.buffBox, character.customBuffs);
+  const buffProjection = resolveBuffProjection(character.buffBox, character.customBuffs);
+  const buffTotals = buffProjection.totals;
 
   // Ability totals: Base (6-18) + RaceMod + LevelAsiMod + BuffBox + EnhMod + MiscMod + TempMod - ConditionPenalty
   const getScore = (name: AbilityName, penalty: number = 0) => {
@@ -704,6 +731,7 @@ export function computeDerivedCharacterStats(character: PF1Character): DerivedCo
     cmdFlatFooted,
     iterativeAttacks: iteratives,
     buffTotals,
+    buffProjection,
     hpBreakdownDetails: {
       calcMethod,
       dieSize,

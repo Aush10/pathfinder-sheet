@@ -139,9 +139,13 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
       return;
     }
     const currentText = bioData.scratchpad || '';
-    const res = await executeScratchpadAIMacro(currentText, character);
-    updateBio({ scratchpad: res.updatedText });
-    setScratchpadFeedback(res.generatedReply || 'Executed scratchpad AI macro.');
+    try {
+      const res = await executeScratchpadAIMacro(currentText, character);
+      updateBio({ scratchpad: res.updatedText });
+      setScratchpadFeedback(res.generatedReply || 'Executed scratchpad AI macro.');
+    } catch (err) {
+      setScratchpadFeedback(err instanceof Error ? err.message : String(err));
+    }
   };
 
   // Portrait navigation

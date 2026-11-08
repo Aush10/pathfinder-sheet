@@ -642,6 +642,11 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
         authority: result.sourceAuthority,
         message: `Populated "${result.title}" (${result.sourceNotes})`,
       });
+    } catch (err) {
+      setActionLookupFeedback({
+        type: 'warning',
+        message: err instanceof Error ? err.message : String(err),
+      });
     } finally {
       setIsSeekingActionAI(false);
     }
@@ -851,6 +856,11 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
         type: 'success',
         authority: result.sourceAuthority,
         message: `Populated "${result.title}" (${result.sourceNotes})`,
+      });
+    } catch (err) {
+      setFeatLookupFeedback({
+        type: 'warning',
+        message: err instanceof Error ? err.message : String(err),
       });
     } finally {
       setIsSeekingFeatAI(false);

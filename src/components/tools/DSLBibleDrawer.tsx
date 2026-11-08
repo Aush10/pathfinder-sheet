@@ -15,7 +15,8 @@ import {
 } from 'lucide-react';
 import { PF1Character } from '../../types/character';
 import { evaluateFormula, buildFormulaContext } from '../../engine/formula';
-import { evaluateConditions } from '../../engine/pf1eMath';
+import { computeDerivedCharacterStats, evaluateConditions } from '../../engine/pf1eMath';
+import { useOptionalCharacter } from '../../context/CharacterContext';
 
 export interface DSLBibleDrawerProps {
   character: PF1Character;
@@ -26,12 +27,16 @@ export const DSLBibleDrawer: React.FC<DSLBibleDrawerProps> = ({
   character,
   onRollFormula,
 }) => {
+  const characterContext = useOptionalCharacter();
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [testInput, setTestInput] = useState<string>('1d20 + bab + str_mod');
   const [copiedSnippet, setCopiedSnippet] = useState<string | null>(null);
 
   const cond = evaluateConditions(character.conditions);
-  const context = buildFormulaContext(character, cond);
+  // Use the context's derived view when available; otherwise resolve it here so
+  // #AC/#FORT/#MATTACK always reflect the active Buff Box.
+  const derived = characterContext?.derived ?? computeDerivedCharacterStats(character);
+  const context = buildFormulaContext(character, cond, derived);
   const evaluationResult = evaluateFormula(testInput, context);
 
   const copyToClipboard = (text: string) => {
