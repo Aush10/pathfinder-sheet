@@ -2,6 +2,7 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig} from 'vite';
+import { lockFileMiddleware } from './server/lockFiles.ts';
 
 export default defineConfig(() => {
   return {
@@ -11,12 +12,8 @@ export default defineConfig(() => {
       {
         name: 'serve-lock-files',
         configureServer(server) {
-          server.middlewares.use((req, res, next) => {
-            if (req.url && req.url.split('?')[0].endsWith('.lock')) {
-              res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-            }
-            next();
-          });
+          // Pin .lock as text/plain before sirv assigns application/octet-stream.
+          server.middlewares.use(lockFileMiddleware);
         },
       },
     ],
