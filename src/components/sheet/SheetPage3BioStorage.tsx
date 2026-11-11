@@ -14,10 +14,6 @@ import {
   Layers,
   Sparkles,
   Info,
-  Clock,
-  Building,
-  Hammer,
-  Crown,
   Scale,
   Edit2,
   ExternalLink,
@@ -78,9 +74,6 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
   const [isImageUrlOpen, setIsImageUrlOpen] = useState(false);
   const [newImageUrl, setNewImageUrl] = useState('');
   const [isPortraitBrowserOpen, setIsPortraitBrowserOpen] = useState(false);
-
-  // Future systems showcase toggle
-  const [showFutureRoadmap, setShowFutureRoadmap] = useState(true);
 
   // Theme styling helpers
   const isParchment = theme === 'parchment';
@@ -280,10 +273,6 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
                 <span>Run</span>
               </button>
             </div>
-          </div>
-          <div className="text-[9px] font-mono opacity-65 mb-1.5 flex items-center justify-between">
-            <span>Syntax: prompt&gt;&gt;#AI$ | &gt;&gt;AI$ | &gt;&gt;#ai!</span>
-            <span>Auto-saved</span>
           </div>
           <textarea
             value={bioData.scratchpad || ''}
@@ -614,7 +603,7 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
                 className="px-2 py-0.5 rounded bg-cyan-600/30 hover:bg-cyan-600 text-cyan-300 hover:text-white font-bold text-[10px] flex items-center gap-1 transition-colors"
               >
                 <Plus className="w-2.5 h-2.5" />
-                <span>+ Add</span>
+                <span>Add</span>
               </button>
             </div>
 
@@ -656,59 +645,12 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
 
               {companions.length === 0 && (
                 <div className="text-center py-6 text-xs opacity-50 font-mono">
-                  No companions or NPCs listed yet. Click &quot;+ Add&quot; to link your mount, familiar, or patron.
+                  No companions or NPCs listed yet. Click &quot;Add&quot; to link your mount, familiar, or patron.
                 </div>
               )}
             </div>
           </div>
 
-          {/* Future Systems Roadmap (Ultimate Campaign) */}
-          <div className={`rounded-xl border p-3 ${cardBg} space-y-2.5`}>
-            <div className="flex items-center justify-between pb-1.5 border-b border-black/10 dark:border-white/10">
-              <span className="font-serif font-bold text-xs uppercase tracking-wider text-amber-400">
-                Future Systems
-              </span>
-              <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                Reserved
-              </span>
-            </div>
-
-            <p className="text-[10px] opacity-70 font-sans leading-tight">
-              Reserved space for upcoming Ultimate Campaign modules.
-            </p>
-
-            <div className="space-y-2">
-              <div className="p-2 rounded-lg bg-black/10 dark:bg-white/5 border border-dashed border-black/20 dark:border-white/20 space-y-1">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-300">
-                  <Clock className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Downtime Activities</span>
-                </div>
-                <p className="text-[9px] opacity-60">
-                  Ultimate Campaign retraining, earning capital &amp; downtime days.
-                </p>
-              </div>
-
-              <div className="p-2 rounded-lg bg-black/10 dark:bg-white/5 border border-dashed border-black/20 dark:border-white/20 space-y-1">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-300">
-                  <Building className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>Business &amp; Properties</span>
-                </div>
-                <p className="text-[9px] opacity-60">
-                  Rooms, teams, tavern/guildhall assets, and daily capital generation.
-                </p>
-              </div>
-
-              <div className="p-2 rounded-lg bg-black/10 dark:bg-white/5 border border-dashed border-black/20 dark:border-white/20 space-y-1">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-300">
-                  <Crown className="w-3.5 h-3.5 text-purple-400" />
-                  <span>Kingdom &amp; Crafting</span>
-                </div>
-                <p className="text-[9px] opacity-60">
-                  Kingdom Building (KB) hexes, unrest, settlement stats &amp; item craft bench.
-                </p>
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* ========================================================================= */}

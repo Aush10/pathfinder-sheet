@@ -9,6 +9,7 @@ interface FieldCallTooltipProps {
   position?: 'top' | 'bottom' | 'left' | 'right';
   description?: string;
   as?: 'div' | 'span' | 'td';
+  delayMs?: number;
 }
 
 /**
@@ -54,6 +55,7 @@ export const FieldCallTooltip: React.FC<FieldCallTooltipProps> = ({
   position = 'top',
   description,
   as: Component = 'div',
+  delayMs = 500,
 }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
@@ -107,7 +109,7 @@ export const FieldCallTooltip: React.FC<FieldCallTooltipProps> = ({
         updatePosition();
         setIsVisible(true);
         dwellTimerRef.current = null;
-      }, 3000);
+      }, delayMs);
     }
   };
 

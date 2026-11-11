@@ -558,9 +558,11 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
       {/* Header Bar */}
       <div className={`px-3 py-2 border-b flex items-center justify-between ${headerBg}`}>
         <div className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-amber-400" />
+          <span className="font-mono font-black text-xs text-amber-400 select-none" aria-hidden="true">
+            &lt;^&gt;
+          </span>
           <span className="font-bold text-xs uppercase tracking-wider text-cyan-300">
-            Buff Box: Status Effects &amp; Bonus Matrix
+            Buff Box
           </span>
           <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/30">
             {activeCount} Active / {customBuffs.length} Total
@@ -568,14 +570,6 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setViewMode('icon')}
-            className="px-2 py-0.5 text-xs font-mono font-bold rounded border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400"
-            title="Roll into compact icon |<^>|"
-          >
-            |&lt;^&gt;|
-          </button>
-
           <button
             onClick={() => setViewMode(viewMode === 'expanded' ? 'rollup' : 'expanded')}
             className="px-2.5 py-0.5 text-xs font-mono font-semibold rounded border border-cyan-500/30 bg-slate-900 hover:bg-slate-800 text-cyan-200 flex items-center gap-1 transition-colors"
@@ -610,12 +604,6 @@ export const BuffBoxModule: React.FC<BuffBoxModuleProps> = ({
           {activeAlteredStats.length === 0 ? (
             <div className="flex items-center justify-between text-xs text-slate-400">
               <span>No active buffs or debuffs. Check an effect below or expand to use the Macaroni Buff Maker.</span>
-              <button
-                onClick={() => setViewMode('expanded')}
-                className="text-xs font-bold text-cyan-400 hover:underline ml-2 font-mono"
-              >
-                Open Buff Box
-              </button>
             </div>
           ) : (
             <div className="flex flex-wrap items-center gap-2">

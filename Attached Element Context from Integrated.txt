@@ -1,0 +1,79 @@
+Attached Element Context from Integrated Browser
+
+Element: div.bg-black/5.dark:bg-white/5.p-1.rounded
+
+URL: http://localhost:3000/
+
+HTML Path: div#root > div.min-h-screen.flex.flex-col.font-sans.transition-colors.duration-200.bg-[#08121f].text-cyan-50.bg-[radial-gradient(#1e3a5f_1px,transparent_1px)].[background-size:24px_24px].dark > div.no-print.print:hidden.flex-1.flex.items-stretch.overflow-hidden > main.flex-1.min-w-0.overflow-y-auto.p-4.md:p-8.transition-colors.duration-200.bg-[#08121f].text-cyan-50.bg-[radial-gradient(#1e3a5f_1px,transparent_1px)].[background-size:24px_24px] > div.max-w-6xl.mx-auto.space-y-6 > div > div.space-y-6.font-serif.text-[13px].leading-relaxed > div.grid.grid-cols-1.lg:grid-cols-12.gap-6.items-start > div.lg:col-span-5.space-y-4 > div.rounded-xl.border.p-4.bg-slate-900/90.border-cyan-500/40.text-cyan-50 > div.flex.flex-col.gap-3.pb-3.border-b.border-black/10.dark:border-white/10 > div.p-2.5.rounded-lg.bg-black/5.dark:bg-white/5.border.border-black/10.dark:border-white/10.text-xs.space-y-2 > div.grid.grid-cols-4.gap-1.5.text-[10px].font-mono > div.bg-black/5.dark:bg-white/5.p-1.rounded
+
+Outer HTML:
+```html
+<div class="bg-black/5 dark:bg-white/5 p-1 rounded"><span class="opacity-60 block">INT Mod</span><span class="font-bold">+0</span></div>
+```
+
+Dimensions:
+- top: 163px
+- left: 383px
+- width: 98px
+- height: 35px
+
+CSS:
+```css
+*, ::after, ::before, ::backdrop, ::file-selector-button { box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    border: 0 solid; }
+.rounded { border-radius: 0.25rem; }
+.bg-black\/5 { background-color: color-mix(in srgb, #000 5%, transparent); }
+ { background-color: color-mix(in oklab, var(--color-black) 5%, transparent); }
+.p-1 { padding: var(--spacing); }
+.dark\:bg-white\/5:where(.dark, .dark *) { background-color: color-mix(in srgb, #fff 5%, transparent); }
+ { background-color: color-mix(in oklab, var(--color-white) 5%, transparent); }
+
+/* Inherited */
+.font-mono { font-family: var(--font-mono) }
+.text-\[10px\] { font-size: 10px }
+.text-xs { font-size: var(--text-xs); line-height: var(--tw-leading, var(--text-xs--line-height)) }
+.text-cyan-50 { color: var(--color-cyan-50) }
+.font-serif { font-family: var(--font-serif) }
+.text-\[13px\] { font-size: 13px }
+.leading-relaxed { line-height: var(--leading-relaxed) }
+.font-sans { font-family: var(--font-sans) }
+html, :host { line-height: 1.5; tab-size: 4; font-family: var(--default-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"); font-feature-settings: var(--default-font-feature-settings, normal) }
+
+/* Resolved values */
+margin: 0px;
+padding: 4px;
+border-radius: 4px;
+border: 0px solid oklch(0.984 0.019 200.873);
+background-color: oklab(0.999994 0.0000455678 0.0000200868 / 0.05);
+box-sizing: border-box;
+color: oklch(0.984 0.019 200.873);
+display: block;
+font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+font-feature-settings: normal;
+font-size: 10px;
+height: 34.6562px;
+line-height: 13.3333px;
+tab-size: 4;
+unicode-bidi: isolate /*UA*/;
+width: 98px;
+
+/* CSS variables */
+--font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+      "Courier New", monospace;
+--color-white: #fff;
+--font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+      "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",
+      "Segoe UI Symbol", "Noto Color Emoji";
+--text-xs--line-height: calc(1 / 0.75);
+--default-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+      "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",
+      "Segoe UI Symbol", "Noto Color Emoji";
+--color-cyan-50: oklch(98.4% 0.019 200.873);
+--leading-relaxed: 1.625;
+--spacing: 0.25rem;
+--text-xs: 0.75rem;
+--color-black: #000;
+--font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+```

@@ -1,6 +1,45 @@
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Hide native browser up/down spinner buttons on numeric inputs while keeping keyboard/wheel step behavior */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.pf1-blue-scrollbar {
+  scrollbar-color: #2563eb transparent;
+  scrollbar-width: thin;
+}
+
+.pf1-blue-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.pf1-blue-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.pf1-blue-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #2563eb;
+  border-radius: 9999px;
+}
+
+.pf1-blue-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: #3b82f6;
+}
+
+.pf1-hidden-turn-stepper {
+  display: none !important;
+}
+
 @media print {
   html,
   body,

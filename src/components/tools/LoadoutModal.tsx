@@ -465,9 +465,9 @@ export const LoadoutModal: React.FC<LoadoutModalProps> = ({
         onUpdateCharacter((prev) => ({
           ...prev,
           weapons: [
-            { id: 'w-lance', name: 'Masterwork Lance', category: 'Melee', damageFormula: '1d8+str_mod', critical: 'x3', range: 'Reach 10ft', damageType: 'Piercing', weight: 10, isEquipped: true, specialProperties: 'Double damage from back of charging mount' },
-            { id: 'w-sword', name: '+1 Longsword', category: 'Melee', damageFormula: '1d8+str_mod+1', critical: '19-20/x2', range: 'Melee', damageType: 'Slashing', weight: 4, isEquipped: true },
-            { id: 'w-cb', name: 'Heavy Crossbow', category: 'Ranged', damageFormula: '1d10', critical: '19-20/x2', range: '120 ft', damageType: 'Piercing', weight: 8, isEquipped: false },
+            { id: 'w-lance', name: 'Masterwork Lance', category: 'Melee', attackFormula: '[1d20+#MATTACK]', damageFormula: '1d8+str_mod', critical: 'x3', range: 'Reach 10ft', damageType: 'Piercing', weight: 10, isEquipped: true, specialProperties: 'Double damage from back of charging mount' },
+            { id: 'w-sword', name: '+1 Longsword', category: 'Melee', attackFormula: '[1d20+#MATTACK]', damageFormula: '1d8+str_mod+1', critical: '19-20/x2', range: 'Melee', damageType: 'Slashing', weight: 4, isEquipped: true },
+            { id: 'w-cb', name: 'Heavy Crossbow', category: 'Ranged', attackFormula: '[1d20+#RATTACK]', damageFormula: '1d10', critical: '19-20/x2', range: '120 ft', damageType: 'Piercing', weight: 8, isEquipped: false },
           ],
           armor: [
             { id: 'a-fp', name: '+1 Full Plate', type: 'Heavy', acBonus: 10, maxDex: 1, checkPenalty: -5, spellFailure: 35, speed30: 20, weight: 50, isEquipped: true },

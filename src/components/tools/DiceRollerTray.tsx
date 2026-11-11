@@ -6,6 +6,7 @@ interface DiceRollerTrayProps {
   isOpen: boolean;
   onClose: () => void;
   presetFormula?: string;
+  rollId?: number;
   onRollComplete?: (outcome: DiceRollOutcome) => void;
 }
 
@@ -13,34 +14,40 @@ export const DiceRollerTray: React.FC<DiceRollerTrayProps> = ({
   isOpen,
   onClose,
   presetFormula,
+  rollId,
   onRollComplete,
 }) => {
   const [formulaInput, setFormulaInput] = useState(presetFormula || '1d20+7');
   const [history, setHistory] = useState<DiceRollOutcome[]>([]);
-  const [lastRoll, setLastRoll] = useState<DiceRollOutcome | null>(null);
+  const [lastRolls, setLastRolls] = useState<DiceRollOutcome[]>([]);
   const [isRolling, setIsRolling] = useState(false);
-
-  // Update formula when presetFormula changes
-  React.useEffect(() => {
-    if (presetFormula) {
-      setFormulaInput(presetFormula);
-      handleRoll(presetFormula);
-    }
-  }, [presetFormula]);
 
   const handleRoll = (formulaToRoll?: string) => {
     const expr = formulaToRoll || formulaInput;
-    if (!expr.trim()) return;
+    const parts = expr
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (parts.length === 0) return;
 
     setIsRolling(true);
     setTimeout(() => {
-      const outcome = executeDiceRoll(expr);
-      setLastRoll(outcome);
-      setHistory((prev) => [outcome, ...prev.slice(0, 19)]);
+      const outcomes = parts.map((p) => executeDiceRoll(p));
+      setLastRolls(outcomes);
+      setHistory((prev) => [...outcomes, ...prev].slice(0, 20));
       setIsRolling(false);
-      if (onRollComplete) onRollComplete(outcome);
+      if (onRollComplete) onRollComplete(outcomes[0]);
     }, 180);
   };
+
+  // Re-roll whenever the preset formula or an explicit roll id changes
+  React.useEffect(() => {
+    if (presetFormula) {
+      const firstLine = presetFormula.split('\n').map((s) => s.trim()).find(Boolean);
+      setFormulaInput(firstLine || presetFormula);
+      handleRoll(presetFormula);
+    }
+  }, [presetFormula, rollId]);
 
   const addDie = (die: string) => {
     setFormulaInput((prev) => {
@@ -51,9 +58,18 @@ export const DiceRollerTray: React.FC<DiceRollerTrayProps> = ({
 
   if (!isOpen) return null;
 
+  const isMulti = lastRolls.length > 1;
+
+  const rollTone = (roll: DiceRollOutcome) =>
+    roll.isNat20
+      ? 'text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)] animate-pulse'
+      : roll.isNat1
+      ? 'text-red-500'
+      : 'text-amber-100';
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-      <div className="w-full max-w-md bg-slate-900 border border-amber-500/30 rounded-xl shadow-2xl overflow-hidden text-slate-100 flex flex-col max-h-[90vh]">
+      <div className={`w-full ${isMulti ? 'max-w-lg' : 'max-w-md'} bg-slate-900 border border-amber-500/30 rounded-xl shadow-2xl overflow-hidden text-slate-100 flex flex-col max-h-[90vh]`}>
         {/* Header */}
         <div className="px-5 py-3.5 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -72,34 +88,42 @@ export const DiceRollerTray: React.FC<DiceRollerTrayProps> = ({
 
         {/* Big Roll Outcome Area */}
         <div className="p-6 bg-radial from-slate-800/80 to-slate-900 flex flex-col items-center justify-center text-center border-b border-slate-800/60 min-h-[140px]">
-          {lastRoll ? (
-            <div className={`transition-all duration-200 ${isRolling ? 'scale-90 opacity-50' : 'scale-100 opacity-100'}`}>
-              <div className="text-xs font-mono text-slate-400 mb-1">{lastRoll.formula}</div>
-              <div className="flex items-center justify-center gap-3">
-                <span
-                  className={`text-5xl font-mono font-black tabular-nums tracking-tight ${
-                    lastRoll.isNat20
-                      ? 'text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)] animate-pulse'
-                      : lastRoll.isNat1
-                      ? 'text-red-500'
-                      : 'text-amber-100'
-                  }`}
-                >
-                  {lastRoll.total}
-                </span>
-                {lastRoll.isNat20 && (
-                  <span className="text-xs font-bold uppercase tracking-wider px-2 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded">
-                    Nat 20!
-                  </span>
-                )}
-                {lastRoll.isNat1 && (
-                  <span className="text-xs font-bold uppercase tracking-wider px-2 py-0.5 bg-red-500/20 text-red-400 border border-red-500/40 rounded">
-                    Nat 1
-                  </span>
-                )}
-              </div>
-              <div className="mt-2 text-xs font-mono text-slate-400 max-w-xs break-words">
-                {lastRoll.textOutput}
+          {lastRolls.length > 0 ? (
+            <div
+              className={`w-full transition-all duration-200 ${
+                isRolling ? 'scale-90 opacity-50' : 'scale-100 opacity-100'
+              }`}
+            >
+              <div className={`flex items-stretch justify-center ${isMulti ? 'gap-6' : ''}`}>
+                {lastRolls.map((roll, i) => (
+                  <div key={`${roll.formula}-${i}`} className="flex-1 min-w-0">
+                    <div className="text-xs font-mono text-slate-400 mb-1 truncate">
+                      {roll.formula}
+                    </div>
+                    <div className="flex items-center justify-center gap-2">
+                      <span
+                        className={`${isMulti ? 'text-4xl' : 'text-5xl'} font-mono font-black tabular-nums tracking-tight ${rollTone(
+                          roll
+                        )}`}
+                      >
+                        {roll.total}
+                      </span>
+                      {roll.isNat20 && (
+                        <span className="text-xs font-bold uppercase tracking-wider px-2 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded">
+                          Nat 20!
+                        </span>
+                      )}
+                      {roll.isNat1 && (
+                        <span className="text-xs font-bold uppercase tracking-wider px-2 py-0.5 bg-red-500/20 text-red-400 border border-red-500/40 rounded">
+                          Nat 1
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-2 text-xs font-mono text-slate-400 max-w-xs mx-auto break-words">
+                      {roll.textOutput}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           ) : (

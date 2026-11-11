@@ -52,9 +52,9 @@ async function handleGeminiGenerate(req: Request, res: Response) {
       text: response.text ?? '',
     });
   } catch (err: unknown) {
-    console.error('Gemini /api/gemini/generate error:', err);
+    console.error('OpenAI /api/gemini/generate error:', err);
     return res.status(500).json({
-      error: errorMessage(err, 'Gemini generation failed.'),
+      error: errorMessage(err, 'OpenAI generation failed.'),
     });
   }
 }
@@ -97,40 +97,30 @@ ${overrideContext}
 === STEP 2: PLAYER'S SAVED SOT WEBLINKS (CHECK SECOND) ===
 ${weblinksContext}`;
 
-    const tools: any[] = [{ googleSearch: {} }];
-    if (activeLinks.length > 0) {
-      tools.push({ urlContext: {} });
-    }
-
     const response = await generateContentWithFallback(ai, {
       contents: userPrompt,
       config: {
         systemInstruction: LOOKUP_SYSTEM_INSTRUCTION,
-        tools,
+        responseMimeType: 'application/json',
       },
     });
 
     const rawText = response.text ?? '';
-    const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-    const sourceUrls: Array<{ title: string; uri: string }> = [];
-
-    for (const chunk of groundingChunks as any[]) {
-      if (chunk?.web?.uri) {
-        sourceUrls.push({
-          title: chunk.web.title || chunk.web.uri,
-          uri: chunk.web.uri,
-        });
-      }
-    }
+    const sourceUrls: Array<{ title: string; uri: string }> = activeLinks
+      .filter((link) => Boolean(link.url))
+      .map((link) => ({
+        title: link.title || link.url || '',
+        uri: link.url as string,
+      }));
 
     return res.json({
       text: rawText,
       sourceUrls,
     });
   } catch (err: unknown) {
-    console.error('Gemini /api/gemini/lookup error:', err);
+    console.error('OpenAI /api/gemini/lookup error:', err);
     return res.status(500).json({
-      error: errorMessage(err, 'Gemini online lookup failed.'),
+      error: errorMessage(err, 'OpenAI online lookup failed.'),
     });
   }
 }
@@ -186,9 +176,9 @@ ${historyFormatted || 'PLAYER: Hey, I want to build a new character! What should
       rawText,
     });
   } catch (err: unknown) {
-    console.error('Gemini /api/gemini/complete-sheet error:', err);
+    console.error('OpenAI /api/gemini/complete-sheet error:', err);
     return res.status(500).json({
-      error: errorMessage(err, 'Gemini Complete Sheet generation failed.'),
+      error: errorMessage(err, 'OpenAI Complete Sheet generation failed.'),
     });
   }
 }

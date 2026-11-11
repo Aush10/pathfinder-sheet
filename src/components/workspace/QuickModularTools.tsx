@@ -1,21 +1,14 @@
 import React, { useState } from 'react';
 import {
-  GraduationCap,
   Plus,
   Trash2,
   ChevronRight,
-  Sparkles,
   Swords,
   RotateCcw,
   Play,
-  Dices,
-  Shield,
-  Heart,
-  Zap,
 } from 'lucide-react';
-import { PF1Character, CharacterClassEntry } from '../../types/character';
+import { PF1Character, StepperRule } from '../../types/character';
 import { DerivedCombatStats } from '../../engine/pf1eMath';
-import { evaluateFormula, buildFormulaContext } from '../../engine/formula';
 
 interface QuickModularToolsProps {
   character: PF1Character;
@@ -25,21 +18,18 @@ interface QuickModularToolsProps {
   onUpdateCharacter: (updater: (prev: PF1Character) => PF1Character) => void;
   onRollFormula: (formula: string, label?: string) => void;
   visibleModules: Record<string, boolean>;
+  onOpenAddClass?: () => void;
 }
 
 export const QuickModularTools: React.FC<QuickModularToolsProps> = ({
   character,
-  derived,
   theme,
   fontClass,
   onUpdateCharacter,
-  onRollFormula,
   visibleModules,
 }) => {
-  const [newClassName, setNewClassName] = useState('');
-  const [newClassHitDie, setNewClassHitDie] = useState(10);
-  const [newClassSkillPoints, setNewClassSkillPoints] = useState(2);
-  const [newClassBab, setNewClassBab] = useState<'full' | 'threeQuarter' | 'half'>('full');
+  const [newStepperExpr] = useState('this + 1');
+  const [newStepperLabel, setNewStepperLabel] = useState('');
 
   const isParchment = theme === 'parchment';
   const isBlueprint = theme === 'blueprint';
@@ -73,331 +63,231 @@ export const QuickModularTools: React.FC<QuickModularToolsProps> = ({
     onUpdateCharacter((prev) => ({ ...prev, [key]: value }));
   };
 
-  // 1. Level Stepper (+ / - Level with automatic scaling of HP, BAB, and Saves)
-  const handleStepLevel = (delta: number) => {
-    const nextLevel = Math.max(1, Math.min(20, character.level + delta));
-    if (nextLevel === character.level) return;
+  // Advance an iterative macro expression on step: e.g. "this + 1" -> "this + 2"
+  const advanceIterativeMacro = (rawText: string, delta: number = 1): string => {
+    const match = rawText.match(/^(.*\bthis\s*[+-]\s*)(\d+)(.*)$/i);
+    if (match) {
+      const prefix = match[1];
+      const currentNum = parseInt(match[2], 10) || 0;
+      const suffix = match[3];
+      return `${prefix}${currentNum + delta}${suffix}`;
+    }
+    return rawText;
+  };
 
+  const stepAllActiveSteppers = () => {
     onUpdateCharacter((prev) => {
-      // Adjust BAB proportionally
-      const babRatio = prev.level > 0 ? prev.baseAttackBonus / prev.level : 1;
-      const nextBab = Math.max(1, Math.round(nextLevel * babRatio));
-
-      return {
-        ...prev,
-        level: nextLevel,
-        baseAttackBonus: nextBab,
-        hpBreakdown: {
-          ...prev.hpBreakdown,
-          hitDiceCount: nextLevel,
-        },
-      };
+      const existingRules = prev.stepperRules || [];
+      if (existingRules.length === 0) return prev;
+      const updatedRules = existingRules.map((rule) => {
+        if (!rule.isActive) return rule;
+        const stepDelta = rule.stepAmount || 1;
+        const nextVal = (rule.currentValue ?? 0) + stepDelta;
+        return {
+          ...rule,
+          currentValue: nextVal,
+          rawText: advanceIterativeMacro(rule.rawText, Math.abs(stepDelta)),
+        };
+      });
+      return { ...prev, stepperRules: updatedRules };
     });
   };
 
-  // 2. Turn Stepper (Combat initiative tracker)
+  // 2. Turn Stepper (Combat & Iterative Macro Stepper)
   const handleNextTurn = () => {
     const current = character.combatTracker || { round: 1, turn: 1, isInCombat: true };
-    const nextTurn = current.turn + 1;
+    const nextTurn = (current.turn || 0) + 1;
     setField('combatTracker', {
       ...current,
+      round: Math.max(1, current.round || 1),
       turn: nextTurn,
       isInCombat: true,
     });
+    stepAllActiveSteppers();
   };
 
   const handleNextRound = () => {
     const current = character.combatTracker || { round: 1, turn: 1, isInCombat: true };
     setField('combatTracker', {
-      round: current.round + 1,
+      round: (current.round || 0) + 1,
       turn: 1,
       isInCombat: true,
     });
+    stepAllActiveSteppers();
   };
 
   const handleResetCombat = () => {
     setField('combatTracker', {
-      round: 1,
-      turn: 1,
+      round: 0,
+      turn: 0,
       isInCombat: false,
     });
   };
 
-  // 3. Add a Class
-  const handleAddClass = () => {
-    if (!newClassName.trim()) return;
-    const newEntry: CharacterClassEntry = {
-      id: `cls-${Date.now()}`,
-      name: newClassName.trim(),
-      level: 1,
-      hitDie: newClassHitDie,
-      skillPointsPerLevel: newClassSkillPoints,
-      babProgression: newClassBab,
-      isFavoredClass: false,
+  const handleAddStepper = () => {
+    const expr = newStepperExpr.trim() || 'this + 1';
+    const label = newStepperLabel.trim() || `Stepper ${(character.stepperRules || []).length + 1}`;
+    const newRule: StepperRule = {
+      id: `step-${Date.now()}`,
+      rawText: expr,
+      type: 'track',
+      label,
+      currentValue: 1,
+      stepAmount: 1,
+      isActive: true,
     };
-    const currentList = character.classes || [];
-    setField('classes', [...currentList, newEntry]);
-    setNewClassName('');
+    setField('stepperRules', [...(character.stepperRules || []), newRule]);
+    setNewStepperLabel('');
   };
 
-  const handleRemoveClass = (id: string) => {
+  const handleStepSingleRule = (id: string) => {
+    const existing = character.stepperRules || [];
     setField(
-      'classes',
-      (character.classes || []).filter((c) => c.id !== id)
+      'stepperRules',
+      existing.map((r) =>
+        r.id === id
+          ? {
+              ...r,
+              currentValue: (r.currentValue ?? 0) + (r.stepAmount || 1),
+              rawText: advanceIterativeMacro(r.rawText, Math.abs(r.stepAmount || 1)),
+            }
+          : r
+      )
     );
   };
 
-  // 4. Quickmacros evaluation
-  const context = buildFormulaContext(character, { strPenalty: 0, dexPenalty: 0, attackPenalty: 0 }, derived);
-
-  const quickMacroItems = [
-    { label: '#hp', formula: '#hp', desc: 'Current HP' },
-    { label: '#str', formula: '#str', desc: 'STR Bonus (+7)' },
-    { label: '#strength', formula: '#strength', desc: 'STR Score (24)' },
-    { label: '#ac', formula: '#ac', desc: 'Total AC' },
-    { label: '#mattack', formula: '#mattack', desc: 'Melee Attack' },
-    { label: '#rattack', formula: '#rattack', desc: 'Ranged Attack' },
-    { label: '#fort', formula: '#fort', desc: 'Fortitude Save' },
-    { label: '#ref', formula: '#ref', desc: 'Reflex Save' },
-    { label: '#will', formula: '#will', desc: 'Will Save' },
-    { label: '#init', formula: '#init', desc: 'Initiative' },
-    { label: '#firebreath', formula: 'firebreath', desc: 'Fire Breath' },
-    { label: '#mainattack', formula: 'mainattack', desc: 'Main Melee Attack' },
-  ];
+  const handleRemoveStepper = (id: string) => {
+    setField(
+      'stepperRules',
+      (character.stepperRules || []).filter((r) => r.id !== id)
+    );
+  };
 
   return (
     <div className={`space-y-4 ${fontClass}`}>
-      {/* LEVEL STEPPER & TURN STEPPER ROW */}
+      {/* ITERATIVE MACRO STEPPER ROW */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* LEVEL STEPPER */}
-        {visibleModules.levelStepper && (
-          <div className={`border rounded-lg p-3 ${cardBg}`}>
-            <div className={`px-2 py-1 border-b mb-2 flex items-center justify-between ${headerBg}`}>
-              <div className="flex items-center gap-1.5">
-                <GraduationCap className="w-4 h-4 text-amber-500" />
-                <span className="font-bold text-xs uppercase tracking-wider">Level Stepper</span>
-              </div>
-              <span className="text-[10px] font-mono opacity-80">Auto-scales HP & BAB</span>
-            </div>
-
-            <div className="flex items-center justify-between gap-3 font-mono">
-              <button
-                onClick={() => handleStepLevel(-1)}
-                disabled={character.level <= 1}
-                className="px-3 py-1.5 bg-black/5 dark:bg-white/10 hover:bg-black/15 text-sm font-black rounded border border-black/10 dark:border-white/10 disabled:opacity-30 transition-colors"
-                title="Level down"
-              >
-                - Level
-              </button>
-
-              <div className="text-center">
-                <span className="text-xs text-slate-400 block uppercase">Current Level</span>
-                <span className="text-2xl font-black text-amber-600 dark:text-amber-400 tabular-nums">
-                  Level {character.level}
-                </span>
-                <span className="text-[10px] opacity-70 block">
-                  BAB +{character.baseAttackBonus} · ASI Points: {Math.floor(character.level / 4)}
-                </span>
-              </div>
-
-              <button
-                onClick={() => handleStepLevel(1)}
-                disabled={character.level >= 20}
-                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-slate-950 text-sm font-black rounded shadow-xs disabled:opacity-30 transition-colors"
-                title="Level up"
-              >
-                + Level Up
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* TURN STEPPER */}
-        {visibleModules.turnStepper && (
-          <div className={`border rounded-lg p-3 ${cardBg}`}>
-            <div className={`px-2 py-1 border-b mb-2 flex items-center justify-between ${headerBg}`}>
+        {/* TURN & ITERATIVE MACRO STEPPER (Configurable number of steppers per spec #13 & #14) */}
+        {visibleModules.turnStepper !== false && (
+          <div className={`pf1-hidden-turn-stepper border rounded-lg p-3 ${cardBg} space-y-2`}>
+            <div className={`px-2 py-1 border-b flex items-center justify-between ${headerBg}`}>
               <div className="flex items-center gap-1.5">
                 <Swords className="w-4 h-4 text-rose-500" />
-                <span className="font-bold text-xs uppercase tracking-wider">Turn & Round Stepper</span>
+                <span className="font-bold text-xs uppercase tracking-wider">Turn &amp; Round Stepper</span>
               </div>
-              <button
-                onClick={handleResetCombat}
-                className="text-[10px] text-slate-400 hover:text-slate-200 flex items-center gap-1"
-                title="Reset initiative"
-              >
-                <RotateCcw className="w-3 h-3" />
-                <span>Reset</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleAddStepper}
+                  className="px-1.5 py-0.5 rounded bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 text-[10px] font-mono font-bold flex items-center gap-0.5"
+                  title="Add an iterative macro stepper (e.g. this + 1 -> this + 2)"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>Stepper</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetCombat}
+                  className="text-[10px] text-slate-400 hover:text-slate-200 flex items-center gap-1"
+                  title="Reset round counter"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Reset</span>
+                </button>
+              </div>
             </div>
 
             <div className="flex items-center justify-between gap-3 font-mono">
-              <div className="text-center">
-                <span className="text-[10px] text-slate-400 uppercase block">Combat Round</span>
-                <span className="text-2xl font-black text-rose-500 tabular-nums">
-                  Round {character.combatTracker?.round || 1}
+              <div>
+                <span className="text-xl font-black text-rose-500 tabular-nums">
+                  Round {character.combatTracker?.round || 0}
                 </span>
-                <span className="text-[10px] opacity-70 block">
-                  Turn {character.combatTracker?.turn || 1}
+                <span className="text-[10px] opacity-70 ml-2">
+                  Turn {character.combatTracker?.turn || 0}
                 </span>
               </div>
 
               <div className="flex items-center gap-2">
                 <button
+                  type="button"
                   onClick={handleNextTurn}
-                  className="px-3 py-1.5 bg-black/5 dark:bg-white/10 hover:bg-black/15 text-xs font-bold rounded border border-black/10 dark:border-white/10 flex items-center gap-1 transition-colors"
+                  className="px-2.5 py-1 bg-black/5 dark:bg-white/10 hover:bg-black/15 text-xs font-bold rounded border border-black/10 dark:border-white/10 flex items-center gap-1 transition-colors"
                 >
                   <Play className="w-3 h-3" />
                   <span>Next Turn</span>
                 </button>
                 <button
+                  type="button"
                   onClick={handleNextRound}
-                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded shadow-xs flex items-center gap-1 transition-colors"
+                  className="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded shadow-xs flex items-center gap-1 transition-colors"
                 >
                   <ChevronRight className="w-3.5 h-3.5" />
                   <span>Next Round</span>
                 </button>
               </div>
             </div>
-          </div>
-        )}
-      </div>
 
-      {/* QUICKMACROS MODULE (Requirement 3: #hp, #str, #strength, etc.) */}
-      {visibleModules.quickMacros && (
-        <div className={`border rounded-lg p-3 ${cardBg}`}>
-          <div className={`px-2 py-1 border-b mb-2 flex items-center justify-between ${headerBg}`}>
-            <div className="flex items-center gap-1.5">
-              <Zap className="w-4 h-4 text-purple-400" />
-              <span className="font-bold text-xs uppercase tracking-wider">
-                Quickmacros & Dynamic Core Calls
-              </span>
-            </div>
-            <span className="text-[10px] font-mono opacity-80">
-              #macro tokens live-resolve character data
-            </span>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 font-mono text-xs">
-            {quickMacroItems.map((item) => {
-              const res = evaluateFormula(item.formula, context);
-              return (
-                <button
-                  key={item.label}
-                  onClick={() => {
-                    if (res.rollable) {
-                      onRollFormula(res.evaluated, item.label);
-                    }
-                  }}
-                  className="p-2 rounded bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 hover:border-amber-500/50 text-left transition-all group"
-                  title={`Call ${item.label} -> ${res.evaluated}`}
-                >
-                  <div className="font-bold text-amber-600 dark:text-amber-400 flex items-center justify-between">
-                    <span>{item.label}</span>
-                    {res.rollable && <Dices className="w-3 h-3 opacity-60 group-hover:opacity-100" />}
-                  </div>
-                  <div className="text-[11px] font-semibold text-slate-200 truncate mt-0.5">
-                    = {res.evaluated}
-                  </div>
-                  <div className="text-[9px] opacity-60 truncate">{item.desc}</div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* ADD A CLASS MODULE */}
-      {visibleModules.addClass && (
-        <div className={`border rounded-lg p-3 ${cardBg}`}>
-          <div className={`px-2 py-1 border-b mb-2 flex items-center justify-between ${headerBg}`}>
-            <div className="flex items-center gap-1.5">
-              <Plus className="w-4 h-4 text-cyan-400" />
-              <span className="font-bold text-xs uppercase tracking-wider">Add a Class (Multi-Class Builder)</span>
-            </div>
-            <span className="text-[10px] font-mono opacity-80">
-              Configures Hit Die & Skill Points per Class
-            </span>
-          </div>
-
-          {/* Form to add a class */}
-          <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 text-xs mb-3 items-end">
-            <div className="sm:col-span-2">
-              <label className="block text-[10px] font-mono opacity-75 mb-0.5">Class Name:</label>
-              <input
-                type="text"
-                value={newClassName}
-                onChange={(e) => setNewClassName(e.target.value)}
-                placeholder="e.g. Rogue, Wizard, Paladin"
-                className={`w-full px-2 py-1 rounded border ${inputStyle}`}
-              />
-            </div>
-            <div>
-              <label className="block text-[10px] font-mono opacity-75 mb-0.5">Hit Die:</label>
-              <select
-                value={newClassHitDie}
-                onChange={(e) => setNewClassHitDie(parseInt(e.target.value) || 10)}
-                className={`w-full px-2 py-1 rounded border ${inputStyle}`}
-              >
-                <option value={6}>d6 (Wizard, Sorcerer)</option>
-                <option value={8}>d8 (Rogue, Cleric, Bard)</option>
-                <option value={10}>d10 (Fighter, Paladin)</option>
-                <option value={12}>d12 (Barbarian)</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-[10px] font-mono opacity-75 mb-0.5">Base SP/lvl:</label>
-              <select
-                value={newClassSkillPoints}
-                onChange={(e) => setNewClassSkillPoints(parseInt(e.target.value) || 2)}
-                className={`w-full px-2 py-1 rounded border ${inputStyle}`}
-              >
-                <option value={2}>2 + INT</option>
-                <option value={4}>4 + INT</option>
-                <option value={6}>6 + INT</option>
-                <option value={8}>8 + INT</option>
-              </select>
-            </div>
-            <div>
-              <button
-                onClick={handleAddClass}
-                disabled={!newClassName.trim()}
-                className="w-full py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs rounded shadow-xs flex items-center justify-center gap-1 disabled:opacity-40 transition-colors"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add Class</span>
-              </button>
-            </div>
-          </div>
-
-          {/* List of active classes */}
-          {(character.classes || []).length > 0 && (
-            <div className="space-y-1.5 pt-1 border-t border-black/10 dark:border-white/10">
-              <div className="text-[10px] font-mono text-slate-400 uppercase">Configured Classes:</div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono">
-                {character.classes.map((cls) => (
+            {/* Configurable Iterative Steppers List (e.g. this + 1 -> this + 2) */}
+            {(character.stepperRules || []).length > 0 && (
+              <div className="pt-1.5 border-t border-black/10 dark:border-white/10 space-y-1 font-mono text-[11px]">
+                {(character.stepperRules || []).map((rule) => (
                   <div
-                    key={cls.id}
-                    className="p-2 rounded bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 flex items-center justify-between"
+                    key={rule.id}
+                    className="flex items-center justify-between gap-1.5 px-2 py-1 rounded bg-black/10 dark:bg-white/5 border border-black/10 dark:border-white/10"
                   >
-                    <div>
-                      <span className="font-bold text-amber-500">{cls.name}</span>
-                      <span className="text-[11px] opacity-75 ml-1">
-                        (Lvl {cls.level} · d{cls.hitDie} · {cls.skillPointsPerLevel}+INT SP)
-                      </span>
-                    </div>
+                    <input
+                      type="text"
+                      value={rule.label}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setField(
+                          'stepperRules',
+                          (character.stepperRules || []).map((r) =>
+                            r.id === rule.id ? { ...r, label: val } : r
+                          )
+                        );
+                      }}
+                      className={`w-24 px-1 py-0.5 rounded border text-[10px] font-bold ${inputStyle}`}
+                      placeholder="Label"
+                    />
+                    <input
+                      type="text"
+                      value={rule.rawText}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setField(
+                          'stepperRules',
+                          (character.stepperRules || []).map((r) =>
+                            r.id === rule.id ? { ...r, rawText: val } : r
+                          )
+                        );
+                      }}
+                      className={`flex-1 px-1.5 py-0.5 rounded border text-[10px] text-amber-400 ${inputStyle}`}
+                      title="Iterative macro expression (e.g. this + 1 advances to this + 2)"
+                    />
                     <button
-                      onClick={() => handleRemoveClass(cls.id)}
-                      className="p-1 rounded text-red-400 hover:text-red-600 hover:bg-red-500/10"
+                      type="button"
+                      onClick={() => handleStepSingleRule(rule.id)}
+                      className="px-1.5 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[10px] font-bold"
+                      title="Step this macro forward"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      Step ({rule.currentValue ?? 0})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveStepper(rule.id)}
+                      className="p-0.5 text-red-400 hover:text-red-500"
+                      title="Remove stepper"
+                    >
+                      <Trash2 className="w-3 h-3" />
                     </button>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 };

@@ -1942,6 +1942,7 @@ export function parseNaturalLanguageSheetUpdates(
             id: `wp-ai-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
             name: wName,
             category: wCat === 'Ranged' ? 'Ranged' : 'Melee',
+            attackFormula: wCat === 'Ranged' ? '[1d20+#RATTACK]' : '[1d20+#MATTACK]',
             damageFormula: wDmg,
             critical: wCrit,
             range: wCat === 'Ranged' ? '80 ft.' : 'Melee',

@@ -5,9 +5,9 @@ STRICT 3-STEP SEARCH ORDER:
 1. START WITH SOT DOCS (HIGHEST PRIORITY):
    Check the player's saved SOT Override Pages first. If a proper match is found in the SOT Docs, use it as the authoritative source and set "sourceAuthority" to "SOT Override Page".
 2. CHECK SOT LINKS NEXT (SECOND PRIORITY):
-   If not in the SOT Docs, check the player's saved SOT Weblinks and use URL Context / Search across those domains. If matched via a saved SOT Weblink, set "sourceAuthority" to "SOT Weblink".
+   If not in the SOT Docs, check the player's saved SOT Weblinks and use those domains as the next authority. If matched via a saved SOT Weblink, set "sourceAuthority" to "SOT Weblink".
 3. VERIFIED ONLINE PF1E SRD (FINAL STEP):
-   Use Google Search to find a proper match in authentic Pathfinder 1e SRD sources (d20pfsrd, Archives of Nethys, Paizo PRD, Spheres of Power, Path of War). Set "sourceAuthority" to "Online SRD".
+   Use authentic Pathfinder 1e SRD sources (d20pfsrd, Archives of Nethys, Paizo PRD, Spheres of Power, Path of War). Set "sourceAuthority" to "Online SRD".
 
 CRITICAL RULE — DO NOT GUESS OR MAKE UP THINGS:
 - Never invent, guess, or fabricate feats, class abilities, spells, prerequisites, or numbers if no proper match exists.

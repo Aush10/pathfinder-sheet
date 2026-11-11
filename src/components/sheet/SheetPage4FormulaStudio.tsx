@@ -44,6 +44,7 @@ import {
 } from '../../engine/aiService';
 import { extractMacaroniSuggestionsFromSrd } from '../../engine/sotEngine';
 import { AppleEyeIcon } from '../common/AppleEyeIcon';
+import { MacroQuickGrabPanel } from './MacroQuickGrabPanel';
 import { useCharacter } from '../../context/CharacterContext';
 
 interface SheetPage4FormulaStudioProps {
@@ -72,7 +73,7 @@ export const SheetPage4FormulaStudio: React.FC<SheetPage4FormulaStudioProps> = (
   );
   const [copiedRecipe, setCopiedRecipe] = useState<string | null>(null);
   const [scratchpadText, setScratchpadText] = useState(
-    `# Valerius Combat Notes & Macaroni Vocabulary
+    `# Example Macaroni Vocabulary
 - Primary Strike: [d20 + #BAB + #STR] & [1d12 + round(#STR * 1.5)] "slashing"
 - Sustained Buff: MageArmor:|<^{7:2}+4>|$
 - Build Planner: What should I make for this game>>#AI$
@@ -505,6 +506,16 @@ export const SheetPage4FormulaStudio: React.FC<SheetPage4FormulaStudioProps> = (
           </span>
         </div>
       </div>
+
+      {/* Macro Quick-Grab Panel (Moved here from Page 1 per UI cleanup spec) */}
+      <MacroQuickGrabPanel
+        character={character}
+        derived={ctx.derived}
+        theme={theme}
+        fontClass={fontClass}
+        onRollFormula={onRollFormula}
+        onSelectToken={(token) => setTestExpression((prev) => (prev ? `${prev} + ${token}` : token))}
+      />
 
       {/* Tab 2: UI Make Styler (<TAG"">) */}
       {activeTab === 'ui_styler' && (

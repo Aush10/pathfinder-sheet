@@ -61,6 +61,16 @@ export function buildFormulaContext(
   const wis_mod = derivedCombatStats?.wisMod ?? Math.floor((wisScore - 10) / 2);
   const cha_mod = derivedCombatStats?.chaMod ?? Math.floor((chaScore - 10) / 2);
 
+  const hdCount = character.hpBreakdown?.hitDiceCount ?? character.level ?? 0;
+  const hdSize = character.hpBreakdown?.hitDiceSize ?? 0;
+  const hdMathMax = hdCount * hdSize;
+  const hdBonusVal = character.hpBreakdown?.hdBonus ?? 0;
+  const additionalHpSum = (character.hpBreakdown?.additionalBonuses || []).reduce(
+    (acc, b) => acc + (b.amount || 0),
+    0
+  );
+  const bhpVal = (character.hpBreakdown?.staticBonus ?? 0) + additionalHpSum + (derivedCombatStats?.hpBreakdownDetails?.buffHpBonus ?? 0);
+
   const context: Record<string, any> = {
     // Standard variables
     level: character.level,
@@ -68,6 +78,13 @@ export function buildFormulaContext(
     bab: character.baseAttackBonus,
     cl: character.casterLevel,
     casterlevel: character.casterLevel,
+
+    // Vitals & HP DSL placeholders (HDmath assumes max HP every level per spec)
+    hdmath: hdMathMax,
+    hdbonus: hdBonusVal,
+    bhp: bhpVal,
+    hd_size: hdSize,
+    hd_count: hdCount,
 
     // Ability modifiers (primary in PF1e check, attack, and damage math)
     str: str_mod,
@@ -144,15 +161,17 @@ export function buildFormulaContext(
     cp: character.currency?.cp || 0,
   };
 
-  // Mirror all keys in uppercase, and with # and @ prefixes
+  // Mirror all keys in uppercase, and with #, @, and << prefixes
   const initialKeys = Object.keys(context);
   for (const k of initialKeys) {
     const val = context[k];
     context[`#${k}`] = val;
     context[`@${k}`] = val;
+    context[`<<${k}`] = val;
     context[k.toUpperCase()] = val;
     context[`#${k.toUpperCase()}`] = val;
     context[`@${k.toUpperCase()}`] = val;
+    context[`<<${k.toUpperCase()}`] = val;
   }
 
   // Populate skills bonus: e.g. perception, #perception, stealth, #stealth
@@ -438,7 +457,8 @@ function solvePureMath(expr: string): number {
  * Simplifies a single non-string chunk (math, dice, and DC formulas)
  */
 function simplifyMathAndDiceSegment(expr: string, context: Record<string, any>): string {
-  let text = expr.trim();
+  // Normalize square brackets used in Macaroni expressions (e.g. [1d8+#STR] or [[[[<<HDmath + #CON] + <<HDbonus] + <<BhP])
+  let text = expr.replace(/[\[\]]/g, ' ').trim();
   if (!text) return '';
 
   // DC formula: DC or DC+#CON or DC+CON (10 + 1/2 level + mod)

@@ -33,6 +33,7 @@ import { QuickHPBar } from './components/tools/QuickHPBar';
 import { StepperTool } from './components/tools/StepperTool';
 import { DeckTool } from './components/tools/DeckTool';
 import { XDXTool } from './components/tools/XDXTool';
+import { MacroDebugTool } from './components/tools/MacroDebugTool';
 import { LoadoutModal } from './components/tools/LoadoutModal';
 import { AddClassModal } from './components/tools/AddClassModal';
 import { CMBTool } from './components/tools/CMBTool';
@@ -68,6 +69,7 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
   // Tool & Modal Visibility State
   const [isDiceOpen, setIsDiceOpen] = useState(false);
   const [dicePresetFormula, setDicePresetFormula] = useState<string>('1d20+7');
+  const [diceRollId, setDiceRollId] = useState(0);
   const [isPointBuyOpen, setIsPointBuyOpen] = useState(false);
   const [isQuickHPOpen, setIsQuickHPOpen] = useState(false);
   const [isBuffBoxOpen, setIsBuffBoxOpen] = useState(false);
@@ -75,6 +77,7 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
   const [isStepperOpen, setIsStepperOpen] = useState(false);
   const [isDeckOpen, setIsDeckOpen] = useState(false);
   const [isXDXOpen, setIsXDXOpen] = useState(false);
+  const [isMacroDebugOpen, setIsMacroDebugOpen] = useState(false);
   const [isLoadoutOpen, setIsLoadoutOpen] = useState(false);
   const [isAddClassOpen, setIsAddClassOpen] = useState(false);
   const [isCMBtOpen, setIsCMBtOpen] = useState(false);
@@ -170,6 +173,7 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
 
   const handleRollFormula = (formula: string) => {
     setDicePresetFormula(formula);
+    setDiceRollId((n) => n + 1);
     setIsDiceOpen(true);
   };
 
@@ -217,7 +221,7 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
 
   return (
     <div
-      className={`min-h-screen flex flex-col font-sans ${
+      className={`min-h-screen flex flex-col font-sans transition-colors duration-200 ${getCanvasBgClass()} ${
         layout.theme === 'blueprint' || layout.theme === 'mythweavers' ? 'dark' : ''
       }`}
     >
@@ -240,17 +244,16 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
       </div>
 
       {/* Main Workspace Body */}
-      <div className="no-print print:hidden flex-1 flex overflow-hidden">
+      <div className="no-print print:hidden flex-1 flex items-stretch overflow-hidden">
         {!isSidebarCollapsed && (
           <BlueprintSidebar
             onOpenPointBuy={() => setIsPointBuyOpen(true)}
             onOpenDiceRoller={() => setIsDiceOpen(true)}
-            onOpenQuickHP={() => setIsQuickHPOpen(true)}
             onOpenBuffBox={() => setIsBuffBoxOpen(true)}
             onOpenConditions={() => setIsConditionsOpen((prev) => !prev)}
-            onOpenStepper={() => setIsStepperOpen(true)}
             onOpenDeck={() => setIsDeckOpen(true)}
             onOpenXDX={() => setIsXDXOpen(true)}
+            onOpenMacroDebug={() => setIsMacroDebugOpen(true)}
             onOpenLoadout={() => setIsLoadoutOpen(true)}
             onOpenAddClass={() => setIsAddClassOpen(true)}
             onOpenCMBt={() => setIsCMBtOpen(true)}
@@ -279,7 +282,7 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
 
         {/* Center / Main Canvas Viewport */}
         <main
-          className={`flex-1 overflow-y-auto p-4 md:p-8 transition-colors duration-200 ${getCanvasBgClass()}`}
+          className={`flex-1 min-w-0 overflow-y-auto p-4 md:p-8 transition-colors duration-200 ${getCanvasBgClass()}`}
         >
           <div className="max-w-6xl mx-auto space-y-6">
             {isConditionsOpen && (
@@ -302,16 +305,13 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
                     fontClass={fontClass}
                     onRollFormula={handleRollFormula}
                     onOpenCMBt={() => setIsCMBtOpen(true)}
+                    onOpenAddClass={() => setIsAddClassOpen(true)}
                     onOpenNewSheet={() => setIsNewSheetOpen(true)}
                     onOpenImageBrowser={handleOpenImageBrowser}
                   />
                 </section>
 
                 <section className="border-b border-black/10 dark:border-white/10 pb-8">
-                  <div className="mb-3 flex items-center justify-between text-xs font-mono opacity-60 uppercase font-bold">
-                    <span>Page 2: Actions & Skills</span>
-                    <span>Action Command Center, Resource Pools & Skills Matrix</span>
-                  </div>
                   <SheetPage2ActionsSkills
                     fontClass={fontClass}
                     onRollFormula={handleRollFormula}
@@ -336,6 +336,7 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
                     fontClass={fontClass}
                     onRollFormula={handleRollFormula}
                     onOpenCMBt={() => setIsCMBtOpen(true)}
+                    onOpenAddClass={() => setIsAddClassOpen(true)}
                     onOpenNewSheet={() => setIsNewSheetOpen(true)}
                     onOpenImageBrowser={handleOpenImageBrowser}
                   />
@@ -372,6 +373,7 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
         isOpen={isDiceOpen}
         onClose={() => setIsDiceOpen(false)}
         presetFormula={dicePresetFormula}
+        rollId={diceRollId}
       />
 
       <PointBuyModal
@@ -413,6 +415,11 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
       <XDXTool
         isOpen={isXDXOpen}
         onClose={() => setIsXDXOpen(false)}
+      />
+
+      <MacroDebugTool
+        isOpen={isMacroDebugOpen}
+        onClose={() => setIsMacroDebugOpen(false)}
       />
 
       <LoadoutModal

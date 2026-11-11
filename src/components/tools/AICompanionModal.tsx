@@ -245,7 +245,7 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
       return 'journal_settings';
     }
     if (tab === 'macro' || tab === 'buff_maker') {
-      return 'macro';
+      return 'permissions';
     }
     if (tab === 'fields') {
       return 'fields';
@@ -1163,7 +1163,6 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
             { id: 'permissions', label: '1. Module Permissions & Blind Spots', icon: Settings },
             { id: 'lookup_sot', label: '2. Lookups & SOT Catalogue', icon: Globe },
             { id: 'journal_settings', label: '3. Journal & Sketch Settings', icon: BookOpen },
-            { id: 'macro', label: '4. Plain Text to Macro', icon: Terminal },
             { id: 'fields', label: '5. Broad Sheet Authority', icon: Sliders },
           ].map((tab) => {
             const Icon = tab.icon;
@@ -1878,7 +1877,7 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
                             onChange={(e) => setPageIsOverride(e.target.checked)}
                             className="rounded accent-emerald-500"
                           />
-                          <span>Active SOT Authority (Supersedes Online SRD)</span>
+                          <span>Active</span>
                         </label>
                       </div>
 

@@ -84,6 +84,11 @@ export interface HpBreakdown {
   hitDiceSize: number; // e.g. 10 for d10
   hitDiceRolledBase: number; // base HP from HD
   additionalBonuses: AdditionalHpBonus[];
+  abilityBonus?: number; // editable ability bonus override/addition in Vitals macro area
+  hdBonus?: number; // editable HD bonus in Vitals macro area
+  staticBonus?: number; // editable static bonus (BhP) in Vitals macro area
+  customMacro?: string; // player-editable HP macro expression
+  isCustomMacroManual?: boolean; // true when player directly edited the HP macro
 }
 
 export interface SavingThrow {
@@ -99,6 +104,9 @@ export interface WeaponAttack {
   name: string;
   category: 'Melee' | 'Ranged';
   attackModOverride?: number; // optional manual override
+  attackBonus?: number; // Weapon attack bonus slot (e.g. +1 enhancement / masterwork)
+  damageBonus?: number; // Weapon damage amount bonus slot
+  attackFormula?: string; // e.g. "[1d20+#MATTACK]" — freeform attack macro
   damageFormula: string; // e.g. "1d8+4" or custom formula reference "{firebreath}"
   critical: string; // e.g. "19-20/x2"
   range: string; // e.g. "50 ft" or "Melee"
@@ -537,9 +545,11 @@ export interface RollupNotesData {
 export interface CharacterClassEntry {
   id: string;
   name: string;
+  archetype?: string;
   level: number;
   hitDie: number; // 6, 8, 10, 12
   skillPointsPerLevel: number; // 2, 4, 6, 8
+  skillPointsMacro?: string; // e.g. "2 + INT"
   babProgression: 'full' | 'threeQuarter' | 'half';
   isFavoredClass: boolean;
 }
@@ -603,6 +613,7 @@ export interface PF1Character {
 
   // Initiative & Speed
   initMiscMod: number;
+  initMacro?: string;
   speedBase: number;
   speedClimb: number;
   speedSwim: number;
@@ -615,8 +626,10 @@ export interface PF1Character {
   deflectionMod: number;
   dodgeMod: number;
   acMiscMod: number;
+  acMiscMacro?: string;
   cmbMiscMod?: number;
   cmdMiscMod?: number;
+  cmdManualOverride?: number;
   cmdAbilityChoice?: 'STR' | 'DEX' | 'BOTH';
 
   // Saves

@@ -152,10 +152,7 @@ OFFENSE
 --------------------------------------------------------------------------------
 Speed ${character.speedBase} ft., fly ${character.speedFly} ft. (${character.flyManeuverability})
 Melee ${character.weapons
-      .map(
-        (w) =>
-          `${w.name} +${character.baseAttackBonus + derived.strMod} (${w.damageFormula} / ${w.critical})`
-      )
+      .map((w) => `${w.name} ${w.attackFormula || '[1d20+#MATTACK]'} (${w.damageFormula})`)
       .join(', ')}
 Base Atk +${character.baseAttackBonus}; CMB +${derived.cmbTotal}; CMD ${derived.cmdTotal}
 --------------------------------------------------------------------------------

@@ -1,0 +1,89 @@
+Attached Element Context from Integrated Browser
+
+Element: span.text-[10px].px-2.py-0.5.rounded.bg-amber-500/15.border.border-amber-500/30.text-amber-400.font-bold.cursor-help
+
+URL: http://localhost:3000/
+
+HTML Path: div#root > div.min-h-screen.flex.flex-col.font-sans.dark > div.no-print.print:hidden.flex-1.flex.overflow-hidden > main.flex-1.overflow-y-auto.p-4.md:p-8.transition-colors.duration-200.bg-[#08121f].text-cyan-50.bg-[radial-gradient(#1e3a5f_1px,transparent_1px)].[background-size:24px_24px] > div.max-w-6xl.mx-auto.space-y-6 > div > div.space-y-4.font-serif.text-[13px].leading-relaxed.transition-colors.duration-200 > div.grid.grid-cols-1.lg:grid-cols-12.gap-4 > div.lg:col-span-6.space-y-4 > div.border.rounded-lg.p-3.5.bg-slate-900/90.border-cyan-500/40.text-cyan-50.space-y-3 > div.grid.grid-cols-1.sm:grid-cols-2.gap-2.5.font-mono.text-xs > div.p-2.5.rounded.bg-black/5.dark:bg-white/5.border.border-black/10.dark:border-white/10.flex.flex-col.justify-between.w-full > div.grid.grid-cols-3.items-center.my-1.5 > div.flex.justify-center > span.text-[10px].px-2.py-0.5.rounded.bg-amber-500/15.border.border-amber-500/30.text-amber-400.font-bold.cursor-help
+
+Outer HTML:
+```html
+<span class="text-[10px] px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-amber-400 font-bold cursor-help">#CMB</span>
+```
+
+Dimensions:
+- top: 325px
+- left: 434px
+- width: 40px
+- height: 19px
+
+CSS:
+```css
+*, ::after, ::before, ::backdrop, ::file-selector-button { box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    border: 0 solid; }
+.cursor-help { cursor: help; }
+.rounded { border-radius: 0.25rem; }
+.border { border-style: var(--tw-border-style);
+    border-width: 1px; }
+.border-amber-500\/30 { border-color: color-mix(in srgb, oklch(76.9% 0.188 70.08) 30%, transparent); }
+ { border-color: color-mix(in oklab, var(--color-amber-500) 30%, transparent); }
+.bg-amber-500\/15 { background-color: color-mix(in srgb, oklch(76.9% 0.188 70.08) 15%, transparent); }
+ { background-color: color-mix(in oklab, var(--color-amber-500) 15%, transparent); }
+.px-2 { padding-inline: calc(var(--spacing) * 2); }
+.py-0\.5 { padding-block: calc(var(--spacing) * 0.5); }
+.text-\[10px\] { font-size: 10px; }
+.font-bold { --tw-font-weight: var(--font-weight-bold);
+    font-weight: var(--font-weight-bold); }
+.text-amber-400 { color: var(--color-amber-400); }
+
+/* Inherited */
+.font-mono { font-family: var(--font-mono) }
+.text-xs { font-size: var(--text-xs); line-height: var(--tw-leading, var(--text-xs--line-height)) }
+.text-cyan-50 { color: var(--color-cyan-50) }
+.font-serif { font-family: var(--font-serif) }
+.text-\[13px\] { font-size: 13px }
+.leading-relaxed { line-height: var(--leading-relaxed) }
+.font-sans { font-family: var(--font-sans) }
+html, :host { line-height: 1.5; tab-size: 4; font-family: var(--default-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"); font-feature-settings: var(--default-font-feature-settings, normal) }
+
+/* Resolved values */
+margin: 0px;
+padding: 2px 8px;
+border-radius: 4px;
+border: 0.8px solid oklab(0.769 0.0640531 0.176752 / 0.3);
+background-color: oklab(0.769 0.0640531 0.176752 / 0.15);
+box-sizing: border-box;
+color: oklch(0.828 0.189 84.429);
+cursor: help;
+display: block;
+font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+font-feature-settings: normal;
+font-size: 10px;
+font-weight: 700;
+height: 18.925px;
+line-height: 13.3333px;
+tab-size: 4;
+width: 39.6px;
+
+/* CSS variables */
+--color-amber-400: oklch(82.8% 0.189 84.429);
+--font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+      "Courier New", monospace;
+--font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+      "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",
+      "Segoe UI Symbol", "Noto Color Emoji";
+--font-weight-bold: 700;
+--text-xs--line-height: calc(1 / 0.75);
+--default-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+      "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",
+      "Segoe UI Symbol", "Noto Color Emoji";
+--color-cyan-50: oklch(98.4% 0.019 200.873);
+--leading-relaxed: 1.625;
+--color-amber-500: oklch(76.9% 0.188 70.08);
+--spacing: 0.25rem;
+--tw-border-style: solid;
+--text-xs: 0.75rem;
+--font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+```

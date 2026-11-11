@@ -236,31 +236,8 @@ export const AddClassModal: React.FC<AddClassModalProps> = ({
     return fullClassDoc?.id || '';
   });
 
-  // Existing class grids or defaults
-  const classGrids = character.customClassGrids || {
-    class1: {
-      id: 'class1',
-      className: 'Cavalier',
-      level: 12,
-      hitDie: 10,
-      skillPointsPerLevel: 4,
-      proficiencies: 'All simple & martial weapons, light, medium, and heavy armor, shields (except tower shields).',
-      starterKitName: "Cavalier's Kit",
-      rawText: CAVALIER_DEFAULT_RAW,
-      rows: parseClassProgressionGrid(CAVALIER_DEFAULT_RAW),
-    },
-    class2: {
-      id: 'class2',
-      className: 'Wizard',
-      level: 1,
-      hitDie: 6,
-      skillPointsPerLevel: 2,
-      proficiencies: 'Club, dagger, heavy/light crossbow, quarterstaff.',
-      starterKitName: "Scholar's Kit",
-      rawText: WIZARD_DEFAULT_RAW,
-      rows: parseClassProgressionGrid(WIZARD_DEFAULT_RAW),
-    },
-  };
+  // Existing class grids (empty by default on a blank character sheet)
+  const classGrids: Record<string, CustomClassGrid> = character.customClassGrids || {};
 
   const [activeClassId, setActiveClassId] = useState<string>('class1');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -270,22 +247,11 @@ export const AddClassModal: React.FC<AddClassModalProps> = ({
     mode: 'standard',
     useFractionalBab: false,
     useFractionalSaves: false,
-    levels: Array.from({ length: Math.max(1, character.level) }, (_, idx) => {
-      const lvl = idx + 1;
-      return {
-        level: lvl,
-        primaryClassId: 'class1',
-        primaryClassLevel: lvl,
-        isGestalt: false,
-        gestaltClassId: 'class2',
-        gestaltClassLevel: lvl,
-        favoredClassBonus: 'hp',
-      };
-    }),
+    levels: [],
     archetypes: [],
     variantMulticlassing: {
       enabled: false,
-      secondaryClass: 'Wizard',
+      secondaryClass: '',
     },
     thirdPartySupport: {
       pathOfWarEnabled: false,
@@ -302,11 +268,11 @@ export const AddClassModal: React.FC<AddClassModalProps> = ({
 
   const currentClass: CustomClassGrid = classGrids[activeClassId] || {
     id: activeClassId,
-    className: 'New Class',
-    level: 1,
-    hitDie: 10,
-    skillPointsPerLevel: 2,
-    proficiencies: 'Simple and martial weapons, all armor.',
+    className: '',
+    level: 0,
+    hitDie: 0,
+    skillPointsPerLevel: 0,
+    proficiencies: '',
     rawText: '',
     rows: [],
   };

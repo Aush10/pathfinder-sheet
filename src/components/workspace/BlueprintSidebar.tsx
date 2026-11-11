@@ -4,7 +4,6 @@ import {
   Type,
   LayoutGrid,
   Calculator,
-  Heart,
   Shield,
   Code,
   FileSpreadsheet,
@@ -15,7 +14,6 @@ import {
   Check,
   ChevronDown,
   Sparkles,
-  Clock,
   Layers,
   Terminal,
   Package,
@@ -27,6 +25,7 @@ import {
   FileCode,
   BookOpen,
   Cpu,
+  Bug,
 } from 'lucide-react';
 import { ThemeMode, SheetFont, WorkspaceLayout, PF1Character } from '../../types/character';
 import { GLYPH_STYLE_OPTIONS, getGlyphUrl, type GlyphStyle } from '../../data/glyphs';
@@ -39,12 +38,11 @@ interface BlueprintSidebarProps {
   character?: PF1Character;
   onOpenPointBuy: () => void;
   onOpenDiceRoller?: () => void;
-  onOpenQuickHP: () => void;
   onOpenBuffBox: () => void;
   onOpenConditions: () => void;
-  onOpenStepper: () => void;
   onOpenDeck: () => void;
   onOpenXDX: () => void;
+  onOpenMacroDebug?: () => void;
   onOpenLoadout: () => void;
   onOpenAddClass: () => void;
   onOpenCMBt: () => void;
@@ -67,12 +65,11 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
   character: propCharacter,
   onOpenPointBuy,
   onOpenDiceRoller,
-  onOpenQuickHP,
   onOpenBuffBox,
   onOpenConditions,
-  onOpenStepper,
   onOpenDeck,
   onOpenXDX,
+  onOpenMacroDebug,
   onOpenLoadout,
   onOpenAddClass,
   onOpenCMBt,
@@ -97,39 +94,9 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
   const onImportJSON = propOnImportJSON ?? ctx.importJSON;
   const onExportCSV = propOnExportCSV ?? ctx.exportCSV;
   const activeGlyphStyle: GlyphStyle = layout.glyphStyle ?? '01-flat-enamel';
-  const toggleModule = (key: keyof WorkspaceLayout['visibleModules']) => {
-    onUpdateLayout({
-      visibleModules: {
-        ...layout.visibleModules,
-        [key]: !layout.visibleModules[key],
-      },
-    });
-  };
-
-  const moduleItems: Array<{
-    key: keyof WorkspaceLayout['visibleModules'];
-    label: string;
-    sheet: 1 | 2 | 3 | 4;
-  }> = [
-    { key: 'weapons', label: 'Weapons & Attacks Matrix', sheet: 1 },
-    { key: 'armor', label: 'Armor & Defensive Gear', sheet: 1 },
-    { key: 'feats', label: 'Feats & Special Abilities', sheet: 1 },
-    { key: 'skills', label: 'Skills Matrix (35 PF1e Skills)', sheet: 2 },
-    { key: 'inventory', label: 'Inventory & Gear List', sheet: 2 },
-    { key: 'currency', label: 'Currency & Total Wealth', sheet: 2 },
-    { key: 'languages', label: 'Languages Known', sheet: 2 },
-    { key: 'spellMatrix', label: 'Spell Saves & Slots (0-9th)', sheet: 3 },
-    { key: 'spellbook', label: 'Spells Known & Prepared', sheet: 3 },
-    { key: 'conditions', label: 'Conditions & Debuffs Checklist', sheet: 3 },
-    { key: 'biography', label: 'Character Bio, Traits & Flaws', sheet: 3 },
-    { key: 'profile', label: 'Profile Portrait & Titled Blocks', sheet: 3 },
-    { key: 'notes', label: 'Roll-Up Notes & Scratchpad', sheet: 3 },
-    { key: 'formulaStudio', label: 'Custom Formula Objects (DSL)', sheet: 4 },
-    { key: 'statblock', label: 'Monster/NPC Statblock Generator', sheet: 3 },
-  ];
 
   return (
-    <aside className="w-80 shrink-0 bg-slate-900/95 border-r border-cyan-500/30 text-slate-200 flex flex-col h-full shadow-2xl overflow-y-auto select-none print:hidden">
+    <aside className="w-80 shrink-0 self-stretch bg-slate-900/95 border-r border-cyan-500/30 text-slate-200 flex flex-col min-h-full shadow-2xl overflow-y-auto select-none print:hidden">
       {/* Top Section: Layout, Color & Font */}
       <div className="p-4 border-b border-cyan-500/20 bg-slate-950/70">
         <div className="flex items-center justify-between mb-3">
@@ -303,77 +270,10 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
         </div>
       </div>
 
-      {/* Middle Section: Modules Available */}
+      {/* Middle & Bottom Section: Toolbox moved into the former Modules Available area */}
       <div className="p-4 flex-1 overflow-y-auto space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="text-xs font-mono uppercase tracking-wider font-bold text-cyan-300">
-            Modules Available
-          </div>
-          <span className="text-[10px] text-slate-500 font-mono">
-            Click to toggle / dock
-          </span>
-        </div>
-        <p className="text-[11px] text-slate-400 leading-tight">
-          Fill spaces and eliminate unused sections. Active modules populate the layout space.
-        </p>
-
-        <div className="space-y-1.5 pt-1">
-          {moduleItems.map((mod) => {
-            const isVisible = layout.visibleModules[mod.key];
-            return (
-              <div
-                key={mod.key}
-                onClick={() => toggleModule(mod.key)}
-                className={`p-2 rounded-lg border text-xs cursor-pointer flex items-center justify-between transition-all ${
-                  isVisible
-                    ? 'bg-slate-950/80 border-cyan-500/40 text-cyan-100 hover:border-cyan-400'
-                    : 'bg-slate-950/30 border-slate-800 text-slate-500 hover:border-slate-700'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <div
-                    className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center transition-colors ${
-                      isVisible
-                        ? 'bg-cyan-500 border-cyan-400 text-slate-950'
-                        : 'border-slate-700 bg-slate-900'
-                    }`}
-                  >
-                    {isVisible && <Check className="w-2.5 h-2.5 stroke-[3]" />}
-                  </div>
-                  <span className={`font-medium ${isVisible ? 'text-slate-200' : 'text-slate-500'}`}>
-                    {mod.label}
-                  </span>
-                </div>
-                <span className="text-[10px] font-mono text-slate-600">P{mod.sheet}</span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Bottom Section: Various Tools (Wireframe Match) */}
-      <div className="p-4 border-t border-cyan-500/30 bg-slate-950/90 space-y-3">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-mono uppercase tracking-wider font-bold text-cyan-300">
-            Various Tools
-          </span>
-          <span className="text-[10px] font-mono text-slate-500">Live Calculators</span>
-        </div>
-
         {/* Tools grid */}
         <div className="grid grid-cols-2 gap-2">
-          {/* Stepper (Turn-based macro execution) */}
-          <button
-            onClick={onOpenStepper}
-            className="p-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-amber-500/50 text-left transition-colors flex items-center gap-2"
-          >
-            <Clock className="w-4 h-4 text-amber-400 shrink-0" />
-            <div className="min-w-0">
-              <div className="text-xs font-semibold text-slate-200 truncate">Stepper</div>
-              <div className="text-[10px] font-mono text-amber-400/80">Turn Macros</div>
-            </div>
-          </button>
-
           {/* Deck (Card deck simulator) */}
           <button
             onClick={onOpenDeck}
@@ -398,6 +298,20 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
             </div>
           </button>
 
+          {onOpenMacroDebug && (
+            <button
+              onClick={onOpenMacroDebug}
+              className="p-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-cyan-500/50 text-left transition-colors flex items-center gap-2"
+              title="Trace macro inputs, evaluated output, and potential sheet mutations"
+            >
+              <Bug className="w-4 h-4 text-cyan-400 shrink-0" />
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-slate-200 truncate">Trace</div>
+                <div className="text-[10px] font-mono text-cyan-400/80">Debug Flow</div>
+              </div>
+            </button>
+          )}
+
           <button
             onClick={onOpenPointBuy}
             className="p-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-amber-500/50 text-left transition-colors flex items-center gap-2"
@@ -407,23 +321,6 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
               <div className="text-xs font-semibold text-slate-200 truncate">Point Buy</div>
               <div className="text-[10px] font-mono text-amber-400/80">Cost & Limits</div>
             </div>
-          </button>
-
-          <button
-            onClick={onOpenQuickHP}
-            className="p-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-rose-500/50 text-left transition-colors flex items-center justify-between col-span-2"
-            title="HP Tracker: Adjust current HP, non-lethal damage, and temporary HP"
-          >
-            <div className="flex items-center gap-2 min-w-0">
-              <Heart className="w-4 h-4 text-rose-500 shrink-0" />
-              <div>
-                <div className="text-xs font-semibold text-slate-200">HP Tracker</div>
-                <div className="text-[10px] font-mono text-rose-400/80">Quick Adjust & Healing</div>
-              </div>
-            </div>
-            <span className="text-xs font-mono font-bold text-rose-300 px-2 py-0.5 rounded bg-rose-950/60 border border-rose-500/30">
-              {character.hpCurrent}/{character.hpTotalMax} HP
-            </span>
           </button>
 
           <button

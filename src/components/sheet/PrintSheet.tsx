@@ -367,21 +367,16 @@ export const PrintSheet: React.FC<PrintSheetProps> = ({
               <thead>
                 <tr className="border-b border-stone-300 font-mono text-[10px] uppercase text-stone-600">
                   <th className="py-1 pr-2">Weapon</th>
-                  <th className="py-1 px-2">Category</th>
-                  <th className="py-1 px-2">Attack Bonus (Fixed &amp; Dice)</th>
-                  <th className="py-1 px-2">Damage (Fixed &amp; Dice)</th>
-                  <th className="py-1 px-2">Critical</th>
-                  <th className="py-1 pl-2">Range / Type</th>
+                  <th className="py-1 px-2">Attack Macro</th>
+                  <th className="py-1 pl-2">Damage Macro</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-200">
                 {weapons.map((w) => {
-                  const baseAtkBonus =
-                    w.category === 'Ranged'
-                      ? derived.rangedAttackBonusTotal
-                      : derived.meleeAttackBonusTotal;
-                  const atkSigned = baseAtkBonus >= 0 ? `+${baseAtkBonus}` : `${baseAtkBonus}`;
-                  const atkDice = `1d20 ${baseAtkBonus >= 0 ? `+ ${baseAtkBonus}` : `- ${Math.abs(baseAtkBonus)}`}`;
+                  const atkMacro =
+                    w.attackFormula ||
+                    (w.category === 'Ranged' ? '[1d20+#RATTACK]' : '[1d20+#MATTACK]');
+                  const atkFormatted = formatStaticFormulaDisplay(atkMacro, formulaContext);
                   const dmgFormatted = formatStaticFormulaDisplay(
                     w.damageFormula,
                     formulaContext
@@ -390,22 +385,21 @@ export const PrintSheet: React.FC<PrintSheetProps> = ({
                   return (
                     <tr key={w.id}>
                       <td className="py-1.5 pr-2 font-bold">{w.name}</td>
-                      <td className="py-1.5 px-2 font-mono text-[11px]">{w.category}</td>
                       <td className="py-1.5 px-2 font-mono">
-                        <span className="font-bold">{atkSigned} to hit</span>{' '}
-                        <span className="text-[10px] text-stone-600">({atkDice})</span>
+                        <span className="font-bold">{atkFormatted.fixedSummary}</span>{' '}
+                        {atkFormatted.diceExpr && (
+                          <span className="text-[10px] text-stone-600">
+                            {atkFormatted.diceExpr}
+                          </span>
+                        )}
                       </td>
-                      <td className="py-1.5 px-2 font-mono">
+                      <td className="py-1.5 pl-2 font-mono">
                         <span className="font-bold">{dmgFormatted.fixedSummary}</span>{' '}
                         {dmgFormatted.diceExpr && (
                           <span className="text-[10px] text-stone-600">
                             {dmgFormatted.diceExpr}
                           </span>
                         )}
-                      </td>
-                      <td className="py-1.5 px-2 font-mono text-[11px]">{w.critical}</td>
-                      <td className="py-1.5 pl-2 text-[11px]">
-                        {w.range} • {w.damageType}
                       </td>
                     </tr>
                   );

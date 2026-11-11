@@ -16,7 +16,6 @@ import {
   Minus,
   Edit3,
   Check,
-  Info,
   ArrowUpDown,
   Filter,
 } from 'lucide-react';
@@ -154,6 +153,16 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
     onUpdateCharacter((prev) => ({ ...prev, [key]: value }));
   };
 
+  const updateSkillPointsConfig = (updates: Partial<SkillPointsConfig>) => {
+    onUpdateCharacter((prev) => ({
+      ...prev,
+      skillPointsConfig: {
+        ...prev.skillPointsConfig,
+        ...updates,
+      },
+    }));
+  };
+
   // =========================================================================
   // SKILL POINTS & MATRIX LOGIC
   // =========================================================================
@@ -167,8 +176,8 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
         list.push({
           id: grid.id,
           name: grid.className || grid.id,
-          level: grid.level || character.level,
-          spPerLevel: grid.skillPointsPerLevel || 2,
+          level: grid.level ?? character.level ?? 0,
+          spPerLevel: grid.skillPointsPerLevel ?? 0,
         });
       });
     }
@@ -177,8 +186,8 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
         list.push({
           id: c.id,
           name: c.name,
-          level: c.level,
-          spPerLevel: c.skillPointsPerLevel || 2,
+          level: c.level ?? 0,
+          spPerLevel: c.skillPointsPerLevel ?? 0,
         });
       });
     }
@@ -186,8 +195,8 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
       list.push({
         id: 'class1',
         name: character.characterClass || 'Class 1',
-        level: character.level || 1,
-        spPerLevel: character.classSkillPointsPerLevel || 2,
+        level: character.level ?? 0,
+        spPerLevel: character.classSkillPointsPerLevel ?? 0,
       });
     }
     return list;
@@ -205,6 +214,7 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
   const totalCalculatedSp = useMemo(() => {
     let total = 0;
     classesList.forEach((cls) => {
+      if ((cls.level ?? 0) <= 0) return;
       const spRate = spConfig.classSpOverrides?.[cls.id] ?? cls.spPerLevel;
       const perLvl = Math.max(1, spRate + effectiveIntMod + extraPerLvl);
       total += perLvl * cls.level;
@@ -768,15 +778,6 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
     });
   }, [character.characterFeats]);
 
-  const expectedOddLevels = useMemo(() => {
-    const odds: number[] = [];
-    const maxLvl = Math.max(1, Math.min(20, character.level || 1));
-    for (let l = 1; l <= maxLvl; l += 2) {
-      odds.push(l);
-    }
-    return odds;
-  }, [character.level]);
-
   const openAddFeatModal = () => {
     setEditingFeatId(null);
     setNewFeatName('');
@@ -941,29 +942,6 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
 
   return (
     <div className={`space-y-6 ${fontClass}`}>
-      {/* Top Banner Notice */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 py-3 rounded-xl bg-slate-900 border border-slate-800 text-slate-200">
-        <div className="flex items-center gap-2.5">
-          <Zap className="w-5 h-5 text-amber-400 shrink-0" />
-          <div>
-            <span className="font-bold text-amber-300 text-sm">
-              Unified Action &amp; Class Resource Directory + Skills Matrix
-            </span>
-            <p className="text-xs text-slate-400">
-              All combat actions, class resource pools, daily uses, and odd-level feats organized in one command center.
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-mono text-amber-300 bg-amber-950/60 px-2 py-1 rounded border border-amber-800/60">
-            Odd Feats (Lvl {character.level}): {expectedOddLevels.join(', ')}
-          </span>
-          <span className="text-xs font-mono text-cyan-300 bg-cyan-950/60 px-2 py-1 rounded border border-cyan-800">
-            SP Remaining: {spRemaining} / {totalAvailableSp}
-          </span>
-        </div>
-      </div>
-
       {/* Main Two-Column Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* ========================================================================= */}
@@ -1004,11 +982,33 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
                     </div>
                     <div className="bg-black/5 dark:bg-white/5 p-1 rounded">
                       <span className="opacity-60 block">Extra/Lvl</span>
-                      <span className="font-bold">+{extraPerLvl}</span>
+                      <input
+                        type="number"
+                        step="1"
+                        value={extraPerLvl}
+                        onChange={(e) =>
+                          updateSkillPointsConfig({
+                            extraPerLevel: parseInt(e.target.value, 10) || 0,
+                          })
+                        }
+                        aria-label="Extra skill points per level"
+                        className={`w-full min-w-0 rounded border px-1 text-center font-bold ${inputStyle}`}
+                      />
                     </div>
                     <div className="bg-black/5 dark:bg-white/5 p-1 rounded">
                       <span className="opacity-60 block">Flat Bonus</span>
-                      <span className="font-bold">+{flatBonus}</span>
+                      <input
+                        type="number"
+                        step="1"
+                        value={flatBonus}
+                        onChange={(e) =>
+                          updateSkillPointsConfig({
+                            bonusFlat: parseInt(e.target.value, 10) || 0,
+                          })
+                        }
+                        aria-label="Flat skill point bonus"
+                        className={`w-full min-w-0 rounded border px-1 text-center font-bold ${inputStyle}`}
+                      />
                     </div>
                   </div>
                 </div>
@@ -1046,7 +1046,7 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
               </div>
 
               {/* Skills Table List */}
-              <div className="mt-3 max-h-[700px] overflow-y-auto space-y-1 pr-1 font-mono text-xs">
+              <div className="pf1-blue-scrollbar mt-3 max-h-[700px] overflow-y-auto space-y-1 pr-1 font-mono text-xs">
                 <div className="grid grid-cols-12 gap-1 px-2 py-1 text-[10px] font-bold opacity-60 uppercase border-b border-black/10 dark:border-white/10">
                   <span className="col-span-1 text-center">CS</span>
                   <span className="col-span-5">Skill Name</span>
@@ -1154,27 +1154,17 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
         )}
 
         {/* ========================================================================= */}
-        {/* RIGHT COLUMN: Unified Action & Class Resource Directory + Odd-Level Feats */}
+        {/* RIGHT COLUMN: Actions & Resource Pools + Feats */}
         {/* ========================================================================= */}
         <div className={`${visibleModules.skills !== false ? 'lg:col-span-7' : 'lg:col-span-12'} space-y-6`}>
           {/* UNIFIED MODULE: Action & Class Resource Directory */}
           <div className={`rounded-xl border p-4 ${cardBg} space-y-3.5`}>
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-2.5 border-b border-black/10 dark:border-white/10">
+            <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-black/10 dark:border-white/10">
               <div className="flex items-center gap-2">
                 <Swords className="w-5 h-5 text-amber-500 shrink-0" />
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-serif font-bold text-base tracking-wide">
-                      Action &amp; Class Resource Directory
-                    </h3>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-300 font-bold">
-                      {unifiedActions.length} Total • {activePoolCount} Resource Pools
-                    </span>
-                  </div>
-                  <p className="text-[11px] opacity-70">
-                    Unified command directory for class abilities, daily resource pools (#SMITE, #RAGE), spells, and combat actions.
-                  </p>
-                </div>
+                <h3 className="font-serif font-bold text-base tracking-wide">
+                  Actions &amp; Resource Pools
+                </h3>
               </div>
 
               <div className="flex items-center gap-1.5 shrink-0">
@@ -1195,7 +1185,7 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
                   className="px-3 py-1 text-xs font-bold rounded-lg bg-amber-600 hover:bg-amber-500 text-slate-950 flex items-center gap-1 transition-colors shadow-sm"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>+ Add Action / Resource</span>
+                  <span>Add Action or Resource</span>
                 </button>
               </div>
             </div>
@@ -1286,7 +1276,7 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
             </div>
 
             {/* Unified Action & Class Resource Cards List */}
-            <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
+            <div className="pf1-blue-scrollbar space-y-2 max-h-[380px] overflow-y-auto pr-1">
               {filteredActions.map((act) => {
                 const isSelected = act.id === selectedAction?.id;
                 const hasPool = Boolean(act.hasResourcePool);
@@ -1445,20 +1435,14 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
 
               {filteredActions.length === 0 && (
                 <div className="text-center py-6 text-xs opacity-60 font-mono">
-                  No actions or class resources match your current filter. Click &quot;+ Add Action / Resource&quot; to create one.
+                  No actions or class resources match your current filter. Click &quot;Add Action or Resource&quot; to create one.
                 </div>
               )}
             </div>
 
             {/* Embedded Selected Action & Resource Inspector */}
             <div className="pt-3 border-t border-black/15 dark:border-white/15">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-1.5">
-                  <Info className="w-4 h-4 text-cyan-500" />
-                  <span className="font-bold text-xs uppercase tracking-wider text-cyan-700 dark:text-cyan-300 font-mono">
-                    Selected Action &amp; Resource Inspector
-                  </span>
-                </div>
+              <div className="flex items-center justify-end mb-2">
                 {selectedAction && (
                   <div className="flex items-center gap-1.5">
                     <button
@@ -1555,20 +1539,23 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
                   <BookOpen className="w-5 h-5 text-amber-500 shrink-0" />
                   <div>
                     <div className="flex items-center gap-2">
-                      <h3 className="font-serif font-bold text-base tracking-wide">
-                        Feats &amp; Special Qualities
-                      </h3>
+                      <h3 className="font-serif font-bold text-base tracking-wide">Feats</h3>
                       <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-300 font-bold">
                         {characterFeats.length} Feats
                       </span>
                     </div>
-                    <p className="text-[11px] opacity-70">
-                      Automatically generates a feat slot at every odd character level (1, 3, 5, 7, 9, 11, 13, 15, 17, 19). Add, edit, or delete freely.
-                    </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1.5 shrink-0">
+                <div className="flex flex-col items-end gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={openAddFeatModal}
+                    className="px-2.5 py-1 text-xs font-bold rounded-lg bg-amber-600 hover:bg-amber-500 text-slate-950 flex items-center gap-1 transition-colors shadow-sm"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Feat</span>
+                  </button>
                   <button
                     type="button"
                     onClick={handleForceSyncOddFeats}
@@ -1576,15 +1563,7 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
                     title="Ensure every odd level up to your current level has a feat slot"
                   >
                     <RefreshCw className="w-3 h-3" />
-                    <span>Sync Odd-Level Slots</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={openAddFeatModal}
-                    className="px-2.5 py-1 text-xs font-bold rounded-lg bg-amber-600 hover:bg-amber-500 text-slate-950 flex items-center gap-1 transition-colors shadow-sm"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>+ Add Feat</span>
+                    <span>Sync Feats</span>
                   </button>
                 </div>
               </div>
@@ -1656,7 +1635,7 @@ export const SheetPage2ActionsSkills: React.FC<SheetPage2ActionsSkillsProps> = (
 
                 {characterFeats.length === 0 && (
                   <div className="col-span-2 text-center py-6 text-xs opacity-50 font-mono">
-                    No feats listed. Click &quot;Sync Odd-Level Slots&quot; or &quot;+ Add Feat&quot; to add feats.
+                    No feats listed. Click &quot;Sync Feats&quot; or &quot;Add Feat&quot; to add feats.
                   </div>
                 )}
               </div>

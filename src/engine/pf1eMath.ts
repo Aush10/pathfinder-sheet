@@ -35,6 +35,7 @@ export const POINT_BUY_PRESETS = [
 ];
 
 export function getPointBuyCost(score: number): number {
+  if (score <= 0) return 0;
   const clamped = Math.max(6, Math.min(18, score));
   return POINT_BUY_COST_TABLE[clamped] ?? 0;
 }
@@ -43,7 +44,7 @@ export function calculateTotalPointBuy(character: PF1Character): number {
   let total = 0;
   const abilities: AbilityName[] = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
   for (const ab of abilities) {
-    const base = character?.abilities?.[ab]?.base ?? 10;
+    const base = character?.abilities?.[ab]?.base ?? 0;
     total += getPointBuyCost(base);
   }
   return total;
@@ -384,17 +385,35 @@ export function computeDerivedCharacterStats(character: PF1Character): DerivedCo
   const buffProjection = resolveBuffProjection(character.buffBox, character.customBuffs);
   const buffTotals = buffProjection.totals;
 
-  // Ability totals: Base (6-18) + RaceMod + LevelAsiMod + BuffBox + EnhMod + MiscMod + TempMod - ConditionPenalty
+  // Ability totals: Base (0 or 6-18) + RaceMod + LevelAsiMod + BuffBox + EnhMod + MiscMod + TempMod - ConditionPenalty
   const getScore = (name: AbilityName, penalty: number = 0) => {
     const ab = character?.abilities?.[name];
-    if (!ab) return 10;
+    if (!ab) return 0;
     const statKey = name.toLowerCase() as import('../types/character').BuffStatTarget;
     const buffStat = buffTotals[statKey] || 0;
     const levelAsi = ab.levelAsiMod || 0;
-    return Math.max(
-      1,
-      (ab.base ?? 10) + (ab.raceMod ?? 0) + levelAsi + buffStat + (ab.enhMod ?? 0) + (ab.miscMod ?? 0) + (ab.tempMod ?? 0) - penalty
-    );
+    const rawSum =
+      (ab.base ?? 0) +
+      (ab.raceMod ?? 0) +
+      levelAsi +
+      buffStat +
+      (ab.enhMod ?? 0) +
+      (ab.miscMod ?? 0) +
+      (ab.tempMod ?? 0) -
+      penalty;
+    if (
+      (ab.base ?? 0) === 0 &&
+      (ab.raceMod ?? 0) === 0 &&
+      levelAsi === 0 &&
+      buffStat === 0 &&
+      (ab.enhMod ?? 0) === 0 &&
+      (ab.miscMod ?? 0) === 0 &&
+      (ab.tempMod ?? 0) === 0 &&
+      penalty === 0
+    ) {
+      return 0;
+    }
+    return Math.max(1, rawSum);
   };
 
   const strTotal = getScore('STR', cond.strPenalty);
@@ -404,13 +423,14 @@ export function computeDerivedCharacterStats(character: PF1Character): DerivedCo
   const wisTotal = getScore('WIS', 0);
   const chaTotal = getScore('CHA', 0);
 
-  // Base Score-Derived Mod: floor((score - 10) / 2)
-  const baseStrMod = Math.floor((strTotal - 10) / 2);
-  const baseDexMod = Math.floor((dexTotal - 10) / 2);
-  const baseConMod = Math.floor((conTotal - 10) / 2);
-  const baseIntMod = Math.floor((intTotal - 10) / 2);
-  const baseWisMod = Math.floor((wisTotal - 10) / 2);
-  const baseChaMod = Math.floor((chaTotal - 10) / 2);
+  // Base Score-Derived Mod: floor((score - 10) / 2), or 0 when score is 0 (blank sheet)
+  const calcBaseMod = (score: number) => (score === 0 ? 0 : Math.floor((score - 10) / 2));
+  const baseStrMod = calcBaseMod(strTotal);
+  const baseDexMod = calcBaseMod(dexTotal);
+  const baseConMod = calcBaseMod(conTotal);
+  const baseIntMod = calcBaseMod(intTotal);
+  const baseWisMod = calcBaseMod(wisTotal);
+  const baseChaMod = calcBaseMod(chaTotal);
 
   // Direct Mod Adj (User specification: direct mod bonuses not calculated with total score + Buff Box Mod ADJ)
   const strDirectMod = (character?.abilities?.STR?.directMod || 0) + (buffTotals['str_mod'] || 0);
@@ -460,10 +480,29 @@ export function computeDerivedCharacterStats(character: PF1Character): DerivedCo
   // User Specification 1:
   // "AC: ac is ac bonus + Dex asb + 10 + miscellaneous other bonuses"
   // "Flat footed is the same without the dex bonus and touch is the same without the armor bonus"
-  const totalArmorBonus = armorBonusTotal + shieldBonusTotal + (character?.naturalArmorMod || 0);
+  // Include armor/shield/natural-armor from the Buff Box in totalArmorBonus so Armor Bonus and Touch/Flat-Footed AC stay accurate
+  const buffArmorAndNat =
+    (Number(character?.buffBox?.['Armor']?.ac) || 0) +
+    (Number(character?.buffBox?.['Shield']?.ac) || 0) +
+    (Number(character?.buffBox?.['NAT armor']?.ac) || 0);
+  const buffMiscAcOnly = buffTotals.ac - buffArmorAndNat;
+  const totalArmorBonus =
+    armorBonusTotal + shieldBonusTotal + (character?.naturalArmorMod || 0) + buffArmorAndNat;
   // Dodge bonuses are kept for Touch AC but denied when Flat-Footed (matches user prompt: armor 5, dex +2, misc +2 (dodge) -> AC 19, Touch 14, FF 15)
-  const totalAcMiscBonus = (character?.deflectionMod || 0) + dodgeBonus + (character?.acMiscMod || 0) + buffTotals.ac - cond.acPenalty + sizeMod;
-  const flatFootedMiscBonus = (character?.deflectionMod || 0) + (character?.acMiscMod || 0) + buffTotals.ac - cond.acPenalty + sizeMod;
+  const totalAcMiscBonus =
+    (character?.deflectionMod || 0) +
+    dodgeBonus +
+    (character?.acMiscMod || 0) +
+    buffMiscAcOnly -
+    cond.acPenalty +
+    sizeMod;
+  const flatFootedMiscBonus =
+    (character?.deflectionMod || 0) +
+    (character?.acMiscMod || 0) +
+    buffMiscAcOnly -
+    (Number(character?.buffBox?.['Dodge']?.ac) || 0) -
+    cond.acPenalty +
+    sizeMod;
 
   const acTotal = 10 + totalArmorBonus + effectiveDexModForAC + totalAcMiscBonus;
   const touchAC = 10 + effectiveDexModForAC + totalAcMiscBonus;
@@ -533,7 +572,8 @@ export function computeDerivedCharacterStats(character: PF1Character): DerivedCo
 
   const cmdChoice = character?.cmdAbilityChoice || 'STR';
   const cmdAbilityMod = cmdChoice === 'DEX' ? dexMod : cmdChoice === 'BOTH' ? (strMod + dexMod) : strMod;
-  const cmdTotal = 10 + bab + cmdAbilityMod + sizeBonusForMacro + cmdMisc + buffTotals.ac - cond.acPenalty;
+  const calculatedCmdTotal = 10 + bab + cmdAbilityMod + sizeBonusForMacro + cmdMisc + buffTotals.ac - cond.acPenalty;
+  const cmdTotal = character?.cmdManualOverride !== undefined ? character.cmdManualOverride : calculatedCmdTotal;
   const cmdStrTotal = 10 + bab + strMod + sizeBonusForMacro + cmdMisc + buffTotals.ac - cond.acPenalty;
   const cmdDexTotal = 10 + bab + dexMod + sizeBonusForMacro + cmdMisc + buffTotals.ac - cond.acPenalty;
   const cmdFlatFooted = 10 + bab + strMod + sizeBonusForMacro + cmdMisc + buffTotals.ac - cond.acPenalty;
@@ -541,30 +581,38 @@ export function computeDerivedCharacterStats(character: PF1Character): DerivedCo
   // HP Breakdown Calculation:
   // [Total/Current HP] [THP] (#HD d Size + ConBonus(con_asb * level) + Additional Bonuses "Source")
   const calcMethod = character?.hpBreakdown?.calcMethod || 'average';
-  const charLevel = character?.level || 1;
-  const hdCount = character?.hpBreakdown?.hitDiceCount || charLevel;
-  const dieSize = character?.hpBreakdown?.hitDiceSize || 10;
+  const charLevel = character?.level ?? 0;
+  const hdCount = character?.hpBreakdown?.hitDiceCount ?? charLevel;
+  const dieSize = character?.hpBreakdown?.hitDiceSize ?? 0;
 
   let baseHitDiceHP = 0;
-  if (calcMethod === 'average') {
-    // Level 1 gets max dieSize. Subsequent levels get (dieSize / 2) + 1.
-    const subsequentAverage = Math.floor(dieSize / 2) + 1;
-    baseHitDiceHP = hdCount <= 1 ? dieSize : dieSize + (hdCount - 1) * subsequentAverage;
-  } else if (calcMethod === 'max') {
-    baseHitDiceHP = hdCount * dieSize;
-  } else {
-    // 'rolled' or manual custom roll
-    baseHitDiceHP = character?.hpBreakdown?.hitDiceRolledBase || (dieSize + (hdCount - 1) * Math.floor(dieSize / 2));
+  if (hdCount > 0 && dieSize > 0) {
+    if (calcMethod === 'average') {
+      // Level 1 gets max dieSize. Subsequent levels get (dieSize / 2) + 1.
+      const subsequentAverage = Math.floor(dieSize / 2) + 1;
+      baseHitDiceHP = hdCount <= 1 ? dieSize : dieSize + (hdCount - 1) * subsequentAverage;
+    } else if (calcMethod === 'max') {
+      baseHitDiceHP = hdCount * dieSize;
+    } else {
+      // 'rolled' or manual custom roll
+      baseHitDiceHP = character?.hpBreakdown?.hitDiceRolledBase || (dieSize + (hdCount - 1) * Math.floor(dieSize / 2));
+    }
+  } else if (calcMethod === 'rolled' && character?.hpBreakdown?.hitDiceRolledBase) {
+    baseHitDiceHP = character.hpBreakdown.hitDiceRolledBase;
   }
 
-  const conHpBonus = conMod * charLevel;
+  const effectiveAbilityModForHp = character?.hpBreakdown?.abilityBonus !== undefined ? character.hpBreakdown.abilityBonus : conMod;
+  const conHpBonus = effectiveAbilityModForHp * Math.max(charLevel, hdCount);
+  const hdBonusExtra = character?.hpBreakdown?.hdBonus ?? 0;
+  const staticBonusExtra = character?.hpBreakdown?.staticBonus ?? 0;
   const additionalBonusesSum = (character?.hpBreakdown?.additionalBonuses || []).reduce(
     (acc, b) => acc + (b.amount || 0),
     0
   );
   const buffHpBonus = buffTotals.hp;
-  const calculatedTotalMaxHP = Math.max(1, baseHitDiceHP + conHpBonus + additionalBonusesSum + buffHpBonus);
-  const totalHpBonus = conHpBonus + additionalBonusesSum + buffHpBonus;
+  const rawMaxHP = baseHitDiceHP + conHpBonus + hdBonusExtra + staticBonusExtra + additionalBonusesSum + buffHpBonus;
+  const calculatedTotalMaxHP = hdCount <= 0 && dieSize <= 0 && rawMaxHP <= 0 ? 0 : Math.max(1, rawMaxHP);
+  const totalHpBonus = conHpBonus + hdBonusExtra + staticBonusExtra + additionalBonusesSum + buffHpBonus;
   const formulaNotation = `${calculatedTotalMaxHP} HP (${hdCount}d${dieSize}${totalHpBonus >= 0 ? `+${totalHpBonus}` : totalHpBonus}) ${calcMethod}`;
 
   // Skill Points calculation (Multistalt, Extra/Lvl, Bonus, and Manual Override)
@@ -581,12 +629,14 @@ export function computeDerivedCharacterStats(character: PF1Character): DerivedCo
         spConfig?.classSpOverrides?.[cls.id] ??
         cls.skillPointsPerLevel ??
         character.classSkillPointsPerLevel ??
-        2;
+        0;
       const lvl = cls.level || 0;
-      totalFromClasses += Math.max(1, spBase + effectiveIntMod) * lvl;
+      if (lvl > 0) {
+        totalFromClasses += Math.max(1, spBase + effectiveIntMod) * lvl;
+      }
     });
-  } else {
-    const basePerLevel = character?.classSkillPointsPerLevel ?? 2;
+  } else if (charLevel > 0) {
+    const basePerLevel = character?.classSkillPointsPerLevel ?? 0;
     totalFromClasses = Math.max(1, basePerLevel + effectiveIntMod) * charLevel;
   }
 

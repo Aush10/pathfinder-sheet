@@ -1,50 +1,94 @@
-import { GoogleGenAI } from '@google/genai';
-
-export const GEMINI_MODELS_TO_TRY = [
-  process.env.GEMINI_MODEL,
-  'gemini-2.5-flash',
-  'gemini-3.8-flash',
-  'gemini-3.1-flash-lite',
-  'gemini-flash-latest',
+export const OPENAI_MODELS_TO_TRY = [
+  process.env.OPENAI_MODEL,
+  'gpt-4o-mini',
+  'gpt-4o',
 ].filter((m): m is string => Boolean(m && m.trim()));
 
-export function getAIClient(): GoogleGenAI | null {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return null;
-  return new GoogleGenAI({
-    apiKey,
-    httpOptions: {
-      headers: {
-        'User-Agent': 'aistudio-build',
-      },
-    },
-  });
+export function getAIClient(): string | null {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  return apiKey || null;
+}
+
+type OpenAIChatResponse = {
+  choices?: Array<{
+    message?: {
+      content?: string | Array<{ type?: string; text?: string }>;
+    };
+  }>;
+  error?: { message?: string };
+};
+
+function extractText(data: OpenAIChatResponse): string {
+  const content = data.choices?.[0]?.message?.content;
+  if (typeof content === 'string') return content.trim();
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => (typeof part?.text === 'string' ? part.text : ''))
+      .join('')
+      .trim();
+  }
+  return '';
 }
 
 export async function generateContentWithFallback(
-  ai: GoogleGenAI,
+  apiKey: string,
   params: { contents: string; config?: Record<string, any> },
-) {
+): Promise<{ text: string }> {
+  const systemInstruction =
+    typeof params.config?.systemInstruction === 'string'
+      ? params.config.systemInstruction
+      : '';
+  const wantsJson = params.config?.responseMimeType === 'application/json';
+
+  const messages: Array<{ role: 'system' | 'user'; content: string }> = [];
+  if (systemInstruction) {
+    messages.push({ role: 'system', content: systemInstruction });
+  }
+  messages.push({ role: 'user', content: params.contents });
+
   let lastError: unknown = null;
-  for (const modelName of GEMINI_MODELS_TO_TRY) {
+  for (const modelName of OPENAI_MODELS_TO_TRY) {
     try {
-      const response = await ai.models.generateContent({
+      const body: Record<string, unknown> = {
         model: modelName,
-        contents: params.contents,
-        config: params.config,
-      });
-      if (typeof response.text === 'string' && response.text.trim()) {
-        return response;
+        messages,
+      };
+      if (wantsJson) {
+        body.response_format = { type: 'json_object' };
       }
+
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+
+      const data = (await response.json()) as OpenAIChatResponse;
+      if (!response.ok) {
+        lastError = new Error(
+          data.error?.message || `OpenAI ${modelName} failed (${response.status})`
+        );
+        continue;
+      }
+
+      const text = extractText(data);
+      if (text) {
+        return { text };
+      }
+      lastError = new Error(`OpenAI ${modelName} returned no text.`);
     } catch (err) {
       lastError = err;
     }
   }
-  throw lastError || new Error('All configured Gemini models failed to return text.');
+  throw lastError || new Error('All configured OpenAI models failed to return text.');
 }
 
 export function missingApiKeyResponse() {
   return {
-    error: 'GEMINI_API_KEY is not configured in Settings > Secrets.',
+    error:
+      'OPENAI_API_KEY is not configured. Set it in .env.local or in the hosting environment.',
   };
 }

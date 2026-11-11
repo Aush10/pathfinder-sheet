@@ -148,26 +148,32 @@ export function calculateCareerProgression(
   const useFracBab = careerData?.useFractionalBab || false;
   const useFracSaves = careerData?.useFractionalSaves || false;
   const con = character?.abilities?.CON;
-  const conMod = con ? Math.floor(((con.base || 10) + (con.raceMod || 0) + (con.levelAsiMod || 0) + (con.enhMod || 0) - 10) / 2) : 0;
+  const conScore = con ? (con.base ?? 0) + (con.raceMod || 0) + (con.levelAsiMod || 0) + (con.enhMod || 0) : 0;
+  const conMod = conScore > 0 ? Math.floor((conScore - 10) / 2) : 0;
   const int = character?.abilities?.INT;
-  const intMod = int ? Math.floor(((int.base || 10) + (int.raceMod || 0) + (int.levelAsiMod || 0) + (int.enhMod || 0) - 10) / 2) : 0;
+  const intScore = int ? (int.base ?? 0) + (int.raceMod || 0) + (int.levelAsiMod || 0) + (int.enhMod || 0) : 0;
+  const intMod = intScore > 0 ? Math.floor((intScore - 10) / 2) : 0;
 
-  // If no career levels exist yet, construct default career levels from character.level
-  const charLevel = Math.max(1, character?.level || 1);
-  const levels: CareerLevelEntry[] = (careerData && careerData.levels && careerData.levels.length > 0)
-    ? careerData.levels
-    : Array.from({ length: charLevel }, (_, idx) => {
-        const lvl = idx + 1;
-        return {
-          level: lvl,
-          primaryClassId: 'class1',
-          primaryClassLevel: lvl,
-          isGestalt: isGestaltMode,
-          gestaltClassId: isGestaltMode ? 'class2' : undefined,
-          gestaltClassLevel: isGestaltMode ? lvl : undefined,
-          favoredClassBonus: lvl === 1 ? 'hp' : 'hp',
-        };
-      });
+  // Use careerData.levels if present; only synthesize fallback levels when a class grid and non-zero character level exist
+  const charLevel = Math.max(0, character?.level ?? 0);
+  const hasAnyClassGrid = Object.keys(customGrids).length > 0;
+  const levels: CareerLevelEntry[] =
+    careerData && Array.isArray(careerData.levels) && careerData.levels.length > 0
+      ? careerData.levels
+      : charLevel > 0 && hasAnyClassGrid
+        ? Array.from({ length: charLevel }, (_, idx) => {
+            const lvl = idx + 1;
+            return {
+              level: lvl,
+              primaryClassId: 'class1',
+              primaryClassLevel: lvl,
+              isGestalt: isGestaltMode,
+              gestaltClassId: isGestaltMode ? 'class2' : undefined,
+              gestaltClassLevel: isGestaltMode ? lvl : undefined,
+              favoredClassBonus: 'hp',
+            };
+          })
+        : [];
 
   const levelBreakdown: CalculatedCareerResult['levelBreakdown'] = [];
   const classCountMap: Record<string, number> = {};
@@ -461,16 +467,23 @@ export function calculateCareerProgression(
 
   // Build Hit Dice summary string (e.g. "8d10 + 4d6" or "12d10 [Gestalt]")
   const hdParts = Object.entries(hitDiceCountMap).map(([hd, count]) => `${count}d${hd}`);
-  const hitDiceString = isGestaltMode ? `${levels.length}d${levelBreakdown[0]?.hitDie || 10} [Gestalt]` : hdParts.join(' + ');
+  const hitDiceString =
+    levels.length === 0
+      ? ''
+      : isGestaltMode
+        ? `${levels.length}d${levelBreakdown[0]?.hitDie || 10} [Gestalt]`
+        : hdParts.join(' + ');
 
   // Build Class summary title (e.g. "Fighter 8 / Wizard 4" or "Cavalier 12 // Dragon Disciple 12")
   let classSummaryTitle = '';
-  if (isGestaltMode) {
-    const pNames = Object.entries(classCountMap).map(([k, v]) => `${k} ${v}`).join(' / ');
-    const gNames = Object.entries(gestaltClassCountMap).map(([k, v]) => `${k} ${v}`).join(' / ');
-    classSummaryTitle = `${pNames} // ${gNames}`;
-  } else {
-    classSummaryTitle = Object.entries(classCountMap).map(([k, v]) => `${k} ${v}`).join(' / ');
+  if (levels.length > 0) {
+    if (isGestaltMode) {
+      const pNames = Object.entries(classCountMap).map(([k, v]) => `${k} ${v}`).join(' / ');
+      const gNames = Object.entries(gestaltClassCountMap).map(([k, v]) => `${k} ${v}`).join(' / ');
+      classSummaryTitle = `${pNames} // ${gNames}`;
+    } else {
+      classSummaryTitle = Object.entries(classCountMap).map(([k, v]) => `${k} ${v}`).join(' / ');
+    }
   }
 
   // Iterative attack string for BAB (e.g. +12/+7/+2)
