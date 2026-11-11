@@ -192,6 +192,11 @@ export function parseClassProgressionGrid(raw: string): ClassGridRow[] {
   return rows.sort((a, b) => a.level - b.level);
 }
 
+function classGridLabel(grid: CustomClassGrid | undefined, fallback: string): string {
+  const name = grid?.className?.trim() || fallback;
+  return grid?.unused ? `${name} (unused)` : name;
+}
+
 export const AddClassModal: React.FC<AddClassModalProps> = ({
   isOpen,
   onClose,
@@ -910,7 +915,7 @@ export const AddClassModal: React.FC<AddClassModalProps> = ({
                             >
                               {Object.keys(classGrids).map((cid) => (
                                 <option key={cid} value={cid}>
-                                  {classGrids[cid].className || cid}
+                                  {classGridLabel(classGrids[cid], cid)}
                                 </option>
                               ))}
                             </select>
@@ -926,7 +931,7 @@ export const AddClassModal: React.FC<AddClassModalProps> = ({
                               >
                                 {Object.keys(classGrids).map((cid) => (
                                   <option key={cid} value={cid}>
-                                    // {classGrids[cid].className || cid}
+                                    {classGridLabel(classGrids[cid], cid)}
                                   </option>
                                 ))}
                               </select>
@@ -1005,7 +1010,7 @@ export const AddClassModal: React.FC<AddClassModalProps> = ({
                     }`}
                   >
                     <Swords className="w-3 h-3" />
-                    <span>{c.className || cid}</span>
+                    <span>{classGridLabel(c, cid)}</span>
                   </button>
                 );
               })}
@@ -1408,7 +1413,7 @@ export const AddClassModal: React.FC<AddClassModalProps> = ({
                             >
                               {Object.keys(classGrids).map((cid) => (
                                 <option key={cid} value={cid}>
-                                  {classGrids[cid].className || cid}
+                                  {classGridLabel(classGrids[cid], cid)}
                                 </option>
                               ))}
                             </select>

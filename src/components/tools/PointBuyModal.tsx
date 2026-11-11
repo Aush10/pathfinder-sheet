@@ -46,7 +46,8 @@ export const PointBuyModal: React.FC<PointBuyModalProps> = ({
     CHA: character.abilities.CHA.levelAsiMod || 0,
   });
 
-  const [targetPool, setTargetPool] = useState<number>(20); // Default High Fantasy (20)
+  const [targetPool, setTargetPool] = useState<number>(character.pointBuyBudget ?? 20);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
 
   // Total point buy calculation: 6=-5, 7=-4, 8=-2, 9=-1, 10=0, 11=1, 12=2, 13=3, 14=5, 15=7, 16=10, 17=13, 18=17
   const totalSpent = abilities.reduce((sum, ab) => sum + getPointBuyCost(baseScores[ab]), 0);
@@ -78,7 +79,24 @@ export const PointBuyModal: React.FC<PointBuyModalProps> = ({
     setAsiScores({ STR: 0, DEX: 0, CON: 0, INT: 0, WIS: 0, CHA: 0 });
   };
 
+  const persistBudget = (points: number) => {
+    setTargetPool(points);
+    setSaveNotice(null);
+    ctx.updateCharacter((prev) => ({ ...prev, pointBuyBudget: points }));
+  };
+
   const handleSave = () => {
+    if (remaining < 0) {
+      setSaveNotice(`This array costs ${totalSpent} and the selected budget is ${targetPool}. It was not saved.`);
+      return;
+    }
+    if (totalAsiSpent > totalAsiAllowed) {
+      setSaveNotice(
+        `Level increases total ${totalAsiSpent}, and level ${character.level} allows ${totalAsiAllowed}. Ability scores were not saved.`
+      );
+      return;
+    }
+    ctx.updateCharacter((prev) => ({ ...prev, pointBuyBudget: targetPool }));
     onApplyBaseScores({ bases: baseScores, asi: asiScores });
     onClose();
   };
@@ -114,7 +132,7 @@ export const PointBuyModal: React.FC<PointBuyModalProps> = ({
               {POINT_BUY_PRESETS.map((p) => (
                 <button
                   key={p.points}
-                  onClick={() => setTargetPool(p.points)}
+                  onClick={() => persistBudget(p.points)}
                   className={`px-2.5 py-1 rounded text-xs font-mono transition-all border ${
                     targetPool === p.points
                       ? 'bg-amber-600/30 border-amber-500 text-amber-200 font-bold'
@@ -281,6 +299,9 @@ export const PointBuyModal: React.FC<PointBuyModalProps> = ({
 
         {/* Footer actions */}
         <div className="px-5 py-3.5 bg-slate-950/90 border-t border-slate-800 flex items-center justify-between shrink-0">
+          {saveNotice && (
+            <p className="text-[11px] text-rose-300 max-w-[55%] leading-snug">{saveNotice}</p>
+          )}
           <button
             onClick={handleReset}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-slate-400 hover:text-slate-200 transition-colors"

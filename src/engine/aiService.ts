@@ -22,6 +22,15 @@ import {
   AbilityName,
 } from '../types/character';
 import { generateProceduralPencilSketch } from './sketchRenderer';
+import {
+  applyAbilityWrite,
+  applySkillWrite,
+  applyStructuredSheetUpdates,
+  extractStatedPointBuyBudget,
+  playerAskedToRandomizeAbilities,
+  syncSharedClassState,
+  type SheetWriteContext,
+} from './sheetFieldWrites';
 
 // Legacy no-op helpers kept for backward compatibility with existing module imports
 export function getSessionApiKey(): string {
@@ -1251,13 +1260,17 @@ export interface SheetModificationAction {
   details: string;
   isBlockedByBlindSpot?: boolean;
   blindSpotLabel?: string;
+  isRejected?: boolean;
+  questions?: string[];
+  missingSotRequest?: { title: string; category: string; reason?: string } | null;
   apply: (prev: PF1Character) => PF1Character;
 }
 
 export function parseNaturalLanguageSheetUpdates(
   instruction: string,
   character: PF1Character,
-  permissions: AIModuleSettings['allowedFields']
+  permissions: AIModuleSettings['allowedFields'],
+  context?: SheetWriteContext
 ): SheetModificationAction[] {
   const actions: SheetModificationAction[] = [];
   const text = instruction.toLowerCase();
@@ -1290,6 +1303,108 @@ export function parseNaturalLanguageSheetUpdates(
         apply,
       });
     }
+  };
+
+  const classContext = (): SheetWriteContext => ({
+    ...context,
+    markClassSkills: isAllowed('skills') && context?.markClassSkills !== false,
+  });
+
+  const pushAbilityAssignment = (input: {
+    scores?: Partial<Record<string, number>>;
+    levelIncreases?: Partial<Record<string, number>>;
+    budget?: number;
+    random?: boolean;
+  }) => {
+    if (!isAllowed('abilities')) {
+      actions.push({
+        category: 'abilities',
+        label: '[AI Blind Spot Blocked] Ability scores',
+        details: 'Ability Scores are currently in the AI\'s Blind Spots (Module Permissions). Enable them to allow this update.',
+        isBlockedByBlindSpot: true,
+        blindSpotLabel: 'Ability Scores',
+        apply: (prev) => prev,
+      });
+      return;
+    }
+    const preview = applyAbilityWrite(character, input, context);
+    if (preview.blockedModule) {
+      actions.push({
+        category: 'abilities',
+        label: `[AI Blind Spot Blocked] ${preview.label}`,
+        details: preview.details,
+        isBlockedByBlindSpot: true,
+        blindSpotLabel: 'Point Buy',
+        apply: (prev) => prev,
+      });
+      return;
+    }
+    if (!preview.saved) {
+      actions.push({
+        category: 'abilities',
+        label: preview.label,
+        details: preview.details,
+        isRejected: true,
+        questions: preview.question ? [preview.question] : undefined,
+        apply: (prev) => prev,
+      });
+      return;
+    }
+    pushActionOrBlindSpot(
+      'abilities',
+      'Ability Scores',
+      preview.label,
+      preview.details,
+      (prev) => {
+        const outcome = applyAbilityWrite(prev, input, context);
+        return outcome.saved ? outcome.character : prev;
+      }
+    );
+  };
+
+  const pushSharedClass = (
+    input: {
+      className?: string;
+      archetype?: string;
+      level?: number;
+      hitDie?: number;
+      classMode?: 'set' | 'add';
+    },
+    category: keyof AIModuleSettings['allowedFields'],
+    blindSpotLabel: string
+  ) => {
+    const ctx = classContext();
+    const preview = syncSharedClassState(character, input, ctx);
+    if (preview.character === character && /was not saved/i.test(preview.summary)) {
+      actions.push({
+        category,
+        label: preview.summary,
+        details: preview.questions.join(' ') || preview.summary,
+        isRejected: true,
+        questions: preview.questions,
+        apply: (prev) => prev,
+      });
+      return;
+    }
+    if (!isAllowed(category)) {
+      actions.push({
+        category,
+        label: `[AI Blind Spot Blocked] ${preview.summary}`,
+        details: `${blindSpotLabel} is currently in the AI's Blind Spots (Module Permissions). Enable it to allow this update.`,
+        isBlockedByBlindSpot: true,
+        blindSpotLabel,
+        apply: (prev) => prev,
+      });
+      return;
+    }
+    actions.push({
+      category,
+      label: preview.summary,
+      details: preview.questions[0] || `Updated the class list, progression grid, level, and hit die together: ${preview.summary}`,
+      questions: preview.questions,
+      missingSotRequest: preview.missingSotRequest,
+      apply: (prev) => syncSharedClassState(prev, input, ctx).character,
+    });
   };
 
   // 1. HP & Vitals modification: e.g. "take 12 damage", "heal 8 hp", "add 10 temp hp"
@@ -1341,44 +1456,19 @@ export function parseNaturalLanguageSheetUpdates(
     const raw = bundleStatsMatch[1];
     const statMatches = Array.from(raw.matchAll(/(STR|DEX|CON|INT|WIS|CHA)\s*[:=]?\s*(\d+)/gi));
     if (statMatches.length > 0) {
-      const summaryList = statMatches.map((m) => `${m[1].toUpperCase()} ${m[2]}`).join(', ');
-      pushActionOrBlindSpot(
-        'abilities',
-        'Ability Scores',
-        `Set Ability Array (${summaryList})`,
-        `Update ability scores to ${summaryList}`,
-        (prev) => {
-          const updated = { ...prev.abilities };
-          for (const m of statMatches) {
-            const ab = m[1].toUpperCase() as AbilityName;
-            const score = parseInt(m[2], 10);
-            if (updated[ab]) {
-              updated[ab] = { ...updated[ab], base: score };
-            }
-          }
-          return { ...prev, abilities: updated };
-        }
-      );
+      const scores: Partial<Record<AbilityName, number>> = {};
+      for (const match of statMatches) {
+        scores[match[1].toUpperCase() as AbilityName] = parseInt(match[2], 10);
+      }
+      pushAbilityAssignment({ scores });
     }
   }
 
   const abilSetMatch = text.match(/(?:set|change)\s+(str|dex|con|int|wis|cha|strength|dexterity|constitution|intelligence|wisdom|charisma)\s+(?:to\s+)?(\d+)/i);
-  if (abilSetMatch) {
+  if (abilSetMatch && !bundleStatsMatch) {
     const rawAb = abilSetMatch[1].toUpperCase().slice(0, 3) as AbilityName;
     const score = parseInt(abilSetMatch[2], 10);
-    pushActionOrBlindSpot(
-      'abilities',
-      'Ability Scores',
-      `Set ${rawAb} Base Score to ${score}`,
-      `Change ${rawAb} base from ${character.abilities[rawAb]?.base ?? 10} to ${score}`,
-      (prev) => ({
-        ...prev,
-        abilities: {
-          ...prev.abilities,
-          [rawAb]: { ...prev.abilities[rawAb], base: score },
-        },
-      })
-    );
+    pushAbilityAssignment({ scores: { [rawAb]: score } });
   }
 
   // 3. Core Identity, Level & XP: e.g. "set name to Ailen Vane", "set race to Elf", "set class to Slayer"
@@ -1414,13 +1504,7 @@ export function parseNaturalLanguageSheetUpdates(
   if (classMatch) {
     const val = classMatch[1].trim();
     if (val) {
-      pushActionOrBlindSpot(
-        'coreIdentity',
-        'Core Identity & Level',
-        `Set Class: ${val}`,
-        `Update character class to "${val}"`,
-        (prev) => ({ ...prev, characterClass: val })
-      );
+      pushSharedClass({ className: val, classMode: 'set' }, 'coreIdentity', 'Core Identity & Level');
     }
   }
 
@@ -1455,22 +1539,10 @@ export function parseNaturalLanguageSheetUpdates(
   const levelSetMatch = text.match(/(?:set\s+level\s+to|level\s+up\s+to)\s+(\d+)/i);
   if (levelSetMatch) {
     const newLvl = Math.max(1, Math.min(20, parseInt(levelSetMatch[1], 10)));
-    pushActionOrBlindSpot(
-      'coreIdentity',
-      'Core Identity & Level',
-      `Set Character Level to ${newLvl}`,
-      `Update character level from ${character.level} to ${newLvl} (triggers odd-level feat check)`,
-      (prev) => ({ ...prev, level: newLvl })
-    );
+    pushSharedClass({ level: newLvl }, 'coreIdentity', 'Core Identity & Level');
   } else if (text.includes('level up')) {
     const newLvl = Math.min(20, (character.level || 1) + 1);
-    pushActionOrBlindSpot(
-      'coreIdentity',
-      'Core Identity & Level',
-      `Level Up to Level ${newLvl}`,
-      `Advance character level from ${character.level} to ${newLvl}`,
-      (prev) => ({ ...prev, level: newLvl })
-    );
+    pushSharedClass({ level: newLvl }, 'coreIdentity', 'Core Identity & Level');
   }
 
   const xpMatch = text.match(/(?:add|gain|earned)\s+(\d+)\s*xp/i);
@@ -1664,6 +1736,33 @@ export function parseNaturalLanguageSheetUpdates(
             return isMatch ? { ...sk, isClassSkill: true } : sk;
           }),
         })
+      );
+    }
+  }
+
+  const classSkillFlagMatch = instruction.match(
+    /set\s+(.+?)\s+class\s+skill\s+to\s+(true|false|yes|no)\b/i
+  );
+  if (classSkillFlagMatch) {
+    const skillName = classSkillFlagMatch[1].trim();
+    const flag = classSkillFlagMatch[2];
+    const preview = applySkillWrite(character, { skill: skillName, isClassSkill: flag });
+    if (!preview.saved) {
+      actions.push({
+        category: 'skills',
+        label: preview.label,
+        details: preview.details,
+        isRejected: true,
+        questions: preview.question ? [preview.question] : undefined,
+        apply: (prev) => prev,
+      });
+    } else {
+      pushActionOrBlindSpot(
+        'skills',
+        'Skills Matrix',
+        preview.label,
+        preview.details,
+        (prev) => applySkillWrite(prev, { skill: skillName, isClassSkill: flag }).character
       );
     }
   }
@@ -1862,17 +1961,7 @@ export function parseNaturalLanguageSheetUpdates(
   const hdMatch = instruction.match(/set\s+hit\s*die\s+to\s+d?(\d+)/i);
   if (hdMatch) {
     const hd = parseInt(hdMatch[1], 10);
-    pushActionOrBlindSpot(
-      'hp',
-      'HP & Vitals',
-      `Set Hit Die: d${hd}`,
-      `Update class hit die size to d${hd}`,
-      (prev) => ({
-        ...prev,
-        hitDice: `${prev.level || 1}d${hd}`,
-        hpBreakdown: { ...prev.hpBreakdown, hitDiceSize: hd },
-      })
-    );
+    pushSharedClass({ hitDie: hd }, 'hp', 'HP & Vitals');
   }
 
   const maxHpMatch = instruction.match(/set\s+max\s*(?:hp|hit\s*points?)\s+to\s+(\d+)/i);
@@ -2669,6 +2758,123 @@ const ARMOR_PRESETS: Array<{
   { keywords: ['heavy shield', 'steel shield'], name: 'Heavy Steel Shield', ac: 2, maxDex: 99, acp: -2, type: 'Shield' },
 ];
 
+export function runCompleteSheetWrites(params: {
+  character: PF1Character;
+  userPrompt?: string;
+  sheetUpdates?: unknown;
+  textUpdates?: string[];
+  allowRandom?: boolean;
+  statedBudget?: number | null;
+  rng?: () => number;
+}): {
+  character: PF1Character;
+  applied: SheetModificationAction[];
+  blocked: SheetModificationAction[];
+  rejected: SheetModificationAction[];
+  questions: string[];
+  missingSotRequest: { title: string; category: string; reason?: string } | null;
+} {
+  const permissions =
+    params.character.installedModules?.aiSettings?.allowedFields || DEFAULT_AI_MODULE_SETTINGS.allowedFields;
+  const sotPages = params.character.sotCatalogue
+    ? params.character.sotCatalogue.overridePages || []
+    : DEFAULT_SOT_CATALOGUE.overridePages;
+  const context: SheetWriteContext = {
+    statedBudget: params.statedBudget ?? extractStatedPointBuyBudget(params.userPrompt || ''),
+    allowRandom: Boolean(params.allowRandom),
+    allowedModules: params.character.installedModules?.aiSettings?.allowedModules,
+    markClassSkills: (permissions.skills ?? true) !== false,
+    rng: params.rng,
+    sotPages,
+  };
+
+  const structured = applyStructuredSheetUpdates(params.character, params.sheetUpdates, permissions, context);
+  let current = structured.character;
+  const applied: SheetModificationAction[] = structured.appliedLabels.map((label) => ({
+    category: 'notes',
+    label,
+    details: label,
+    apply: (prev) => prev,
+  }));
+  const blocked: SheetModificationAction[] = structured.blocked.map((item) => ({
+    category: 'notes',
+    label: item.label,
+    details: item.details,
+    isBlockedByBlindSpot: true,
+    apply: (prev) => prev,
+  }));
+  const rejected: SheetModificationAction[] = structured.rejected.map((item) => ({
+    category: 'notes',
+    label: item.label,
+    details: item.details,
+    isRejected: true,
+    apply: (prev) => prev,
+  }));
+  const questions = [...structured.questions];
+  let missingSotRequest: { title: string; category: string; reason?: string } | null = structured.missingSotRequest;
+  let abilitySaved = structured.appliedLabels.some((label) => /ability|point buy/i.test(label));
+
+  for (const updateCmd of params.textUpdates || []) {
+    const actions = parseNaturalLanguageSheetUpdates(updateCmd, current, permissions, context);
+    for (const act of actions) {
+      if (act.isBlockedByBlindSpot) {
+        blocked.push(act);
+      } else if (act.isRejected) {
+        rejected.push(act);
+        if (act.questions) questions.push(...act.questions);
+      } else {
+        current = act.apply(current);
+        applied.push(act);
+        if (act.category === 'abilities') abilitySaved = true;
+        if (act.questions) questions.push(...act.questions);
+        if (act.missingSotRequest && !missingSotRequest) missingSotRequest = act.missingSotRequest;
+      }
+    }
+  }
+
+  if (context.allowRandom && !abilitySaved) {
+    const rolled = applyAbilityWrite(current, { random: true }, context);
+    if (rolled.saved) {
+      current = rolled.character;
+      abilitySaved = true;
+      applied.push({
+        category: 'abilities',
+        label: rolled.label,
+        details: rolled.details,
+        apply: (prev) => prev,
+      });
+    } else if (rolled.blockedModule) {
+      blocked.push({
+        category: 'abilities',
+        label: rolled.label,
+        details: rolled.details,
+        isBlockedByBlindSpot: true,
+        blindSpotLabel: 'Point Buy',
+        apply: (prev) => prev,
+      });
+    } else {
+      rejected.push({
+        category: 'abilities',
+        label: rolled.label,
+        details: rolled.details,
+        isRejected: true,
+        questions: rolled.question ? [rolled.question] : undefined,
+        apply: (prev) => prev,
+      });
+      if (rolled.question) questions.push(rolled.question);
+    }
+  }
+
+  return {
+    character: current,
+    applied,
+    blocked,
+    rejected,
+    questions: [...new Set(questions.filter(Boolean))],
+    missingSotRequest,
+  };
+}
+
 export async function completeSheetConverse(
   params: CompleteSheetConverseParams
 ): Promise<CompleteSheetConverseResult> {
@@ -2837,6 +3043,8 @@ Active SOT Weblinks: ${(sot.weblinks || []).filter((w) => w.isActive).map((w) =>
   const parsed = safeParseJson<{
     replyText?: string;
     fieldUpdates?: string[];
+    sheetUpdates?: unknown;
+    questions?: string[];
     missingSotRequest?: { title: string; category: string; reason?: string } | null;
   }>(data.rawText);
 
@@ -2855,27 +3063,24 @@ Active SOT Weblinks: ${(sot.weblinks || []).filter((w) => w.isActive).map((w) =>
     }
   }
 
-  // Apply all valid field updates through Broad Sheet Authority
-  let currentCharacter = { ...character };
-  const appliedActions: SheetModificationAction[] = [];
-  const appliedBadges: string[] = [];
-  const blockedBadges: string[] = [];
-
-  for (const updateCmd of fieldUpdates) {
-    const actions = parseNaturalLanguageSheetUpdates(updateCmd, currentCharacter, permissions);
-    for (const act of actions) {
-      if (act.isBlockedByBlindSpot) {
-        if (!blockedBadges.includes(act.label)) {
-          blockedBadges.push(act.label);
-        }
-      } else {
-        currentCharacter = act.apply(currentCharacter);
-        appliedActions.push(act);
-        if (!appliedBadges.includes(act.label)) {
-          appliedBadges.push(act.label);
-        }
-      }
-    }
+  const writes = runCompleteSheetWrites({
+    character,
+    userPrompt,
+    sheetUpdates: parsed?.sheetUpdates,
+    textUpdates: fieldUpdates,
+    allowRandom: Boolean(isRandomRequested) || playerAskedToRandomizeAbilities(userPrompt),
+    statedBudget: extractStatedPointBuyBudget(userPrompt),
+  });
+  const currentCharacter = writes.character;
+  const appliedActions = writes.applied;
+  const appliedBadges = writes.applied.map((act) => act.label).filter((label, index, all) => all.indexOf(label) === index);
+  const blockedBadges = writes.blocked.map((act) => act.label).filter((label, index, all) => all.indexOf(label) === index);
+  if (!missingSotRequest && writes.missingSotRequest) missingSotRequest = writes.missingSotRequest;
+  const notices = [...writes.questions, ...writes.rejected.map((act) => act.details)];
+  if (Array.isArray(parsed?.questions)) notices.push(...parsed.questions.filter((q): q is string => typeof q === 'string'));
+  const extraNotices = [...new Set(notices.filter(Boolean))].filter((line) => !replyText.includes(line));
+  if (extraNotices.length > 0) {
+    replyText = `${replyText}\n\n${extraNotices.join('\n\n')}`.trim();
   }
 
   const replyMessage: CompleteSheetMessage = {
