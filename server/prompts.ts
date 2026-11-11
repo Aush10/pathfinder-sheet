@@ -55,42 +55,24 @@ STRICT SOURCE OF TRUTH (SOT) FIDELITY — DO NOT MAKE UP RULES:
 RANDOM ASSIGNMENT RESTRICTION:
 - ONLY randomly assign or roll stats/traits/details when the user EXPLICITLY prompts you to do so (e.g. "roll my stats", "give me a random feat", "surprise me with an alignment"). Never randomly reassign stats, classes, or abilities without explicit user permission.
 
-BROAD SHEET AUTHORITY FIELD UPDATES:
-- Along with your conversational response, return an array of "fieldUpdates" strings containing plain-language commands to populate the sheet live.
-- Supported action commands:
-  * "set name to <Name>"
-  * "set race to <Race>"
-  * "set class to <Class>"
-  * "set level to <Number>"
-  * "set alignment to <Alignment>"
-  * "set deity to <Deity>"
-  * "set stats STR <n>, DEX <n>, CON <n>, INT <n>, WIS <n>, CHA <n>" or "set <stat> to <n>"
-  * "set hit die to d<6|8|10|12>"
-  * "set max hp to <n>"
-  * "add feat <Feat Name>: <short summary>"
-  * "add action <Ability Name>: <short summary>"
-  * "add resource <Resource Name> max <n>"
-  * "add spell <Spell Name> level <n>"
-  * "set backstory to <short backstory paragraph>"
-- Note AI Blind Spots: The player has disabled AI authority over the following fields: [${blindSpotsContext || 'None'}]. Do not attempt to force changes on those if disallowed.
-- Only emit field updates for details the player has agreed to, requested, or confirmed.
+BROAD SHEET AUTHORITY — STRUCTURED WRITES:
+- Prefer "sheetUpdates": an array of JSON objects the sheet can apply directly. Do not rely on English "fieldUpdates" for anything the structured objects can express. "fieldUpdates" may still hold a short legacy command, but every authorized change belongs in sheetUpdates.
+- Each object needs "category", one of: coreIdentity, abilities, hp, armorClass, saves, attacksAndWeapons, armorAndGear, actionsAndResources, feats, skills, spellsAndMagic, conditions, inventory, currency, companionsAndMount, bioAndProfile, notes, journal, customFormulas.
+- Skills: set each skill's class-skill checkbox with "isClassSkill": true or false. That boolean is separate from ranks and misc. Also send "ranks" and "miscMod" when the player asked for them. Example: { "category": "skills", "skill": "Perception", "isClassSkill": true, "ranks": 5, "miscMod": 2 }. Never drop isClassSkill or collapse it into ranks.
+- Class, level, and hit die share one record with Add Class: { "category": "coreIdentity", "className": "Slayer", "level": 4, "hitDie": 10, "archetype": "Optional name", "classMode": "set" }. Use "classMode": "add" only when the player is multiclassing. Do not invent a progression table, archetype features, or a hit die. If the class or archetype is missing from SOT, or the saved page has no pasted level grid, still send the class update and set missingSotRequest so the player can paste the SRD. Tell them they can open Add Class or the SRD lookup.
+- Abilities: { "category": "abilities", "scores": { "STR": 16, "DEX": 14, "CON": 14, "INT": 10, "WIS": 12, "CHA": 8 }, "levelIncreases": { "STR": 1 }, "budget": 20 }. Send "budget" only when the player selected or stated one. If they did not, ask which point-buy budget to use and omit the scores. Do not assume 15, 20, or 25. Send "random": true only when the player explicitly asked to roll or randomly assign stats.
+- Other writes use "values" for scalars and "add" / "remove" for list rows. Examples: { "category": "feats", "add": { "name": "Power Attack", "summary": "Trade attack for damage." } }, { "category": "inventory", "add": { "name": "Rope", "quantity": 1 } }, { "category": "hp", "values": { "hpCurrent": 24, "hpTotalMax": 32 } }, { "category": "saves", "values": { "fortitude": { "base": 4 } } }, { "category": "conditions", "values": { "shaken": true } }, { "category": "currency", "values": { "gp": 50 } }, { "category": "journal", "add": { "title": "First watch", "content": "..." } }, { "category": "customFormulas", "add": { "name": "firebreath", "formula": "2d6" } }, { "category": "companionsAndMount", "add": { "name": "Ash", "type": "Mount" } }, { "category": "notes", "appendNote": "Ask about the marsh gate." }, { "category": "bioAndProfile", "values": { "personality": "Gruff, loyal." } }.
+- Blind spots: the player has disabled AI authority over [${blindSpotsContext || 'None'}]. Do not emit sheetUpdates for those categories.
+- Never emit API keys, tokens, passwords, or secret field names.
+- Only emit updates the player has agreed to, requested, or confirmed.
 
 OUTPUT FORMAT (JSON ONLY):
 Return a single valid JSON object with these exact keys:
 {
   "replyText": "Conversational peer reply explaining suggestions, synergies, and choices...",
-  "fieldUpdates": [
-    "set name to ...",
-    "set race to ...",
-    "set class to ...",
-    "set stats STR ..., DEX ..., CON ..., INT ..., WIS ..., CHA ...",
-    "add feat ...",
-    "add action ..."
-  ],
-  "missingSotRequest": null | {
-    "title": "Name of missing feat/archetype",
-    "category": "Archetype" | "Feat" | "Class Ability" | "Spell",
-    "reason": "Short explanation why SOT upload is needed"
-  }
+  "sheetUpdates": [],
+  "fieldUpdates": [],
+  "questions": [],
+  "missingSotRequest": null
 }`;
 }

@@ -1050,7 +1050,7 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
   };
 
   const handleApplyAction = (action: SheetModificationAction) => {
-    if (action.isBlockedByBlindSpot) return;
+    if (action.isBlockedByBlindSpot || action.isRejected) return;
     onUpdateCharacter((prev) => action.apply(prev));
     setProposedActions((prev) => prev.filter((a) => a !== action));
     setActionAppliedNotice(true);
@@ -2730,7 +2730,7 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
                     <div
                       key={idx}
                       className={`p-3 rounded-xl border flex items-center justify-between gap-3 ${
-                        action.isBlockedByBlindSpot
+                        action.isBlockedByBlindSpot || action.isRejected
                           ? 'bg-rose-950/30 border-rose-500/50'
                           : isDark
                           ? 'bg-slate-950 border-cyan-500/30'
@@ -2740,10 +2740,10 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
                       <div>
                         <div
                           className={`text-xs font-mono font-bold flex items-center gap-1.5 ${
-                            action.isBlockedByBlindSpot ? 'text-rose-400' : 'text-amber-500'
+                            action.isBlockedByBlindSpot || action.isRejected ? 'text-rose-400' : 'text-amber-500'
                           }`}
                         >
-                          {action.isBlockedByBlindSpot && <EyeOff className="w-3.5 h-3.5" />}
+                          {(action.isBlockedByBlindSpot || action.isRejected) && <EyeOff className="w-3.5 h-3.5" />}
                           <span>{action.label}</span>
                         </div>
                         <div className="text-xs font-serif opacity-80">{action.details}</div>
@@ -2756,6 +2756,10 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
                         >
                           In Blind Spot (Configure)
                         </button>
+                      ) : action.isRejected ? (
+                        <span className="px-3 py-1.5 rounded text-xs font-mono font-bold bg-rose-950 text-rose-200 shrink-0">
+                          Not saved
+                        </span>
                       ) : (
                         <button
                           onClick={() => handleApplyAction(action)}

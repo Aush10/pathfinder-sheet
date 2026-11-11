@@ -448,6 +448,8 @@ export interface CustomClassGrid {
   rows: ClassGridRow[];
   classSkillsText?: string; // Copy-pasted class skills for Add Kit
   archetypeId?: string; // Active archetype
+  /** True when this saved grid is not in the active class list. It stays on the character. */
+  unused?: boolean;
 }
 
 export interface ArchetypeSwap {
@@ -580,6 +582,11 @@ export interface PF1Character {
 
   // Abilities
   abilities: Record<AbilityName, AbilityScore>;
+  /**
+   * Point-buy budget the player selected or stated.
+   * Absent until they pick one — never filled in with a default.
+   */
+  pointBuyBudget?: number;
 
   // Hit Points & Vitals
   hpTotalMax: number;

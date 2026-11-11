@@ -38,6 +38,7 @@ interface CompleteSheetChatWindowProps {
   character?: PF1Character;
   onUpdateCharacter?: (updater: (prev: PF1Character) => PF1Character) => void;
   onOpenSOTCatalogue?: () => void;
+  onOpenAddClass?: () => void;
   theme?: ThemeMode;
 }
 
@@ -47,6 +48,7 @@ export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = (
   character: propCharacter,
   onUpdateCharacter: propOnUpdateCharacter,
   onOpenSOTCatalogue,
+  onOpenAddClass,
   theme: propTheme,
 }) => {
   const ctx = useCharacter();
@@ -362,12 +364,25 @@ export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = (
             <BookOpen className="w-3 h-3 text-cyan-400" />
             <span>Character: <strong className="text-cyan-200">{character.name || 'Unnamed'}</strong> ({character.race} {character.characterClass} L{character.level})</span>
           </div>
-          <button
-            onClick={onOpenSOTCatalogue}
-            className="text-cyan-400 hover:text-cyan-200 font-mono flex items-center gap-1 text-[10px] underline underline-offset-2"
-          >
-            Manage SOT Catalogue
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {onOpenAddClass && (
+              <button
+                onClick={onOpenAddClass}
+                className="text-cyan-400 hover:text-cyan-200 font-mono flex items-center gap-1 text-[10px] underline underline-offset-2"
+                title="Open Add Class for the pasted progression grid"
+              >
+                Add Class
+              </button>
+            )}
+            <button
+              onClick={onOpenSOTCatalogue}
+              className="text-cyan-400 hover:text-cyan-200 font-mono flex items-center gap-1 text-[10px] underline underline-offset-2"
+              title="Open the Apple-eye SRD lookup"
+            >
+              <AppleEyeIcon className="w-3 h-3" />
+              SRD Lookup
+            </button>
+          </div>
         </div>
       )}
 
@@ -439,19 +454,31 @@ export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = (
                     <p className="text-[10px] text-slate-300">
                       Not found in your active SOT documents. To preserve strict SOT rules without hallucinated mechanics, paste its SRD text below.
                     </p>
-                    <button
-                      onClick={() => {
-                        setQuickSotTitle(msg.missingSotRequest?.title || '');
-                        setQuickSotCategory(
-                          (msg.missingSotRequest?.category as SOTCategory) || 'Archetype'
-                        );
-                        setIsQuickSotOpen(true);
-                      }}
-                      className="px-2 py-1 rounded bg-cyan-600 hover:bg-cyan-500 text-white font-mono text-[10px] flex items-center gap-1 transition-colors"
-                    >
-                      <Plus className="w-3 h-3" />
-                      Quick Upload &quot;{msg.missingSotRequest.title}&quot; SRD
-                    </button>
+                    <div className="flex flex-wrap gap-1.5">
+                      <button
+                        onClick={() => {
+                          setQuickSotTitle(msg.missingSotRequest?.title || '');
+                          setQuickSotCategory(
+                            (msg.missingSotRequest?.category as SOTCategory) || 'Archetype'
+                          );
+                          setIsQuickSotOpen(true);
+                        }}
+                        className="px-2 py-1 rounded bg-cyan-600 hover:bg-cyan-500 text-white font-mono text-[10px] flex items-center gap-1 transition-colors"
+                      >
+                        <Plus className="w-3 h-3" />
+                        Quick Upload &quot;{msg.missingSotRequest.title}&quot; SRD
+                      </button>
+                      {onOpenAddClass &&
+                        (msg.missingSotRequest.category === 'Class' ||
+                          msg.missingSotRequest.category === 'Archetype') && (
+                          <button
+                            onClick={onOpenAddClass}
+                            className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-cyan-200 font-mono text-[10px] transition-colors"
+                          >
+                            Open Add Class
+                          </button>
+                        )}
+                    </div>
                   </div>
                 )}
               </div>

@@ -493,6 +493,7 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
         isOpen={isCompleteSheetOpen}
         onClose={() => setIsCompleteSheetOpen(false)}
         onOpenSOTCatalogue={() => handleOpenAITool('lookup_sot')}
+        onOpenAddClass={() => setIsAddClassOpen(true)}
         theme={layout.theme}
       />
 

@@ -54,6 +54,7 @@ import { normalizeCharacter } from '../storage/characterState';
 import {
   DerivedCombatStats,
   computeDerivedCharacterStats,
+  getPointBuyCost,
 } from './pf1eMath';
 import {
   CalculatedCareerResult,
@@ -400,6 +401,22 @@ export function applyPointBuyToCharacter(
     asi: Record<AbilityName, number>;
   }
 ): PF1Character {
+  const budget = character.pointBuyBudget;
+  if (typeof budget === 'number' && Number.isFinite(budget)) {
+    let spent = 0;
+    let asiSpent = 0;
+    for (const ab of Object.keys(bases) as AbilityName[]) {
+      const score = bases[ab];
+      if (!Number.isInteger(score) || score < 6 || score > 18) return character;
+      spent += getPointBuyCost(score);
+      const increase = asi[ab] || 0;
+      if (!Number.isInteger(increase) || increase < 0) return character;
+      asiSpent += increase;
+    }
+    const asiAllowed = Math.max(0, Math.floor((character.level || 0) / 4));
+    if (spent > budget || asiSpent > asiAllowed) return character;
+  }
+
   const updatedAbilities = { ...character.abilities };
   for (const ab of Object.keys(bases) as AbilityName[]) {
     if (updatedAbilities[ab]) {
