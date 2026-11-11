@@ -80,14 +80,58 @@ import {
 import { evaluateFormula, buildFormulaContext } from '../../engine/formula';
 import { AppleEyeIcon } from '../common/AppleEyeIcon';
 import { useCharacter } from '../../context/CharacterContext';
+import { CompleteSheetChatWindow } from './CompleteSheetChatWindow';
 
-export type AICompanionTab =
-  | 'permissions'
-  | 'lookup_sot'
-  | 'journal_settings'
-  | 'macro'
-  | 'fields';
+export type AICompanionTab = 'permissions' | 'lookup_sot' | 'macro';
 export type MacroDestination = 'copy' | 'dsl_studio' | 'buff_box' | 'stepper';
+
+interface IncidentalLinkRowProps {
+  inc: SOTIncidentalLink;
+  alreadyInSot: boolean;
+  onPromote: () => void;
+}
+
+/** Compact incidental-link row used in the available-links area. */
+const IncidentalLinkRow: React.FC<IncidentalLinkRowProps> = ({
+  inc,
+  alreadyInSot,
+  onPromote,
+}) => (
+  <div className="flex items-center justify-between gap-2 text-[11px] font-mono px-2 py-1 rounded bg-slate-950/80 border border-slate-800 min-w-0 overflow-hidden">
+    <div className="truncate flex items-center gap-2 min-w-0">
+      <span className="font-bold text-slate-200 truncate" title={inc.label}>
+        {inc.label}
+      </span>
+      <span className="text-slate-500 truncate" title={inc.url}>
+        {inc.url}
+      </span>
+      {inc.isWebhookOrSuspicious && (
+        <span className="px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-400 text-[10px] shrink-0">
+          Blocked Webhook/Script
+        </span>
+      )}
+    </div>
+    <div className="shrink-0">
+      {inc.isWebhookOrSuspicious ? (
+        <span className="text-[10px] text-rose-400 font-bold">Quarantined</span>
+      ) : alreadyInSot ? (
+        <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
+          <Check className="w-3 h-3" />
+          <span>In SOT Links</span>
+        </span>
+      ) : (
+        <button
+          type="button"
+          onClick={onPromote}
+          className="px-2 py-0.5 rounded bg-cyan-600 hover:bg-cyan-500 text-white text-[10px] font-bold flex items-center gap-1"
+        >
+          <Plus className="w-3 h-3" />
+          <span>Add to SOT</span>
+        </button>
+      )}
+    </div>
+  </div>
+);
 
 interface AICompanionModalProps {
   isOpen: boolean;
@@ -99,7 +143,6 @@ interface AICompanionModalProps {
   onOpenBuffBox?: () => void;
   onOpenStepper?: () => void;
   onNavigateToDSLPage?: () => void;
-  onOpenCompleteSheet?: () => void;
   initialTab?: string;
   theme?: ThemeMode;
 }
@@ -229,7 +272,6 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
   onUpdateCharacter: propOnUpdateCharacter,
   onOpenJournal,
   onOpenAddClass,
-  onOpenCompleteSheet,
   initialTab = 'permissions',
   theme: propTheme,
 }) => {
@@ -240,15 +282,6 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
   const normalizeTab = (tab?: string): AICompanionTab => {
     if (tab === 'lookup' || tab === 'sot' || tab === 'lookup_sot') {
       return 'lookup_sot';
-    }
-    if (tab === 'journal' || tab === 'sketch' || tab === 'journal_settings') {
-      return 'journal_settings';
-    }
-    if (tab === 'macro' || tab === 'buff_maker') {
-      return 'permissions';
-    }
-    if (tab === 'fields') {
-      return 'fields';
     }
     return 'permissions';
   };
@@ -281,7 +314,12 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
   const sotCatalogue: SOTCatalogueData = character.sotCatalogue || DEFAULT_SOT_CATALOGUE;
 
   // SOT & Lookup state
-  const [sotSubView, setSotSubView] = useState<'lookup' | 'override_docs' | 'weblinks'>('lookup');
+  const [sotDocumentSearch, setSotDocumentSearch] = useState('');
+  const [selectedSotPageId, setSelectedSotPageId] = useState<string | null>(null);
+  const activeSotPageId =
+    sotCatalogue.overridePages?.some((page) => page.id === selectedSotPageId)
+      ? selectedSotPageId
+      : sotCatalogue.overridePages?.[0]?.id || null;
   const [lookupQuery, setLookupQuery] = useState('');
   const [lookupCategory, setLookupCategory] = useState<string>('All');
   const [lookupPrereqModifier, setLookupPrereqModifier] = useState('');
@@ -304,6 +342,33 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
   const [pageIsOverride, setPageIsOverride] = useState(true);
   const [pageSavedNotice, setPageSavedNotice] = useState<string | null>(null);
   const [fetchingWeblinkId, setFetchingWeblinkId] = useState<string | null>(null);
+  const [openedWeblinkId, setOpenedWeblinkId] = useState<string | null>(null);
+  const activeSotPage =
+    (sotCatalogue.overridePages || []).find((page) => page.id === activeSotPageId) || null;
+  const openedWeblink =
+    (sotCatalogue.weblinks || []).find((link) => link.id === openedWeblinkId) || null;
+  const availableIncidentalLinks: Array<{
+    inc: SOTIncidentalLink;
+    parentDocId?: string;
+    parentWeblinkId?: string;
+  }> = [];
+  const seenIncidentalUrls = new Set<string>();
+  const pushIncidentalLink = (
+    inc: SOTIncidentalLink,
+    parentDocId?: string,
+    parentWeblinkId?: string
+  ) => {
+    const key = inc.url.toLowerCase();
+    if (seenIncidentalUrls.has(key)) return;
+    seenIncidentalUrls.add(key);
+    availableIncidentalLinks.push({ inc, parentDocId, parentWeblinkId });
+  };
+  (activeSotPage?.incidentalLinks || []).forEach((inc) =>
+    pushIncidentalLink(inc, activeSotPage?.id)
+  );
+  (openedWeblink?.readOnlySnapshot?.incidentalLinks || []).forEach((inc) =>
+    pushIncidentalLink(inc, undefined, openedWeblink?.id)
+  );
   const richEditorRef = useRef<HTMLDivElement | null>(null);
   const srdFileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -535,6 +600,9 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
       ...prev,
       weblinks: (prev.weblinks || []).filter((l) => l.id !== id),
     }));
+    if (openedWeblinkId === id) {
+      setOpenedWeblinkId(null);
+    }
   };
 
   // SOT Rich-Text Override Pages handlers
@@ -544,6 +612,7 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
   };
 
   const handleEditOverridePage = (page: SOTRichTextPage) => {
+    setSelectedSotPageId(page.id);
     setEditingPageId(page.id);
     setPageTitle(page.title);
     setPageCategory(page.category);
@@ -630,6 +699,7 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
   // Open 1 Page & Halt (Read-Only Snapshot) for SOT Weblink
   const handleFetchSinglePageReadOnly = async (link: SOTWeblinkItem) => {
     setFetchingWeblinkId(link.id);
+    setOpenedWeblinkId(link.id);
     try {
       const resp = await fetch('/api/sot/fetch-readonly-page', {
         method: 'POST',
@@ -741,6 +811,7 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
         };
       });
 
+      setSelectedSotPageId(importedDocs[0].id);
       setPageSavedNotice(
         `Loaded ${importedDocs.length} SRD doc(s) as Read-Only & saved separately on host device!`
       );
@@ -783,6 +854,7 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
         macaroniSuggestions: existingSuggs,
       };
     });
+    setSelectedSotPageId(hostDocs[0].id);
   };
 
   const handleSaveOverridePage = () => {
@@ -845,6 +917,7 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
       };
     });
 
+    setSelectedSotPageId(savedPage.id);
     handleClearOverrideForm();
     setPageSavedNotice(
       `Locked "${savedPage.title}" as Read-Only SRD (saved separately on host device • ${newMathSuggestions.length} Macaroni suggestion(s) sent to DSL Studio)!`
@@ -861,6 +934,9 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
     }));
     if (editingPageId === id) {
       handleClearOverrideForm();
+    }
+    if (selectedSotPageId === id) {
+      setSelectedSotPageId(null);
     }
   };
 
@@ -1100,7 +1176,7 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="font-mono font-bold text-base tracking-wide flex items-center gap-1.5">
-                  <span>AI Companion Listener, SOT Catalogue &amp; Blind Spots</span>
+                  <span>AI Companion Settings &amp; SOT Catalogue</span>
                 </h2>
                 <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
                   {authorizedModulesCount + authorizedFieldsCount} Active •{' '}
@@ -1115,20 +1191,6 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            {onOpenCompleteSheet && (
-              <button
-                onClick={() => {
-                  onClose();
-                  onOpenCompleteSheet();
-                }}
-                className="px-3 py-1.5 rounded-lg text-xs font-mono font-bold bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white flex items-center gap-1.5 transition-all shadow-xs"
-                title="Launch Complete Sheet Chatbot Mini-Window"
-              >
-                <AppleEyeIcon className="w-4 h-4 text-cyan-200" />
-                <span>Complete Sheet (Mini-Window)</span>
-              </button>
-            )}
-
             {onOpenAddClass && (
               <button
                 onClick={() => {
@@ -1160,10 +1222,8 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
           }`}
         >
           {[
-            { id: 'permissions', label: '1. Module Permissions & Blind Spots', icon: Settings },
-            { id: 'lookup_sot', label: '2. Lookups & SOT Catalogue', icon: Globe },
-            { id: 'journal_settings', label: '3. Journal & Sketch Settings', icon: BookOpen },
-            { id: 'fields', label: '5. Broad Sheet Authority', icon: Sliders },
+            { id: 'permissions', label: 'Settings', icon: Settings },
+            { id: 'lookup_sot', label: 'Lookups & SOT Catalogue', icon: Globe },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -1189,7 +1249,7 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
         {/* Main Tab Content */}
         <div className="flex-1 overflow-y-auto p-4 md:p-6">
           {/* ================================================================= */}
-          {/* TAB 1: MODULE PERMISSIONS & GRANULAR AI BLIND SPOTS               */}
+          {/* SETTINGS: MODULE PERMISSIONS & GRANULAR AI BLIND SPOTS            */}
           {/* ================================================================= */}
           {activeTab === 'permissions' && (
             <div className="max-w-5xl mx-auto space-y-6">
@@ -1333,7 +1393,11 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
                   </div>
                   <button
                     type="button"
-                    onClick={() => setActiveTab('fields')}
+                    onClick={() =>
+                      document
+                        .getElementById('broad-sheet-authority')
+                        ?.scrollIntoView({ behavior: 'smooth' })
+                    }
                     className="px-3 py-1 rounded bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 text-xs font-mono font-bold"
                   >
                     Test Sheet Field Authority &rarr;
@@ -1378,7 +1442,7 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
                             </>
                           ) : (
                             <>
-                              < EyeOff className="w-2.5 h-2.5" />
+                              <EyeOff className="w-2.5 h-2.5" />
                               <span>Blind Spot</span>
                             </>
                           )}
@@ -1395,13 +1459,13 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
           {/* TAB 2: LOOKUPS & SOURCE OF TRUTH (SOT) CATALOGUE                  */}
           {/* ================================================================= */}
           {activeTab === 'lookup_sot' && (
-            <div className="max-w-4xl mx-auto space-y-5">
+            <div className="max-w-full mx-auto space-y-5">
               {/* Sub-Navigation Pills */}
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="space-y-0.5">
                   <h3 className="font-serif font-bold text-lg flex items-center gap-2">
                     <AppleEyeIcon className="w-5 h-5 text-rose-400" />
-                    <span>Online Rules Lookup &amp; Source of Truth (SOT) Catalogue</span>
+                    <span>Lookups &amp; Source of Truth Catalogue</span>
                   </h3>
                   <p className="text-xs opacity-80 font-serif">
                     Strict search order: <strong>1. SOT Override Docs</strong> (overrides online
@@ -1409,51 +1473,77 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
                     <strong>3. Verified Online PF1e SRD</strong>. Never guesses or fabricates rules!
                   </p>
                 </div>
-
-                <div className="flex items-center gap-1.5 font-mono text-xs">
-                  {[
-                    { id: 'lookup' as const, label: 'AI Seek & Lookup', icon: Globe },
-                    {
-                      id: 'override_docs' as const,
-                      label: `SOT Override Docs (${sotCatalogue.overridePages?.length || 0})`,
-                      icon: FileText,
-                    },
-                    {
-                      id: 'weblinks' as const,
-                      label: `SOT Weblinks (${sotCatalogue.weblinks?.length || 0})`,
-                      icon: Link2,
-                    },
-                  ].map((sub) => {
-                    const SubIcon = sub.icon;
-                    return (
-                      <button
-                        key={sub.id}
-                        type="button"
-                        onClick={() => setSotSubView(sub.id)}
-                        className={`px-3 py-1.5 rounded-lg border flex items-center gap-1.5 font-bold transition-colors ${
-                          sotSubView === sub.id
-                            ? 'bg-cyan-600 text-white border-cyan-500'
-                            : 'bg-black/5 dark:bg-white/5 border-inherit opacity-75 hover:opacity-100'
-                        }`}
-                      >
-                        <SubIcon className="w-3.5 h-3.5" />
-                        <span>{sub.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
               </div>
 
-              {/* SUB-VIEW 1: AI RULES LOOKUP */}
-              {sotSubView === 'lookup' && (
-                <div className="space-y-4">
+              <div className="grid grid-cols-1 xl:grid-cols-12 items-start gap-3 min-w-0 overflow-x-hidden">
+              {/* SOT document list and rules lookup */}
+              {(
+                <div className="space-y-3 xl:col-span-2 min-w-0">
                   <div
-                    className={`p-4 rounded-xl border space-y-3 ${
+                    className={`p-3 rounded-xl border space-y-2 ${
                       isDark ? 'bg-slate-950 border-cyan-500/30' : 'bg-white border-amber-800/25'
                     }`}
                   >
-                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-                      <div className="md:col-span-6">
+                    <div className="flex items-center justify-between gap-2">
+                      <h4 className="font-mono font-bold text-xs uppercase text-emerald-400 flex items-center gap-1.5">
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>SOT Files</span>
+                      </h4>
+                      <span className="text-[10px] font-mono opacity-70">
+                        {sotCatalogue.overridePages?.length || 0}
+                      </span>
+                    </div>
+                    <input
+                      type="search"
+                      value={sotDocumentSearch}
+                      onChange={(e) => setSotDocumentSearch(e.target.value)}
+                      placeholder="Search SOT files..."
+                      aria-label="Search SOT files"
+                      className={`w-full px-2.5 py-1.5 rounded border text-xs font-mono ${
+                        isDark ? 'bg-slate-900 border-slate-700' : 'bg-stone-50 border-amber-300'
+                      }`}
+                    />
+                    <div className="max-h-56 overflow-y-auto space-y-1">
+                      {(sotCatalogue.overridePages || [])
+                        .filter((page) =>
+                          `${page.title} ${page.category} ${(page.tags || []).join(' ')}`
+                            .toLowerCase()
+                            .includes(sotDocumentSearch.trim().toLowerCase())
+                        )
+                        .map((page) => (
+                          <button
+                            key={page.id}
+                            type="button"
+                            onClick={() => setSelectedSotPageId(page.id)}
+                            className={`w-full rounded-lg border px-2 py-1.5 text-left text-[11px] transition-colors ${
+                              activeSotPageId === page.id
+                                ? 'border-cyan-500/50 bg-cyan-950/50 text-cyan-200'
+                                : 'border-transparent bg-black/5 hover:bg-cyan-500/10 dark:bg-white/5'
+                            }`}
+                          >
+                            <span className="block truncate font-mono font-bold">{page.title}</span>
+                            <span className="block truncate opacity-65">{page.category}</span>
+                          </button>
+                        ))}
+                      {!(sotCatalogue.overridePages || []).some((page) =>
+                        `${page.title} ${page.category} ${(page.tags || []).join(' ')}`
+                          .toLowerCase()
+                          .includes(sotDocumentSearch.trim().toLowerCase())
+                      ) && (
+                        <p className="px-1 py-2 text-[10px] opacity-60">
+                          {sotDocumentSearch.trim() ? 'No matching SOT files.' : 'No SOT files loaded yet.'}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                  <div
+                      className={`p-4 rounded-xl border space-y-3 ${
+                        isDark ? 'bg-slate-950 border-cyan-500/30' : 'bg-white border-amber-800/25'
+                    }`}
+                  >
+                    <div className="grid grid-cols-1 gap-3">
+                      <div>
                         <label className="text-xs font-mono font-bold block mb-1">
                           Feat, Class Ability, Spell, or Power Name:
                         </label>
@@ -1473,7 +1563,7 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
                         />
                       </div>
 
-                      <div className="md:col-span-3">
+                      <div>
                         <label className="text-xs font-mono font-bold block mb-1">
                           Category Modifier:
                         </label>
@@ -1495,7 +1585,7 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
                         </select>
                       </div>
 
-                      <div className="md:col-span-3 flex items-end">
+                      <div className="flex items-end">
                         <button
                           type="button"
                           onClick={handleRunLookup}
@@ -1509,7 +1599,7 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
                     </div>
 
                     {/* Optional Search Modifiers Row */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <div className="grid grid-cols-1 gap-3 pt-1">
                       <div>
                         <label className="text-[11px] font-mono opacity-75 block mb-1">
                           Optional Prerequisite / Keyword Modifier:
@@ -1695,14 +1785,15 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
                           </div>
                         </>
                       )}
-                    </div>
+                      </div>
                   )}
+                  </div>
                 </div>
               )}
 
-              {/* SUB-VIEW 2: SOT RICH-TEXT OVERRIDE PAGES & MULTI-SRD REPOSITORY */}
-              {sotSubView === 'override_docs' && (
-                <div className="space-y-4">
+              {/* Current SOT document and editor */}
+              {(
+                <div className="space-y-4 xl:col-span-6 min-w-0">
                   {/* Host Device Multi-SRD Toolbar */}
                   <div
                     className={`p-3 rounded-xl border flex flex-wrap items-center justify-between gap-2 ${
@@ -1758,6 +1849,15 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
                     </div>
                   </div>
 
+                  <details
+                    open={Boolean(editingPageId || pageSavedNotice)}
+                    className={`rounded-xl border ${
+                      isDark ? 'bg-slate-950 border-cyan-500/30' : 'bg-white border-amber-800/25'
+                    }`}
+                  >
+                    <summary className="cursor-pointer px-3 py-2 font-mono text-xs font-bold text-emerald-400">
+                      {editingPageId ? 'Edit current SOT document' : 'Add a SOT document'}
+                    </summary>
                   <div
                     className={`p-4 rounded-xl border space-y-3 ${
                       isDark ? 'bg-slate-950 border-cyan-500/30' : 'bg-white border-amber-800/25'
@@ -1927,11 +2027,13 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
                       </div>
                     )}
                   </div>
+                  </details>
 
                   {/* Saved Read-Only SRD Pages List */}
                   <div className="space-y-3">
-                    {(sotCatalogue.overridePages || []).map((page) => {
-                      const incLinks = page.incidentalLinks || [];
+                    {(sotCatalogue.overridePages || [])
+                      .filter((page) => !activeSotPageId || page.id === activeSotPageId)
+                      .map((page) => {
                       const audit = page.securityAudit;
                       return (
                         <div
@@ -1940,9 +2042,9 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
                             isDark ? 'bg-slate-950 border-slate-800' : 'bg-white border-amber-800/20'
                           }`}
                         >
-                          <div className="flex items-start justify-between gap-2 flex-wrap">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-serif font-bold text-sm text-amber-500">
+                          <div className="flex items-start justify-between gap-2 flex-wrap min-w-0 overflow-hidden">
+                            <div className="flex items-center gap-2 flex-wrap min-w-0 overflow-hidden">
+                              <span className="font-serif font-bold text-sm text-amber-500 truncate max-w-full" title={page.title}>
                                 {page.title}
                               </span>
                               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-400">
@@ -1973,6 +2075,15 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
                             <div className="flex items-center gap-1.5">
                               <button
                                 type="button"
+                                onClick={() => handleEditOverridePage(page)}
+                                className="px-2 py-1 rounded bg-cyan-900/70 hover:bg-cyan-800 text-cyan-200 text-[10px] font-mono font-bold flex items-center gap-1 border border-cyan-500/30"
+                                title="Edit and re-sanitize this SOT document"
+                              >
+                                <Edit3 className="w-3 h-3" />
+                                <span>Edit</span>
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => exportSrdDocFileToHost(page)}
                                 className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-emerald-300 text-[10px] font-mono font-bold flex items-center gap-1 border border-emerald-500/30"
                                 title="Save this SRD separately as a file (.srd.json) on your host device"
@@ -1997,70 +2108,7 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
                             dangerouslySetInnerHTML={{ __html: page.htmlContent }}
                           />
 
-                          {/* Incidental Links Quarantined inside this SRD */}
-                          {incLinks.length > 0 && (
-                            <div className="p-2.5 rounded-lg bg-slate-900/90 border border-amber-500/30 space-y-1.5">
-                              <div className="flex items-center justify-between text-[11px] font-mono text-amber-300">
-                                <span className="flex items-center gap-1.5 font-bold">
-                                  <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
-                                  <span>
-                                    Incidental Links in SRD ({incLinks.length}) — Not SOT unless added
-                                    to SOT Links List:
-                                  </span>
-                                </span>
-                              </div>
-                              <div className="space-y-1">
-                                {incLinks.map((inc, idx) => {
-                                  const alreadyInSot =
-                                    inc.promotedToSOT ||
-                                    (sotCatalogue.weblinks || []).some(
-                                      (w) => w.url.toLowerCase() === inc.url.toLowerCase()
-                                    );
-                                  return (
-                                    <div
-                                      key={`${inc.url}-${idx}`}
-                                      className="flex items-center justify-between gap-2 text-[11px] font-mono px-2 py-1 rounded bg-slate-950/80 border border-slate-800"
-                                    >
-                                      <div className="truncate flex items-center gap-2 min-w-0">
-                                        <span className="font-bold text-slate-200 truncate">
-                                          {inc.label}
-                                        </span>
-                                        <span className="text-slate-500 truncate">{inc.url}</span>
-                                        {inc.isWebhookOrSuspicious && (
-                                          <span className="px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-400 text-[10px]">
-                                            Blocked Webhook/Script
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className="shrink-0">
-                                        {inc.isWebhookOrSuspicious ? (
-                                          <span className="text-[10px] text-rose-400 font-bold">
-                                            Quarantined
-                                          </span>
-                                        ) : alreadyInSot ? (
-                                          <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
-                                            <Check className="w-3 h-3" />
-                                            <span>In SOT Links</span>
-                                          </span>
-                                        ) : (
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              handlePromoteIncidentalLinkToSOT(inc, page.id, undefined)
-                                            }
-                                            className="px-2 py-0.5 rounded bg-cyan-600 hover:bg-cyan-500 text-white text-[10px] font-bold flex items-center gap-1"
-                                          >
-                                            <Plus className="w-3 h-3" />
-                                            <span>+ Add to SOT Links List</span>
-                                          </button>
-                                        )}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
+                          {/* Incidental links from this SRD are shown in the available-links column. */}
                         </div>
                       );
                     })}
@@ -2068,33 +2116,25 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
                 </div>
               )}
 
-              {/* SUB-VIEW 3: SOT WEBLINKS (SINGLE-PAGE HALT & READ-ONLY) */}
-              {sotSubView === 'weblinks' && (
-                <div className="space-y-4">
+              {/* Available Links: saved weblinks, incidental links, Complete Sheet AI */}
+              {(
+                <div className="space-y-3 xl:col-span-4 min-w-0 overflow-x-hidden">
                   <div
-                    className={`p-4 rounded-xl border space-y-3 ${
+                    className={`p-3 rounded-xl border space-y-2.5 min-w-0 ${
                       isDark ? 'bg-slate-950 border-cyan-500/30' : 'bg-white border-amber-800/25'
                     }`}
                   >
-                    <div className="flex items-center justify-between flex-wrap gap-2">
-                      <div>
-                        <h4 className="font-mono font-bold text-xs uppercase text-cyan-400">
-                          Add Source of Truth Weblink (Opens 1 Page, Halts &amp; Treats as Read-Only)
-                        </h4>
-                        <p className="text-[11px] font-serif opacity-75">
-                          SOT Links never spider or execute embedded scripts/webhooks. Click{' '}
-                          <strong>Open 1 Page &amp; Halt (Read-Only)</strong> on any link below to
-                          snapshot its sanitized text and inspect incidental links.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 text-xs">
+                    <h4 className="font-mono font-bold text-xs uppercase text-cyan-400 flex items-center gap-1.5">
+                      <Link2 className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">Available Links</span>
+                    </h4>
+                    <div className="grid grid-cols-1 gap-2 text-xs min-w-0">
                       <input
                         type="text"
                         value={newLinkTitle}
                         onChange={(e) => setNewLinkTitle(e.target.value)}
                         placeholder="Title (e.g. d20PFSRD Paladin, Spheres Wiki)..."
-                        className={`md:col-span-4 px-3 py-1.5 rounded border ${
+                        className={`px-3 py-1.5 rounded border min-w-0 ${
                           isDark ? 'bg-slate-900 border-slate-700' : 'bg-stone-50 border-amber-300'
                         }`}
                       />
@@ -2103,14 +2143,14 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
                         value={newLinkUrl}
                         onChange={(e) => setNewLinkUrl(e.target.value)}
                         placeholder="https://..."
-                        className={`md:col-span-5 px-3 py-1.5 rounded border font-mono ${
+                        className={`px-3 py-1.5 rounded border font-mono min-w-0 ${
                           isDark ? 'bg-slate-900 border-slate-700' : 'bg-stone-50 border-amber-300'
                         }`}
                       />
                       <select
                         value={newLinkCategory}
                         onChange={(e) => setNewLinkCategory(e.target.value as SOTCategory)}
-                        className={`md:col-span-3 px-2.5 py-1.5 rounded border font-mono ${
+                        className={`px-2.5 py-1.5 rounded border font-mono min-w-0 ${
                           isDark ? 'bg-slate-900 border-slate-700' : 'bg-stone-50 border-amber-300'
                         }`}
                       >
@@ -2123,165 +2163,203 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
                         <option value="Archetype">Archetype</option>
                       </select>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 min-w-0">
                       <input
                         type="text"
                         value={newLinkNotes}
                         onChange={(e) => setNewLinkNotes(e.target.value)}
-                        placeholder="Optional notes on what the AI should use this link for..."
-                        className={`flex-1 px-3 py-1.5 rounded text-xs border ${
+                        placeholder="Optional notes (used in keyword lookups)..."
+                        className={`flex-1 min-w-0 px-3 py-1.5 rounded text-xs border ${
                           isDark ? 'bg-slate-900 border-slate-700' : 'bg-stone-50 border-amber-300'
                         }`}
                       />
                       <button
                         type="button"
                         onClick={handleAddWeblink}
-                        className="px-4 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-mono font-bold text-xs flex items-center gap-1"
+                        className="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-mono font-bold text-xs flex items-center gap-1 shrink-0"
                       >
                         <Plus className="w-3.5 h-3.5" />
-                        <span>Add SOT Link</span>
+                        <span>Add</span>
                       </button>
                     </div>
                   </div>
 
-                  <div className="space-y-2.5">
-                    {(sotCatalogue.weblinks || []).map((link) => (
-                      <div
-                        key={link.id}
-                        className={`p-3 rounded-xl border space-y-2 ${
-                          isDark ? 'bg-slate-950 border-slate-800' : 'bg-white border-amber-800/20'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-3 flex-wrap">
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-mono font-bold text-xs text-cyan-400">
-                                {link.title}
-                              </span>
-                              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-black/20">
-                                {link.category}
-                              </span>
-                              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 flex items-center gap-1">
-                                <Lock className="w-2.5 h-2.5" />
-                                <span>1-Page Halt • Read-Only</span>
-                              </span>
-                              <span className="text-[11px] font-mono opacity-75 truncate">
+                  <div className="space-y-1.5 min-w-0">
+                    {(sotCatalogue.weblinks || []).map((link) => {
+                      const isOpen = openedWeblinkId === link.id;
+                      return (
+                        <div
+                          key={link.id}
+                          className={`p-2 rounded-lg border min-w-0 overflow-hidden ${
+                            isOpen
+                              ? isDark
+                                ? 'bg-slate-950 border-cyan-500/50'
+                                : 'bg-white border-cyan-700/40'
+                              : isDark
+                                ? 'bg-slate-950 border-slate-800'
+                                : 'bg-white border-amber-800/20'
+                          }`}
+                        >
+                          <div className="flex items-start gap-2 min-w-0">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setOpenedWeblinkId((current) =>
+                                  current === link.id ? null : link.id
+                                )
+                              }
+                              className="min-w-0 flex-1 text-left overflow-hidden"
+                              title={`${link.title}\n${link.url}${link.notes ? `\n${link.notes}` : ''}`}
+                            >
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <Link2 className="w-3 h-3 text-cyan-400 shrink-0" />
+                                <span
+                                  className="font-mono font-bold text-xs text-cyan-400 truncate"
+                                  title={link.title}
+                                >
+                                  {link.title}
+                                </span>
+                                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-black/20 shrink-0">
+                                  {link.category}
+                                </span>
+                                <span
+                                  className="text-[10px] font-mono px-1 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 items-center gap-1 hidden sm:inline-flex shrink-0"
+                                  title="Opens 1 page, then halts as read-only"
+                                >
+                                  <Lock className="w-2.5 h-2.5" />
+                                  <span>1-Page</span>
+                                </span>
+                              </div>
+                              <span
+                                className="block text-[11px] font-mono opacity-75 truncate"
+                                title={link.url}
+                              >
                                 {link.url}
                               </span>
+                            </button>
+
+                            <div className="shrink-0 flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleFetchSinglePageReadOnly(link)}
+                                disabled={fetchingWeblinkId === link.id}
+                                className="px-2 py-1 rounded text-[10px] font-mono font-bold bg-amber-600 hover:bg-amber-500 text-slate-950 flex items-center gap-1"
+                                title="Open this single page, halt spidering, strip scripts/webhooks, and load as Read-Only"
+                              >
+                                {fetchingWeblinkId === link.id ? (
+                                  <RefreshCw className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <Lock className="w-3 h-3" />
+                                )}
+                                <span className="hidden sm:inline">Open</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleWeblink(link.id)}
+                                className={`px-2 py-1 rounded text-[10px] font-mono font-bold ${
+                                  link.isActive
+                                    ? 'bg-emerald-600 text-white'
+                                    : 'bg-slate-700 text-slate-300'
+                                }`}
+                                title={
+                                  link.isActive
+                                    ? 'AI follows this link during lookups'
+                                    : 'Ignored during lookups'
+                                }
+                              >
+                                {link.isActive ? 'AI' : 'Off'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteWeblink(link.id)}
+                                className="p-1 text-rose-400 hover:bg-rose-500/20 rounded"
+                                title="Remove this SOT weblink"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             </div>
-                            {link.notes && (
-                              <p className="text-[11px] font-serif opacity-75 mt-0.5">{link.notes}</p>
-                            )}
                           </div>
 
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => handleFetchSinglePageReadOnly(link)}
-                              disabled={fetchingWeblinkId === link.id}
-                              className="px-2.5 py-1 rounded text-[10px] font-mono font-bold bg-amber-600 hover:bg-amber-500 text-slate-950 flex items-center gap-1"
-                              title="Open this single page, halt spidering, strip scripts/webhooks, and load as Read-Only"
+                          {isOpen && link.notes && (
+                            <p
+                              className="text-[11px] font-serif opacity-75 mt-1.5 line-clamp-3 break-words"
+                              title={link.notes}
                             >
-                              {fetchingWeblinkId === link.id ? (
-                                <RefreshCw className="w-3 h-3 animate-spin" />
-                              ) : (
-                                <Lock className="w-3 h-3" />
-                              )}
-                              <span>Open 1 Page &amp; Halt (Read-Only)</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleToggleWeblink(link.id)}
-                              className={`px-2.5 py-1 rounded text-[10px] font-mono font-bold ${
-                                link.isActive
-                                  ? 'bg-emerald-600 text-white'
-                                  : 'bg-slate-700 text-slate-300'
-                              }`}
-                            >
-                              {link.isActive ? 'AI Follows Link' : 'Ignored'}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteWeblink(link.id)}
-                              className="p-1 text-rose-400 hover:bg-rose-500/20 rounded"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
+                              {link.notes}
+                            </p>
+                          )}
 
-                        {/* Single-Page Halted Read-Only Snapshot */}
-                        {link.readOnlySnapshot && (
-                          <div className="p-2.5 rounded-lg bg-slate-900/90 border border-cyan-500/30 space-y-2">
-                            <div className="flex items-center justify-between text-[10px] font-mono text-cyan-300 flex-wrap gap-2">
-                              <span>
-                                <strong>HALTS AT DEPTH 1 (SINGLE PAGE READ-ONLY):</strong>{' '}
-                                {link.title}
-                              </span>
-                              <span>
-                                Stripped {link.readOnlySnapshot.securityAudit.strippedScriptsCount} scripts /{' '}
-                                {link.readOnlySnapshot.securityAudit.strippedWebhooksCount} webhooks /{' '}
-                                {link.readOnlySnapshot.securityAudit.strippedCodeSnipsCount} code snips
-                              </span>
-                            </div>
-                            <pre className="max-h-32 overflow-y-auto p-2 rounded bg-slate-950 border border-slate-800 text-[11px] font-serif whitespace-pre-wrap text-slate-300 select-text">
-                              {link.readOnlySnapshot.sanitizedText.slice(0, 1500)}
-                            </pre>
-                            {link.readOnlySnapshot.incidentalLinks.length > 0 && (
-                              <div className="space-y-1">
-                                <div className="text-[10px] font-mono text-amber-300 font-bold">
-                                  Incidental Links Found on Page (Not SOT unless added):
-                                </div>
-                                <div className="max-h-28 overflow-y-auto space-y-1">
-                                  {link.readOnlySnapshot.incidentalLinks.slice(0, 12).map((inc, idx) => {
-                                    const alreadyInSot =
-                                      inc.promotedToSOT ||
-                                      (sotCatalogue.weblinks || []).some(
-                                        (w) => w.url.toLowerCase() === inc.url.toLowerCase()
-                                      );
-                                    return (
-                                      <div
-                                        key={`${inc.url}-${idx}`}
-                                        className="flex items-center justify-between gap-2 text-[10px] font-mono px-2 py-1 rounded bg-slate-950 border border-slate-800"
-                                      >
-                                        <span className="truncate text-slate-300">
-                                          {inc.label} — <span className="text-slate-500">{inc.url}</span>
-                                        </span>
-                                        {alreadyInSot ? (
-                                          <span className="text-emerald-400 font-bold shrink-0">
-                                            In SOT Links
-                                          </span>
-                                        ) : (
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              handlePromoteIncidentalLinkToSOT(inc, undefined, link.id)
-                                            }
-                                            className="px-2 py-0.5 rounded bg-cyan-600 hover:bg-cyan-500 text-white font-bold shrink-0"
-                                          >
-                                            + Add to SOT Links List
-                                          </button>
-                                        )}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
+                          {isOpen && link.readOnlySnapshot && (
+                            <div className="mt-1.5 p-2 rounded-lg bg-slate-900/90 border border-cyan-500/30 min-w-0 overflow-hidden space-y-1">
+                              <div
+                                className="text-[10px] font-mono text-cyan-300 truncate"
+                                title={`Read-only snapshot of ${link.title}. Stripped ${link.readOnlySnapshot.securityAudit.strippedScriptsCount} scripts / ${link.readOnlySnapshot.securityAudit.strippedWebhooksCount} webhooks / ${link.readOnlySnapshot.securityAudit.strippedCodeSnipsCount} code snips`}
+                              >
+                                Read-only snapshot • stripped{' '}
+                                {link.readOnlySnapshot.securityAudit.strippedScriptsCount}s /{' '}
+                                {link.readOnlySnapshot.securityAudit.strippedWebhooksCount}w /{' '}
+                                {link.readOnlySnapshot.securityAudit.strippedCodeSnipsCount}c
                               </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                              <pre
+                                className="max-h-16 overflow-hidden p-1.5 rounded bg-slate-950 border border-slate-800 text-[11px] font-serif whitespace-pre-wrap text-slate-300 select-text line-clamp-3"
+                                title={link.readOnlySnapshot.sanitizedText.slice(0, 500)}
+                              >
+                                {link.readOnlySnapshot.sanitizedText.slice(0, 280)}
+                              </pre>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
+
+                  {availableIncidentalLinks.length > 0 && (
+                    <div className="p-2.5 rounded-lg bg-slate-900/90 border border-amber-500/30 space-y-1.5 min-w-0">
+                      <div className="flex items-center gap-1.5 text-[11px] font-mono text-amber-300 font-bold min-w-0">
+                        <ShieldAlert className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        <span className="truncate">
+                          Incidental Links ({availableIncidentalLinks.length})
+                        </span>
+                      </div>
+                      <div className="max-h-40 overflow-y-auto space-y-1 min-w-0">
+                        {availableIncidentalLinks.map(({ inc, parentDocId, parentWeblinkId }, idx) => {
+                          const alreadyInSot =
+                            inc.promotedToSOT ||
+                            (sotCatalogue.weblinks || []).some(
+                              (w) => w.url.toLowerCase() === inc.url.toLowerCase()
+                            );
+                          return (
+                            <IncidentalLinkRow
+                              key={`${inc.url}-${idx}`}
+                              inc={inc}
+                              alreadyInSot={alreadyInSot}
+                              onPromote={() =>
+                                handlePromoteIncidentalLinkToSOT(inc, parentDocId, parentWeblinkId)
+                              }
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <CompleteSheetChatWindow
+                    isOpen={isOpen}
+                    onClose={onClose}
+                    onOpenAddClass={onOpenAddClass}
+                    theme={theme}
+                    embedded
+                  />
                 </div>
               )}
+              </div>
             </div>
           )}
 
           {/* ================================================================= */}
-          {/* TAB 3: JOURNAL SETTINGS (VOICE SAMPLE & ART STYLE PROMPT)         */}
+          {/* SETTINGS: JOURNAL VOICE & ART STYLE                               */}
           {/* ================================================================= */}
-          {activeTab === 'journal_settings' && (
+          {activeTab === 'permissions' && (
             <div className="max-w-3xl mx-auto space-y-5">
               <div className="flex items-start justify-between flex-wrap gap-3">
                 <div className="space-y-1">
@@ -2661,10 +2739,10 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
           )}
 
           {/* ================================================================= */}
-          {/* TAB 5: BROAD SHEET AUTHORITY & BLIND-SPOT ENFORCED INSPECTOR      */}
+          {/* SETTINGS: COMPLETE SHEET AI AUTHORITY & BLIND-SPOT INSPECTOR     */}
           {/* ================================================================= */}
-          {activeTab === 'fields' && (
-            <div className="max-w-3xl mx-auto space-y-5">
+          {activeTab === 'permissions' && (
+            <div id="broad-sheet-authority" className="max-w-3xl mx-auto space-y-5">
               <div className="space-y-1">
                 <h3 className="font-serif font-bold text-lg flex items-center gap-2">
                   <Sliders className="w-5 h-5 text-cyan-400" />

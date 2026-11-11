@@ -384,10 +384,10 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
                 <button
                   onClick={onOpenCompleteSheet}
                   className="w-full py-1.5 px-2 rounded-md bg-cyan-600/80 hover:bg-cyan-500 text-white text-xs font-mono font-bold flex items-center justify-center gap-1.5 transition-colors shadow-xs"
-                  title="Toggle AI Complete Sheet (Conversational Build from Concept mini-window)"
+                  title="Open Complete Sheet AI in the available-links area"
                 >
                   <AppleEyeIcon className="w-3.5 h-3.5 text-cyan-200" />
-                  <span>Open Complete Sheet AI</span>
+                  <span>Complete Sheet AI</span>
                 </button>
               )}
             </div>

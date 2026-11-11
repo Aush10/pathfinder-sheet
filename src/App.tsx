@@ -41,7 +41,6 @@ import { NewSheetModal } from './components/tools/NewSheetModal';
 import { ImageFileBrowserModal } from './components/tools/ImageFileBrowserModal';
 import { JournalModal } from './components/tools/JournalModal';
 import { AICompanionModal } from './components/tools/AICompanionModal';
-import { CompleteSheetChatWindow } from './components/tools/CompleteSheetChatWindow';
 import { FloatingAlertCard } from './components/common/FloatingAlertCard';
 import { InteractiveQueryModal } from './components/common/InteractiveQueryModal';
 import { CrashRecoveryBanner } from './components/storage/CrashRecoveryBanner';
@@ -83,7 +82,6 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
   const [isCMBtOpen, setIsCMBtOpen] = useState(false);
   const [isJournalOpen, setIsJournalOpen] = useState(false);
   const [isAIToolOpen, setIsAIToolOpen] = useState(false);
-  const [isCompleteSheetOpen, setIsCompleteSheetOpen] = useState(false);
   const [aiToolInitialTab, setAiToolInitialTab] = useState<string>('permissions');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isPrintViewOpen, setIsPrintViewOpen] = useState(false);
@@ -259,7 +257,7 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
             onOpenCMBt={() => setIsCMBtOpen(true)}
             onOpenJournal={() => setIsJournalOpen(true)}
             onOpenAITool={() => handleOpenAITool('permissions')}
-            onOpenCompleteSheet={() => setIsCompleteSheetOpen(true)}
+            onOpenCompleteSheet={() => handleOpenAITool('lookup_sot')}
             onInstallAITool={handleInstallAITool}
             onOpenNewSheet={() => setIsNewSheetOpen(true)}
             onOpenImageBrowser={() =>
@@ -484,16 +482,7 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
         onNavigateToDSLPage={() => {
           setLayout((prev) => ({ ...prev, activeSheet: 4, showAllSheets: false }));
         }}
-        onOpenCompleteSheet={() => setIsCompleteSheetOpen(true)}
         initialTab={aiToolInitialTab as any}
-        theme={layout.theme}
-      />
-
-      <CompleteSheetChatWindow
-        isOpen={isCompleteSheetOpen}
-        onClose={() => setIsCompleteSheetOpen(false)}
-        onOpenSOTCatalogue={() => handleOpenAITool('lookup_sot')}
-        onOpenAddClass={() => setIsAddClassOpen(true)}
         theme={layout.theme}
       />
 

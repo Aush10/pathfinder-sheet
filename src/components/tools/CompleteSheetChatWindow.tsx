@@ -40,6 +40,7 @@ interface CompleteSheetChatWindowProps {
   onOpenSOTCatalogue?: () => void;
   onOpenAddClass?: () => void;
   theme?: ThemeMode;
+  embedded?: boolean;
 }
 
 export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = ({
@@ -50,6 +51,7 @@ export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = (
   onOpenSOTCatalogue,
   onOpenAddClass,
   theme: propTheme,
+  embedded = false,
 }) => {
   const ctx = useCharacter();
   const character = propCharacter ?? ctx.character;
@@ -91,10 +93,13 @@ export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = (
   const [quickSotCategory, setQuickSotCategory] = useState<SOTCategory>('Archetype');
   const [quickSotText, setQuickSotText] = useState('');
 
-  // Auto-scroll on new message
+  // Auto-scroll on new message without pulling ancestor SOT panels out of view
   useEffect(() => {
-    if (!isMinimized && isOpen) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (!isMinimized && isOpen && messagesEndRef.current) {
+      const feed = messagesEndRef.current.parentElement;
+      if (feed) {
+        feed.scrollTop = feed.scrollHeight;
+      }
     }
   }, [messages, isMinimized, isOpen]);
 
@@ -260,7 +265,7 @@ export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = (
   };
 
   // Render Minimized Bubble
-  if (isMinimized) {
+  if (isMinimized && !embedded) {
     return (
       <div
         style={{
@@ -274,10 +279,10 @@ export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = (
         <button
           onClick={() => setIsMinimized(false)}
           className="flex items-center gap-2 px-2 py-1 text-xs font-semibold text-cyan-300 hover:text-cyan-100"
-          title="Restore AI Complete Sheet Window"
+          title="Restore Complete Sheet AI"
         >
           <AppleEyeIcon className="w-5 h-5 text-cyan-400" />
-          <span>Complete Sheet</span>
+          <span>Complete Sheet AI</span>
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
         </button>
         <button
@@ -298,17 +303,25 @@ export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = (
   return (
     <div
       style={
-        isMaximized
-          ? { left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }
-          : { left: `${position.x}px`, top: `${position.y}px` }
+        embedded
+          ? undefined
+          : isMaximized
+            ? { left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }
+            : { left: `${position.x}px`, top: `${position.y}px` }
       }
-      className={`fixed z-50 flex flex-col ${windowWidth} ${windowHeight} bg-slate-950/95 border border-cyan-500/40 shadow-2xl rounded-2xl overflow-hidden backdrop-blur-md text-slate-100 transition-all duration-150 select-text`}
+      className={
+        embedded
+          ? 'w-full h-[min(42vh,360px)] min-h-[240px] flex flex-col bg-slate-950/95 border border-cyan-500/40 shadow-xl rounded-2xl overflow-hidden text-slate-100 select-text'
+          : `fixed z-50 flex flex-col ${windowWidth} ${windowHeight} bg-slate-950/95 border border-cyan-500/40 shadow-2xl rounded-2xl overflow-hidden backdrop-blur-md text-slate-100 transition-all duration-150 select-text`
+      }
     >
       {/* Draggable Title Bar */}
       <div
-        onMouseDown={handleDragStart}
-        onTouchStart={handleDragStart}
-        className="flex items-center justify-between px-3.5 py-2.5 bg-gradient-to-r from-slate-900 via-slate-900/90 to-cyan-950/60 border-b border-cyan-500/30 cursor-move select-none"
+        onMouseDown={embedded ? undefined : handleDragStart}
+        onTouchStart={embedded ? undefined : handleDragStart}
+        className={`flex items-center justify-between px-3.5 py-2.5 bg-gradient-to-r from-slate-900 via-slate-900/90 to-cyan-950/60 border-b border-cyan-500/30 select-none ${
+          embedded ? '' : 'cursor-move'
+        }`}
       >
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-cyan-950/80 border border-cyan-500/50 flex items-center justify-center shadow-xs">
@@ -317,7 +330,7 @@ export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = (
           <div>
             <div className="flex items-center gap-1.5">
               <span className="font-serif font-bold text-sm text-cyan-200 tracking-wide">
-                AI Complete Sheet
+                Complete Sheet AI
               </span>
               <span className="px-1.5 py-0.5 text-[9px] font-mono rounded bg-cyan-900/60 text-cyan-300 border border-cyan-500/40">
                 SOT Grounded
@@ -332,7 +345,7 @@ export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = (
         </div>
 
         {/* Window controls */}
-        <div className="flex items-center gap-1">
+        {!embedded && <div className="flex items-center gap-1">
           <button
             onClick={() => setIsMinimized(true)}
             className="p-1.5 text-slate-400 hover:text-cyan-300 hover:bg-slate-800 rounded transition-colors"
@@ -354,7 +367,7 @@ export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = (
           >
             <X className="w-3.5 h-3.5" />
           </button>
-        </div>
+        </div>}
       </div>
 
       {/* SOT Catalogue Header Pill */}
@@ -580,7 +593,7 @@ export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = (
       )}
 
       {/* Quick Action Suggestion Chips */}
-      <div className="px-3 py-1.5 bg-slate-900/40 border-t border-slate-800/80 flex items-center gap-1.5 overflow-x-auto no-scrollbar select-none text-[10px]">
+      <div className="px-3 py-1.5 bg-slate-900/40 border-t border-slate-800/80 flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden select-none text-[10px]">
         <span className="text-slate-500 font-mono uppercase shrink-0">Prompts:</span>
         <button
           onClick={() => handleSendMessage(undefined, true)}
