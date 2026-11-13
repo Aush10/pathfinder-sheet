@@ -131,9 +131,38 @@ function failure(code: string, message: string): StorageResult<never> {
   return { ok: false, error: { code, message } };
 }
 
-function toFailure(error: unknown): StorageResult<never> {
+function toFailure(error: unknown, operation: 'picker' | 'storage' = 'storage'): StorageResult<never> {
   if (error instanceof StorageFault) {
     return failure(error.code, error.message);
+  }
+  const name = error instanceof Error || isRecord(error) ? error.name : undefined;
+  const message = error instanceof Error || isRecord(error) ? error.message : undefined;
+  if (typeof message === 'string' && message.includes('Page.setInterceptFileChooserDialog')) {
+    return failure(
+      'FILE_PICKER_BLOCKED',
+      'This browser blocked the folder picker while the page is shared with an agent. Stop sharing the page and try again, or open the app in Edge or Chrome. Export JSON first to move this sheet to another browser.',
+    );
+  }
+  if (name === 'AbortError' && operation === 'picker') {
+    return failure('PICKER_CANCELLED', 'Folder selection was cancelled.');
+  }
+  if (name === 'AbortError') {
+    return failure('OPERATION_ABORTED', 'The folder operation was interrupted before it finished. Reconnect the folder and try again.');
+  }
+  if (name === 'NotAllowedError') {
+    return failure('PERMISSION_DENIED', 'Folder access was denied. Reconnect the save folder and allow read/write access.');
+  }
+  if (name === 'SecurityError') {
+    return failure('SECURITY_ERROR', 'The browser blocked folder access. Open the app directly in Edge or Chrome and choose the folder from the Save button.');
+  }
+  if (name === 'NotFoundError') {
+    return failure('NOT_FOUND', 'The save folder or file is no longer available. Reconnect the save folder.');
+  }
+  if (name === 'QuotaExceededError') {
+    return failure('STORAGE_FULL', 'Storage is full. Free some space and try saving again.');
+  }
+  if (name === 'NoModificationAllowedError' || name === 'InvalidStateError') {
+    return failure('FILE_UNAVAILABLE', 'The save file is locked or unavailable. Close other apps using it and try again.');
   }
   return failure('STORAGE_ERROR', 'The folder storage operation could not be completed.');
 }
@@ -945,6 +974,7 @@ export function createFsStorageAdapter(options: FsStorageAdapterOptions = {}): S
   const appVersion = options.appVersion ?? DEFAULT_APP_VERSION;
   const now = options.now ?? (() => new Date());
   let rememberedHandle: FsDirectoryHandleLike | undefined;
+  let handlePersistenceWarning: string | undefined;
 
   async function selectedHandle(): Promise<FsDirectoryHandleLike> {
     if (!rememberedHandle) rememberedHandle = await handleStore.get();
@@ -1010,13 +1040,24 @@ export function createFsStorageAdapter(options: FsStorageAdapterOptions = {}): S
 
   return {
     async pickFolderAndOpen(): Promise<StorageResult<{ rootName: string }>> {
+      let selected: FsDirectoryHandleLike;
       try {
         assert(folderPicker, 'API_UNSUPPORTED', 'Folder storage requires Edge or Chrome with the File System Access API.');
-        const selected = await folderPicker({ mode: 'readwrite' });
+        selected = await folderPicker({ mode: 'readwrite' });
+      } catch (error) {
+        return toFailure(error, 'picker');
+      }
+      try {
         await ensureReadWritePermission(selected);
         const tree = await ensureBaseTree(selected);
-        await handleStore.set(selected);
         rememberedHandle = selected;
+        handlePersistenceWarning = undefined;
+        try {
+          await handleStore.set(selected);
+        } catch {
+          // Remembering a handle is optional; the granted handle still works now.
+          handlePersistenceWarning = 'Connected for this session. This browser could not remember the folder; reconnect it next time.';
+        }
         return { ok: true, rootName: tree.managedRoot.name };
       } catch (error) {
         return toFailure(error);
@@ -1025,7 +1066,7 @@ export function createFsStorageAdapter(options: FsStorageAdapterOptions = {}): S
 
     async getStatus(): Promise<StorageResult<StorageStatus>> {
       try {
-        const supported = Boolean(folderPicker) && (options.handleStore !== undefined || typeof indexedDB !== 'undefined');
+        const supported = Boolean(folderPicker);
         if (!rememberedHandle) rememberedHandle = await handleStore.get();
         if (!rememberedHandle) {
           return { ok: true, supported, selected: false, permission: 'unknown', message: 'No storage folder has been selected.' };
@@ -1033,7 +1074,7 @@ export function createFsStorageAdapter(options: FsStorageAdapterOptions = {}): S
         const permission = rememberedHandle.queryPermission
           ? publicPermission(await rememberedHandle.queryPermission({ mode: 'readwrite' }))
           : 'unknown';
-        return { ok: true, supported, selected: true, permission, rootName: rememberedHandle.name };
+        return { ok: true, supported, selected: true, permission, rootName: rememberedHandle.name, message: handlePersistenceWarning };
       } catch (error) {
         return toFailure(error);
       }

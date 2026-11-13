@@ -26,8 +26,10 @@ import {
 } from '../../types/character';
 import {
   CompleteSheetMessage,
+  CompleteSheetConverseResult,
   completeSheetConverse,
 } from '../../engine/aiService';
+import { TAP_TEST_STEPS, isTapTestCommand, type TapTestTurn } from '../../engine/tapTest';
 import { sanitizeSrdDocument } from '../../engine/sotEngine';
 import { AppleEyeIcon } from '../common/AppleEyeIcon';
 import { useCharacter } from '../../context/CharacterContext';
@@ -42,6 +44,23 @@ interface CompleteSheetChatWindowProps {
   theme?: ThemeMode;
   embedded?: boolean;
 }
+
+interface TapTestRun extends TapTestTurn {
+  status: 'running' | 'paused' | 'stopped' | 'complete';
+}
+
+const TAP_TEST_PROMPTS = [
+  'tap test',
+  'Now choose a class supported by my loaded SOT and start this character at level 1. Only add the class information.',
+  'Next, randomly assign the ability scores using this test\'s point-buy budget. Only update the ability scores.',
+  'Now set this character\'s starting hit points from the class and abilities we have established. Only update hit points.',
+  'Next, choose and train one suitable skill using the loaded SOT. Only update that one skill.',
+  'Now choose one legal starting feat supported by my loaded SOT. Only add that feat.',
+  'Next, choose one appropriate weapon supported by my loaded SOT. Only add that weapon.',
+  'Now choose one suitable armor item supported by my loaded SOT. Only add that armor item.',
+  'Next, choose one useful adventuring item supported by my loaded SOT. Only add that inventory item.',
+  'Finally, give this same character a short description and personality. Only update that biography information.',
+];
 
 export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = ({
   isOpen,
@@ -86,12 +105,46 @@ export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = (
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef(messages);
+  const characterRef = useRef(character);
+  const mountedRef = useRef(true);
+  const busyRef = useRef(false);
+  const requestRef = useRef<AbortController | null>(null);
+  const pendingTurnRef = useRef<Promise<CompleteSheetConverseResult | null> | null>(null);
+  const runTokenRef = useRef(0);
+  const [tapTestRun, setTapTestRun] = useState<TapTestRun | null>(null);
+  const tapTestRunRef = useRef<TapTestRun | null>(null);
 
   // Quick SOT Upload Drawer state
   const [isQuickSotOpen, setIsQuickSotOpen] = useState(false);
   const [quickSotTitle, setQuickSotTitle] = useState('');
   const [quickSotCategory, setQuickSotCategory] = useState<SOTCategory>('Archetype');
   const [quickSotText, setQuickSotText] = useState('');
+
+  useEffect(() => {
+    characterRef.current = character;
+  }, [character]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      runTokenRef.current += 1;
+      requestRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) {
+      runTokenRef.current += 1;
+      requestRef.current?.abort();
+      if (tapTestRunRef.current?.status === 'running' || tapTestRunRef.current?.status === 'paused') {
+        const stopped: TapTestRun = { ...tapTestRunRef.current, status: 'stopped' };
+        tapTestRunRef.current = stopped;
+        setTapTestRun(stopped);
+      }
+    }
+  }, [isOpen]);
 
   // Auto-scroll on new message without pulling ancestor SOT panels out of view
   useEffect(() => {
@@ -157,7 +210,150 @@ export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = (
   const sotPagesCount = character.sotCatalogue?.overridePages?.length ?? 0;
   const sotLinksCount = character.sotCatalogue?.weblinks?.filter((w) => w.isActive)?.length ?? 0;
 
-  // Send conversation message
+  const appendMessage = (message: CompleteSheetMessage) => {
+    const history = [...messagesRef.current, message];
+    messagesRef.current = history;
+    if (mountedRef.current) setMessages(history);
+    return history;
+  };
+
+  const updateTapTestRun = (run: TapTestRun) => {
+    tapTestRunRef.current = run;
+    if (mountedRef.current) setTapTestRun(run);
+  };
+
+  const stopTapTest = (showMessage = true) => {
+    runTokenRef.current += 1;
+    requestRef.current?.abort();
+    const run = tapTestRunRef.current;
+    if (run && (run.status === 'running' || run.status === 'paused')) {
+      updateTapTestRun({ ...run, status: 'stopped' });
+      if (showMessage) {
+        appendMessage({
+          id: `msg-tap-stop-${Date.now()}`,
+          role: 'model',
+          text: 'Tap test stopped. Completed steps remain on the sheet.',
+          timestamp: Date.now(),
+        });
+      }
+    }
+  };
+
+  const handleClose = () => {
+    stopTapTest(false);
+    onClose();
+  };
+
+  // Both normal chat and tap test use the same guarded, abortable turn pipeline.
+  const sendTurn = (
+    prompt: string,
+    options: { forceRandom?: boolean; character?: PF1Character; tapTest?: TapTestTurn } = {}
+  ): Promise<CompleteSheetConverseResult | null> => {
+    if (busyRef.current || !mountedRef.current) return Promise.resolve(null);
+    const controller = new AbortController();
+    const token = runTokenRef.current;
+    requestRef.current = controller;
+    busyRef.current = true;
+    setIsLoading(true);
+    const userMsg: CompleteSheetMessage = {
+      id: `msg-user-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      role: 'user',
+      text: prompt,
+      timestamp: Date.now(),
+    };
+    const updatedHistory = appendMessage(userMsg);
+
+    const pending = (async () => {
+      try {
+        const result = await completeSheetConverse({
+          conversation: updatedHistory,
+          character: options.character || characterRef.current,
+          userPrompt: userMsg.text,
+          isRandomRequested: options.forceRandom,
+          tapTest: options.tapTest,
+          signal: controller.signal,
+        });
+        // Cancellation also discards a response that arrived just before abort.
+        if (!mountedRef.current || controller.signal.aborted || token !== runTokenRef.current) return null;
+        characterRef.current = result.updatedCharacter;
+        if (result.appliedActions.length > 0) {
+          onUpdateCharacter(() => result.updatedCharacter);
+        }
+        appendMessage(result.replyMessage);
+        if (result.replyMessage.missingSotRequest) {
+          setQuickSotTitle(result.replyMessage.missingSotRequest.title);
+          setQuickSotCategory(
+            (result.replyMessage.missingSotRequest.category as SOTCategory) || 'Archetype'
+          );
+          setIsQuickSotOpen(true);
+        }
+        return result;
+      } catch (err) {
+        if (!mountedRef.current || controller.signal.aborted || token !== runTokenRef.current) return null;
+        console.error('Error during Complete Sheet converse:', err);
+        const detail = err instanceof Error ? err.message : String(err);
+        appendMessage({
+          id: `msg-err-${Date.now()}`,
+          role: 'model',
+          text: `AI build engine error: ${detail}`,
+          timestamp: Date.now(),
+        });
+        return null;
+      } finally {
+        if (requestRef.current === controller) {
+          requestRef.current = null;
+          pendingTurnRef.current = null;
+          busyRef.current = false;
+          if (mountedRef.current) setIsLoading(false);
+        }
+      }
+    })();
+    pendingTurnRef.current = pending;
+    return pending;
+  };
+
+  const runTapTest = async (resume = false, firstPrompt?: string, charOverride?: PF1Character) => {
+    if (busyRef.current || !mountedRef.current) return;
+    const previous = tapTestRunRef.current;
+    if (resume && previous?.status !== 'paused') return;
+    const selectedBudget = (charOverride || characterRef.current).pointBuyBudget;
+    const budget = resume && previous ? previous.budget
+      : typeof selectedBudget === 'number' && Number.isInteger(selectedBudget) && selectedBudget >= 0 && selectedBudget <= 100
+        ? selectedBudget : 20;
+    const token = ++runTokenRef.current;
+    let step = resume && previous ? previous.step : 0;
+    let activeCharacter = charOverride || characterRef.current;
+    updateTapTestRun({ step, budget, status: 'running' });
+    setInputText('');
+
+    while (step < TAP_TEST_STEPS.length && mountedRef.current && token === runTokenRef.current) {
+      updateTapTestRun({ step, budget, status: 'running' });
+      const prompt = firstPrompt || (resume && step === previous?.step
+        ? `Continue the tap test with ${TAP_TEST_STEPS[step].label.toLowerCase()}. Keep the same character and complete only this step.`
+        : TAP_TEST_PROMPTS[step]);
+      firstPrompt = undefined;
+      const result = await sendTurn(prompt, { character: activeCharacter, tapTest: { step, budget } });
+      if (!mountedRef.current || token !== runTokenRef.current) return;
+      if (!result || result.tapTestNeedsInput || result.replyMessage.missingSotRequest) {
+        updateTapTestRun({ step, budget, status: 'paused' });
+        return;
+      }
+      activeCharacter = result.updatedCharacter;
+      step += 1;
+    }
+
+    if (mountedRef.current && token === runTokenRef.current) {
+      updateTapTestRun({ step: TAP_TEST_STEPS.length, budget, status: 'complete' });
+      appendMessage({
+        id: `msg-tap-complete-${Date.now()}`,
+        role: 'model',
+        text: `Tap test complete: ${TAP_TEST_STEPS.length} small steps processed, one conversation turn at a time. Protected fields were left unchanged.`,
+        timestamp: Date.now(),
+      });
+    }
+  };
+
+  // Manual messages interrupt an automatic test, then follow the normal path.
   const handleSendMessage = async (
     textToSend?: string,
     forceRandom?: boolean,
@@ -165,64 +361,30 @@ export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = (
   ) => {
     const prompt = (textToSend || inputText).trim();
     if (!prompt && !forceRandom) return;
-
-    const activeCharacter = charOverride || character;
-
-    const userMsg: CompleteSheetMessage = {
-      id: `msg-user-${Date.now()}`,
-      role: 'user',
-      text: prompt || 'Please roll a random 20-point buy ability score array for this character.',
-      timestamp: Date.now(),
-    };
-
-    const updatedHistory = [...messages, userMsg];
-    setMessages(updatedHistory);
-    setInputText('');
-    setIsLoading(true);
-
-    try {
-      const result = await completeSheetConverse({
-        conversation: updatedHistory,
-        character: activeCharacter,
-        userPrompt: userMsg.text,
-        isRandomRequested: forceRandom,
-      });
-
-      // Update parent character state with applied actions
-      if (result.appliedActions.length > 0) {
-        onUpdateCharacter(() => result.updatedCharacter);
-      }
-
-      setMessages((prev) => [...prev, result.replyMessage]);
-
-      // If AI requested missing SOT, pre-populate quick upload title
-      if (result.replyMessage.missingSotRequest) {
-        setQuickSotTitle(result.replyMessage.missingSotRequest.title);
-        setQuickSotCategory(
-          (result.replyMessage.missingSotRequest.category as SOTCategory) || 'Archetype'
-        );
-        setIsQuickSotOpen(true);
-      }
-    } catch (err) {
-      console.error('Error during Complete Sheet converse:', err);
-      const detail = err instanceof Error ? err.message : String(err);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `msg-err-${Date.now()}`,
-          role: 'model',
-          text: `AI build engine error: ${detail}`,
-          timestamp: Date.now(),
-        },
-      ]);
-    } finally {
-      setIsLoading(false);
+    const run = tapTestRunRef.current;
+    let token = runTokenRef.current;
+    if (run?.status === 'running') {
+      const pending = pendingTurnRef.current;
+      stopTapTest(false);
+      token = runTokenRef.current;
+      if (pending) await pending;
     }
+    if (busyRef.current || !mountedRef.current || token !== runTokenRef.current) return;
+    setInputText('');
+    if (isTapTestCommand(prompt)) {
+      await runTapTest();
+      return;
+    }
+    await sendTurn(prompt || 'Please roll a random 20-point buy ability score array for this character.', {
+      forceRandom,
+      character: charOverride,
+    });
   };
 
   // Submit quick SOT upload
   const handleSaveQuickSot = () => {
-    if (!quickSotText.trim() || !quickSotTitle.trim()) return;
+    if (!quickSotText.trim() || !quickSotTitle.trim() || busyRef.current) return;
+    const activeCharacter = characterRef.current;
 
     const sanitized = sanitizeSrdDocument(quickSotText.trim());
     const newPage: SOTRichTextPage = {
@@ -240,23 +402,34 @@ export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = (
     };
 
     const updatedCharWithSot: PF1Character = {
-      ...character,
+      ...activeCharacter,
       sotCatalogue: {
-        weblinks: character.sotCatalogue?.weblinks || [],
-        macaroniSuggestions: character.sotCatalogue?.macaroniSuggestions || [],
+        weblinks: activeCharacter.sotCatalogue?.weblinks || [],
+        macaroniSuggestions: activeCharacter.sotCatalogue?.macaroniSuggestions || [],
         overridePages: [
-          ...(character.sotCatalogue?.overridePages || []),
+          ...(activeCharacter.sotCatalogue?.overridePages || []),
           newPage,
         ],
       },
     };
 
+    characterRef.current = updatedCharWithSot;
     onUpdateCharacter(() => updatedCharWithSot);
 
     setIsQuickSotOpen(false);
     setQuickSotText('');
 
-    // Trigger AI continuation message automatically with the updated character
+    // A source upload resumes the same paused test step with its write boundary.
+    if (tapTestRunRef.current?.status === 'paused') {
+      void runTapTest(
+        true,
+        `I've uploaded "${newPage.title}" to my SOT documents. Continue this tap-test step using that source and keep the same character.`,
+        updatedCharWithSot
+      );
+      return;
+    }
+
+    // Trigger normal AI continuation automatically with the updated character.
     handleSendMessage(
       `I've uploaded "${newPage.title}" to my SOT documents! Please check it and adapt its abilities into my sheet now.`,
       false,
@@ -286,7 +459,7 @@ export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = (
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
         </button>
         <button
-          onClick={onClose}
+          onClick={handleClose}
           className="p-1 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-800"
           title="Close window"
         >
@@ -361,7 +534,7 @@ export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = (
             <Maximize2 className="w-3.5 h-3.5" />
           </button>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-950/50 rounded transition-colors ml-0.5"
             title="Close Complete Sheet"
           >
@@ -395,6 +568,42 @@ export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = (
               <AppleEyeIcon className="w-3 h-3" />
               SRD Lookup
             </button>
+          </div>
+        </div>
+      )}
+
+      {tapTestRun && (
+        <div className="px-3 py-2 bg-cyan-950/50 border-b border-cyan-700/50 text-[11px] flex items-center justify-between gap-2" role="status" aria-live="polite">
+          <div className="min-w-0">
+            <div className="font-semibold text-cyan-200">
+              Tap test {tapTestRun.status} · {tapTestRun.status === 'complete' ? TAP_TEST_STEPS.length : tapTestRun.step + 1}/{TAP_TEST_STEPS.length}
+            </div>
+            <div className="text-slate-300">
+              {tapTestRun.budget}-point buy · {TAP_TEST_STEPS[tapTestRun.step]?.label || 'All steps finished'}
+            </div>
+            {tapTestRun.status === 'paused' && (
+              <div className="text-amber-200 mt-0.5">Resolve the message below, then continue this step.</div>
+            )}
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            {tapTestRun.status === 'paused' && (
+              <button
+                onClick={() => void runTapTest(true)}
+                disabled={isLoading}
+                className="px-2 py-1 rounded bg-cyan-700 hover:bg-cyan-600 disabled:opacity-50 text-white"
+                title="Continue the current tap-test step"
+              >
+                Continue
+              </button>
+            )}
+            {(tapTestRun.status === 'running' || tapTestRun.status === 'paused') && (
+              <button
+                onClick={() => stopTapTest()}
+                className="px-2 py-1 rounded border border-slate-600 bg-slate-900 hover:bg-slate-800 text-slate-100"
+              >
+                Stop
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -582,7 +791,7 @@ export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = (
             </button>
             <button
               onClick={handleSaveQuickSot}
-              disabled={!quickSotTitle.trim() || !quickSotText.trim()}
+              disabled={!quickSotTitle.trim() || !quickSotText.trim() || isLoading}
               className="px-3 py-1 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs"
             >
               <CheckCircle2 className="w-3 h-3" />
@@ -595,6 +804,15 @@ export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = (
       {/* Quick Action Suggestion Chips */}
       <div className="px-3 py-1.5 bg-slate-900/40 border-t border-slate-800/80 flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden select-none text-[10px]">
         <span className="text-slate-500 font-mono uppercase shrink-0">Prompts:</span>
+        <button
+          onClick={() => void handleSendMessage('tap test')}
+          disabled={isLoading}
+          className="px-2 py-0.5 rounded bg-cyan-950 hover:bg-cyan-900 disabled:opacity-50 border border-cyan-700 text-cyan-200 shrink-0 transition-colors flex items-center gap-1"
+          title="Populate a random character one small conversation step at a time"
+        >
+          <Dices className="w-3 h-3" />
+          Tap test
+        </button>
         <button
           onClick={() => handleSendMessage(undefined, true)}
           className="px-2 py-0.5 rounded bg-slate-800 hover:bg-cyan-950 hover:border-cyan-500/50 border border-slate-700 text-cyan-300 shrink-0 transition-colors flex items-center gap-1"
@@ -641,7 +859,7 @@ export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = (
               handleSendMessage();
             }
           }}
-          placeholder="Describe your character concept, ask build questions..."
+          placeholder="Describe your character, ask questions, or type tap test..."
           className="flex-1 p-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none resize-none leading-relaxed"
         />
 
@@ -655,9 +873,9 @@ export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = (
           </button>
           <button
             onClick={() => handleSendMessage()}
-            disabled={!inputText.trim() || isLoading}
+            disabled={!inputText.trim() || (isLoading && tapTestRun?.status !== 'running')}
             className="p-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white transition-colors shadow-xs"
-            title="Send Message"
+            title={tapTestRun?.status === 'running' ? 'Stop tap test and send message' : 'Send Message'}
           >
             <Send className="w-4 h-4" />
           </button>

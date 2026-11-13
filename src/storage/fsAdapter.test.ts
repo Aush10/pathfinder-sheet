@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { basename, join, relative, resolve, sep } from 'node:path';
 import test from 'node:test';
 import { createBlankCharacter } from '../data/defaultCharacter';
+import { connectSheetToFolder } from './connectFolder';
 import {
   createFsStorageAdapter,
   type DirectoryHandleStore,
@@ -388,6 +389,310 @@ test('rejects unsafe selected roots before writing', async () => {
   const existingAppAdapter = createFsStorageAdapter({ folderPicker: async () => existingAppRoot, handleStore: new MemoryHandleStore() });
   const existingAppResult = await existingAppAdapter.pickFolderAndOpen();
   assert.equal(existingAppResult.ok, true);
+});
+
+test('explains when browser sharing intercepts the native directory picker', async () => {
+  const root = new MemoryDirectoryHandle('Chosen Storage');
+  const adapter = createFsStorageAdapter({
+    folderPicker: async () => {
+      throw new DOMException(
+        "Failed to execute 'showDirectoryPicker' on 'Window': Intercepted by Page.setInterceptFileChooserDialog().",
+        'AbortError',
+      );
+    },
+    handleStore: new MemoryHandleStore(root),
+  });
+
+  const result = await adapter.pickFolderAndOpen();
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.error.code, 'FILE_PICKER_BLOCKED');
+    assert.match(result.error.message, /browser/i);
+    assert.match(result.error.message, /unshare|stop sharing/i);
+  }
+  assert.equal(root.children.size, 0, 'a blocked picker must not create storage folders');
+});
+
+test('treats an ordinary directory picker cancellation separately and preserves the selected folder', async () => {
+  const root = new MemoryDirectoryHandle('Chosen Storage');
+  const adapter = createFsStorageAdapter({
+    folderPicker: async () => {
+      throw new DOMException('The user aborted a request.', 'AbortError');
+    },
+    handleStore: new MemoryHandleStore(root),
+  });
+
+  const result = await adapter.pickFolderAndOpen();
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.error.code, 'PICKER_CANCELLED');
+  assert.equal(root.children.size, 0, 'cancelling must not create or replace storage folders');
+  const status = await adapter.getStatus();
+  assert.ok(status.ok && status.selected && status.permission === 'granted');
+  if (status.ok) assert.equal(status.rootName, root.name);
+});
+
+test('does not hide an aborted folder setup as user picker cancellation', async () => {
+  const root = new MemoryDirectoryHandle('Chosen Storage');
+  root.getDirectoryHandle = async () => {
+    throw new DOMException('Creating the storage tree was interrupted.', 'AbortError');
+  };
+  const adapter = createFsStorageAdapter({ folderPicker: async () => root, handleStore: new MemoryHandleStore() });
+
+  const result = await adapter.pickFolderAndOpen();
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.error.code, 'OPERATION_ABORTED');
+  const status = await adapter.getStatus();
+  assert.ok(status.ok && !status.selected, 'an unfinished setup must not report a connected folder');
+});
+
+for (const [exceptionName, expectedCode] of [
+  ['SecurityError', 'SECURITY_ERROR'],
+  ['NotAllowedError', 'PERMISSION_DENIED'],
+] as const) {
+  test(`reports ${exceptionName} from the native directory picker as ${expectedCode}`, async () => {
+    const root = new MemoryDirectoryHandle('Chosen Storage');
+    const adapter = createFsStorageAdapter({
+      folderPicker: async () => {
+        throw new DOMException('Native browser picker rejected this request.', exceptionName);
+      },
+      handleStore: new MemoryHandleStore(root),
+    });
+
+    const result = await adapter.pickFolderAndOpen();
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.equal(result.error.code, expectedCode);
+    assert.equal(root.children.size, 0, 'a rejected picker must not create storage folders');
+  });
+}
+
+test('keeps the selected folder usable for this session when remembering its handle exceeds browser quota', async () => {
+  const root = new MemoryDirectoryHandle('Chosen Storage');
+  let rememberAttempts = 0;
+  const adapter = createFsStorageAdapter({
+    folderPicker: async () => root,
+    handleStore: {
+      get: async () => undefined,
+      set: async () => {
+        rememberAttempts += 1;
+        throw new DOMException('Browser storage quota exceeded.', 'QuotaExceededError');
+      },
+    },
+  });
+
+  const opened = await adapter.pickFolderAndOpen();
+  assert.equal(opened.ok, true, 'remembering a folder must not be required to use it in the current session');
+  assert.equal(rememberAttempts, 1);
+  const status = await adapter.getStatus();
+  assert.ok(status.ok && status.selected && status.permission === 'granted');
+
+  const saved = await adapter.saveCharacter('Alice', sampleCharacter('Session Hero', 'Alice'));
+  assert.equal(saved.ok, true);
+  const loaded = await adapter.loadCharacter('Alice', 'Session Hero');
+  assert.ok(loaded.ok && loaded.character.name === 'Session Hero');
+  await memoryFile(root, 'AIgamesheet', 'pfmusers', 'Alice', 'Session Hero', 'character.json');
+});
+
+test('connecting an empty folder immediately saves the current named sheet and crash recovery', async () => {
+  const root = new MemoryDirectoryHandle('Chosen Storage');
+  const adapter = createFsStorageAdapter({ folderPicker: async () => root, handleStore: new MemoryHandleStore() });
+  const current = sampleCharacter('Connected Hero', 'Alice');
+  current.biography.notes = 'Current unsaved notes must reach disk during Connect.';
+
+  const result = await connectSheetToFolder(adapter, current);
+  assert.ok(result.ok && result.action === 'saved');
+  if (result.ok) assert.ok(result.savedAt);
+  const loaded = await adapter.loadCharacter('Alice', 'Connected Hero');
+  assert.ok(loaded.ok && loaded.character.biography.notes === current.biography.notes);
+  const crash = await adapter.loadCrash();
+  assert.ok(crash.ok && crash.character?.character.biography.notes === current.biography.notes);
+  const characterFile = await memoryFile(root, 'AIgamesheet', 'pfmusers', 'Alice', 'Connected Hero', 'character.json');
+  const crashFile = await memoryFile(root, 'AIgamesheet', 'pfmusers', 'Crash', 'character.json');
+  assert.equal(JSON.parse(characterFile.content).sha256, JSON.parse(crashFile.content).sha256);
+  for (const path of [
+    ['AIgamesheet', 'active.json'],
+    ['AIgamesheet', 'pfmusers', 'Alice', 'settings', 'storage.json'],
+    ['AIgamesheet', 'pfmusers', 'Alice', 'dsl', 'macros.json'],
+    ['AIgamesheet', 'pfmusers', 'Alice', 'Connected Hero', 'images', 'manifest.json'],
+    ['AIgamesheet', 'pfmusers', 'Alice', 'Connected Hero', 'DSL', 'macros', 'macros.json'],
+    ['AIgamesheet', 'pfmusers', 'Alice', 'Connected Hero', 'notebook', 'journal.json'],
+    ['AIgamesheet', 'pfmusers', 'Alice', 'Connected Hero', 'tools', 'state.json'],
+    ['AIgamesheet', 'pfmusers', 'Alice', 'Connected Hero', 'Modules', 'state.json'],
+    ['AIgamesheet', 'pfmusers', 'Alice', 'Connected Hero', 'printable-sheet.html'],
+  ]) {
+    assert.ok((await memoryFile(root, ...path)).content.length > 0, `Connect must populate ${path.join('/')}`);
+  }
+});
+
+test('connecting an empty folder preserves an unnamed sheet in crash recovery without inventing a name', async () => {
+  const root = new MemoryDirectoryHandle('Chosen Storage');
+  const adapter = createFsStorageAdapter({ folderPicker: async () => root, handleStore: new MemoryHandleStore() });
+  const current = sampleCharacter('', 'Alice');
+  current.biography.notes = 'An unnamed current sheet still needs an immediate recovery copy.';
+
+  const result = await connectSheetToFolder(adapter, current);
+  assert.ok(result.ok && result.action === 'recovery');
+  const crash = await adapter.loadCrash();
+  assert.ok(crash.ok && crash.character?.character.name === '');
+  assert.ok(crash.ok && crash.character?.character.biography.notes === current.biography.notes);
+  const players = await adapter.listPlayers();
+  assert.ok(players.ok && players.players.length === 0);
+  assert.equal(current.name, '');
+});
+
+test('connecting an existing active character restores it without saving the current unsaved sheet', async () => {
+  const root = new MemoryDirectoryHandle('Chosen Storage');
+  const adapter = createFsStorageAdapter({ folderPicker: async () => root, handleStore: new MemoryHandleStore() });
+  assert.ok((await adapter.pickFolderAndOpen()).ok);
+  const existing = sampleCharacter('Saved Hero', 'Alice');
+  existing.biography.notes = 'Authoritative existing notes.';
+  assert.ok((await adapter.saveCharacter('Alice', existing)).ok);
+  const savedFile = await memoryFile(root, 'AIgamesheet', 'pfmusers', 'Alice', 'Saved Hero', 'character.json');
+  const originalBytes = savedFile.content;
+  const current = sampleCharacter('Unsaved Hero', 'Alice');
+
+  const result = await connectSheetToFolder(adapter, current);
+  assert.ok(result.ok && result.action === 'loaded');
+  assert.ok(result.ok && result.character?.name === existing.name);
+  assert.ok(result.ok && result.character?.biography.notes === existing.biography.notes);
+  assert.equal(savedFile.content, originalBytes);
+  const player = await memoryDirectory(root, 'AIgamesheet', 'pfmusers', 'Alice');
+  assert.equal(player.children.has(current.name), false, 'Connect must not save the sheet it replaced');
+  const crash = await adapter.loadCrash();
+  assert.ok(crash.ok && crash.character === null);
+});
+
+test('connecting existing characters without active metadata leaves their saved bytes untouched', async () => {
+  const root = new MemoryDirectoryHandle('Chosen Storage');
+  const adapter = createFsStorageAdapter({ folderPicker: async () => root, handleStore: new MemoryHandleStore() });
+  assert.ok((await adapter.pickFolderAndOpen()).ok);
+  const existing = sampleCharacter('Saved Hero', 'Alice');
+  existing.biography.notes = 'Do not replace me when active.json is missing.';
+  assert.ok((await adapter.saveCharacter('Alice', existing)).ok);
+  const savedFile = await memoryFile(root, 'AIgamesheet', 'pfmusers', 'Alice', 'Saved Hero', 'character.json');
+  const originalBytes = savedFile.content;
+  await (await memoryDirectory(root, 'AIgamesheet')).removeEntry('active.json');
+  const current = sampleCharacter(existing.name, existing.player);
+  current.biography.notes = 'Different current data with the same identity.';
+
+  const result = await connectSheetToFolder(adapter, current);
+  assert.ok(result.ok && result.action === 'connected');
+  assert.equal(savedFile.content, originalBytes);
+  const crash = await adapter.loadCrash();
+  assert.ok(crash.ok && crash.character === null, 'an unreferenced saved tree must not be treated as empty');
+});
+
+test('connecting a corrupt crash snapshot fails without overwriting recovery or bootstrapping current data', async () => {
+  const root = new MemoryDirectoryHandle('Chosen Storage');
+  const adapter = createFsStorageAdapter({ folderPicker: async () => root, handleStore: new MemoryHandleStore() });
+  assert.ok((await adapter.pickFolderAndOpen()).ok);
+  const crashFile = await (await memoryDirectory(root, 'AIgamesheet', 'pfmusers', 'Crash')).getFileHandle('character.json', { create: true });
+  crashFile.content = '{ corrupt recovery';
+
+  const result = await connectSheetToFolder(adapter, sampleCharacter('Current Hero', 'Alice'));
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.error.code, 'INVALID_JSON');
+  assert.equal(crashFile.content, '{ corrupt recovery');
+  const players = await adapter.listPlayers();
+  assert.ok(players.ok && players.players.length === 0);
+});
+
+test('connecting a tree whose character listing fails never mistakes it for an empty tree', async () => {
+  const root = new MemoryDirectoryHandle('Chosen Storage');
+  const adapter = createFsStorageAdapter({ folderPicker: async () => root, handleStore: new MemoryHandleStore() });
+  assert.ok((await adapter.pickFolderAndOpen()).ok);
+  const current = sampleCharacter('Saved Hero', 'Alice');
+  assert.ok((await adapter.saveCharacter('Alice', current)).ok);
+  await (await memoryDirectory(root, 'AIgamesheet')).removeEntry('active.json');
+  const savedFile = await memoryFile(root, 'AIgamesheet', 'pfmusers', 'Alice', 'Saved Hero', 'character.json');
+  savedFile.content = '{ corrupt saved character';
+
+  const result = await connectSheetToFolder(adapter, current);
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.error.code, 'INVALID_JSON');
+  assert.equal(savedFile.content, '{ corrupt saved character');
+  const crash = await adapter.loadCrash();
+  assert.ok(crash.ok && crash.character === null);
+});
+
+test('cancelling Connect does not create folders or bootstrap a sheet', async () => {
+  const root = new MemoryDirectoryHandle('Chosen Storage');
+  const adapter = createFsStorageAdapter({
+    folderPicker: async () => { throw new DOMException('The user cancelled.', 'AbortError'); },
+    handleStore: new MemoryHandleStore(root),
+  });
+
+  const result = await connectSheetToFolder(adapter, sampleCharacter('Current Hero', 'Alice'));
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.error.code, 'PICKER_CANCELLED');
+  assert.equal(root.children.size, 0);
+  const status = await adapter.getStatus();
+  assert.ok(status.ok && status.selected && status.rootName === root.name);
+});
+
+test('Connect reports denied bootstrap writes instead of claiming that the sheet was saved', async () => {
+  const root = new MemoryDirectoryHandle('Chosen Storage');
+  const adapter = createFsStorageAdapter({ folderPicker: async () => root, handleStore: new MemoryHandleStore() });
+  assert.ok((await adapter.pickFolderAndOpen()).ok);
+  const crashImages = await memoryDirectory(root, 'AIgamesheet', 'pfmusers', 'Crash', 'images');
+  const originalGetFile = crashImages.getFileHandle.bind(crashImages);
+  crashImages.getFileHandle = async (name, options) => {
+    if (options?.create) throw new DOMException('Writing this folder was denied.', 'NotAllowedError');
+    return originalGetFile(name, options);
+  };
+
+  const result = await connectSheetToFolder(adapter, sampleCharacter('Current Hero', 'Alice'));
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.error.code, 'PERMISSION_DENIED');
+  const players = await adapter.listPlayers();
+  assert.ok(players.ok && players.players.length === 0);
+  const crash = await adapter.loadCrash();
+  assert.ok(crash.ok && crash.character === null);
+});
+
+test('connecting a real temporary folder writes the character, crash copy, and inspection projections immediately', async () => {
+  const temporaryRoot = await mkdtemp(join(tmpdir(), 'pf1e-connect-'));
+  try {
+    const adapter = createFsStorageAdapter({
+      folderPicker: async () => new NodeDirectoryHandle(temporaryRoot),
+      handleStore: new MemoryHandleStore(),
+    });
+    const current = sampleCharacter('Connected Hero', 'Alice');
+    current.biography.notes = 'Connect must populate the selected disk folder without a subsequent edit.';
+
+    const result = await connectSheetToFolder(adapter, current);
+    assert.ok(result.ok && result.action === 'saved');
+    const characterDirectory = join(temporaryRoot, 'AIgamesheet', 'pfmusers', 'Alice', 'Connected Hero');
+    for (const childPath of [
+      ['character.json'],
+      ['index.csv'],
+      ['printable-sheet.html'],
+      ['images', 'manifest.json'],
+      ['DSL', 'macros', 'macros.json'],
+      ['DSL', 'stepper', 'rules.json'],
+      ['DSL', 'xdx', 'macros.json'],
+      ['SRD', 'README.txt'],
+      ['AI', 'README.txt'],
+      ['AI', 'read_only', 'README.txt'],
+      ['notebook', 'journal.json'],
+      ['tools', 'state.json'],
+      ['Modules', 'state.json'],
+    ]) {
+      assert.ok((await stat(join(characterDirectory, ...childPath))).size > 0, `${childPath.join('/')} must be populated during Connect`);
+    }
+    const characterEnvelope = JSON.parse(await readFile(join(characterDirectory, 'character.json'), 'utf8'));
+    const crashEnvelope = JSON.parse(await readFile(join(temporaryRoot, 'AIgamesheet', 'pfmusers', 'Crash', 'character.json'), 'utf8'));
+    assert.equal(characterEnvelope.data.biography.notes, current.biography.notes);
+    assert.equal(crashEnvelope.sha256, characterEnvelope.sha256);
+    const reopened = createFsStorageAdapter({
+      folderPicker: async () => new NodeDirectoryHandle(temporaryRoot),
+      handleStore: new MemoryHandleStore(),
+    });
+    const restored = await connectSheetToFolder(reopened, sampleCharacter('Unsaved Hero', 'Bob'));
+    assert.ok(restored.ok && restored.character?.name === current.name);
+    assert.equal(await readFile(join(characterDirectory, 'character.json'), 'utf8'), JSON.stringify(characterEnvelope, null, 2));
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
 });
 
 test('uses a real Windows temp folder without reserved-name, trailing-dot, long-path, or case-collision escapes', { skip: process.platform !== 'win32' }, async () => {

@@ -19,6 +19,22 @@ View your app in AI Studio: https://ai.studio/apps/1242983d-8995-4160-b617-d71f5
 3. Run the app:
    `npm run dev`
 
+Local development loads `.env.local` after `.env`, so the saved OpenAI key and
+model take precedence over inherited shell values. Production keeps hosting
+environment values. AI requests use OpenAI; `GET /api/openai/status` reports the
+provider, configuration status, and model names without returning credentials.
+
+## Try incremental AI sheet updates
+
+Open Complete Sheet AI and type `tap test`, or use its Tap test prompt chip.
+It builds a random character through ten small conversation turns, applying one
+related update at a time. The test uses the current point-buy budget, or 20 points
+when no valid budget is set. It updates the current sheet without clearing it.
+
+Use Stop to end the run. If a rule source or decision is needed, the test pauses;
+add the source or answer in chat, then use Continue tap test. Existing AI field
+permissions still apply. Live generation requires a valid configured API key.
+
 ## Release the Windows mini-browser app
 
 Push a version tag to publish a public GitHub Release:

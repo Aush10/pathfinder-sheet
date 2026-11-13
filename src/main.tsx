@@ -78,7 +78,12 @@ class RootErrorBoundary extends Component<Props, State> {
   }
 }
 
-createRoot(document.getElementById('root')!).render(
+// Reuse the root when a shared engine module invalidates this entry during HMR.
+const root = (import.meta.hot?.data.root as ReturnType<typeof createRoot> | undefined)
+  ?? createRoot(document.getElementById('root')!);
+if (import.meta.hot) import.meta.hot.data.root = root;
+
+root.render(
   <RootErrorBoundary>
     <StorageProvider>
       <CharacterProvider>

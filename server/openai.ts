@@ -1,8 +1,9 @@
-export const OPENAI_MODELS_TO_TRY = [
-  process.env.OPENAI_MODEL,
-  'gpt-4o-mini',
-  'gpt-4o',
-].filter((m): m is string => Boolean(m && m.trim()));
+export function getOpenAIModelsToTry(): string[] {
+  // Read after dotenv has loaded; this module is imported before server startup.
+  return [...new Set([process.env.OPENAI_MODEL, 'gpt-4o-mini', 'gpt-4o']
+    .filter((model): model is string => Boolean(model?.trim()))
+    .map((model) => model.trim()))];
+}
 
 export function getAIClient(): string | null {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
@@ -47,7 +48,7 @@ export async function generateContentWithFallback(
   messages.push({ role: 'user', content: params.contents });
 
   let lastError: unknown = null;
-  for (const modelName of OPENAI_MODELS_TO_TRY) {
+  for (const modelName of getOpenAIModelsToTry()) {
     try {
       const body: Record<string, unknown> = {
         model: modelName,

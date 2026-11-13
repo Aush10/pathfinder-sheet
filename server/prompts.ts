@@ -1,3 +1,5 @@
+import { buildTapTestTurnInstruction } from '../src/engine/tapTest.ts';
+
 export const LOOKUP_SYSTEM_INSTRUCTION = `You are the Pathfinder 1st Edition Rules & Source of Truth (SOT) Lookup Engine.
 Your job is to seek and retrieve exact data for Feats, Class Abilities, Class Resources, Spells, and Powers/Maneuvers using the Name query and any other form fields provided as search modifiers.
 
@@ -35,8 +37,11 @@ Always output your final response as a single valid JSON object with these exact
   "sourceNotes": "Citation of the exact SOT Doc, SOT Link, or PF1e rulebook/SRD page matched (or explanation why no match was found)"
 }`;
 
-export function buildCompleteSheetSystemInstruction(blindSpotsContext: string): string {
-  return `You are an expert Pathfinder 1st Edition character creation companion and build advisor collaborating with the player to construct their character sheet from concept to full build.
+export function buildCompleteSheetSystemInstruction(
+  blindSpotsContext: string,
+  tapTest?: { step: number; budget: number }
+): string {
+  const instruction = `You are an expert Pathfinder 1st Edition character creation companion and build advisor collaborating with the player to construct their character sheet from concept to full build.
 
 PERSONALITY & VOICE:
 - Mirror the user's conversational vibe, enthusiasm, and brevity.
@@ -75,4 +80,23 @@ Return a single valid JSON object with these exact keys:
   "questions": [],
   "missingSotRequest": null
 }`;
+
+  if (!tapTest || typeof tapTest !== 'object'
+    || !Number.isInteger(tapTest.step) || tapTest.step < 0
+    || !Number.isInteger(tapTest.budget) || tapTest.budget < 0 || tapTest.budget > 100) {
+    return instruction;
+  }
+  const tapTestInstruction = buildTapTestTurnInstruction(tapTest.step, tapTest.budget);
+  if (!tapTestInstruction) return instruction;
+
+  return `${instruction}
+
+INCREMENTAL TAP TEST:
+- The player's "tap test" command explicitly authorizes random choices for this test character. Use the selected ${tapTest.budget}-point-buy budget for its ability-score step.
+- Complete ONLY the current micro-step described below, as if the player supplied that one piece of information this turn. Return at most ONE structured sheetUpdates entry, and keep fieldUpdates empty. Do not fill later steps early.
+- Keep the same character concept and previous choices from the conversation and current sheet. Do not reroll or rewrite earlier steps.
+- Preserve SOT requirements and disabled-field restrictions. If the current step requires missing SOT, leave sheetUpdates empty, set missingSotRequest, and stop so the player can supply the source.
+- Keep replyText concise, explain the current step, and leave questions empty unless a missing source prevents progress. Do not ask the player to make the random choices already authorized for this test.
+
+${tapTestInstruction}`;
 }

@@ -9,7 +9,8 @@ import {
   getStorageErrorMessage,
 } from '../../storage/StorageContext';
 import { AutosaveState } from '../../storage/useAutosave';
-import { restoreSheetFromStorage } from '../../storage/characterState';
+import { connectSheetToFolder } from '../../storage/connectFolder';
+import { exportCharacterJSON } from '../../utils/sheetExporters';
 
 export interface SaveButtonProps {
   character: PF1Character;
@@ -35,11 +36,13 @@ export const SaveButton: React.FC<SaveButtonProps> = ({
   const [saveState, setSaveState] = useState<SaveUiState>('idle');
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [connectionNotice, setConnectionNotice] = useState<string | null>(null);
   const [isConnectingFolder, setIsConnectingFolder] = useState(false);
   const [folderStatus, setFolderStatus] = useState<{
     supported: boolean;
     connected: boolean;
     folderName?: string;
+    message?: string;
   }>({
     supported: isStubModeEnabled() || isDirectoryPickerSupported(),
     connected: false,
@@ -56,6 +59,7 @@ export const SaveButton: React.FC<SaveButtonProps> = ({
           supported: stubMode || res.supported,
           connected: Boolean(res.selected && res.permission === 'granted'),
           folderName: res.rootName,
+          message: res.message,
         });
       } else {
         setFolderStatus((prev) => ({ ...prev, connected: false }));
@@ -102,20 +106,35 @@ export const SaveButton: React.FC<SaveButtonProps> = ({
       setSaveState('error');
       return;
     }
-    if (isConnectingFolder) return;
+    if (isConnectingFolder || saveState === 'saving') return;
     setIsConnectingFolder(true);
     setErrorMessage(null);
+    setConnectionNotice(null);
+    setSavedAt(null);
+    setSaveState('idle');
 
     try {
-      const res = await storage.pickFolderAndOpen();
+      const res = await connectSheetToFolder(storage, character);
       await refreshStatus();
       if (!res.ok) {
+        if (res.error.code === 'PICKER_CANCELLED') {
+          setConnectionNotice('No folder was selected. Nothing was written.');
+          return;
+        }
         setErrorMessage(getStorageErrorMessage(res.error));
         setSaveState('error');
-      } else if (onCharacterLoaded) {
-        const restored = await restoreSheetFromStorage(storage);
-        if (restored.character) {
-          onCharacterLoaded(restored.character, { recoveredFromCrash: restored.recoveredFromCrash });
+      } else {
+        if (res.action === 'loaded' && res.character) {
+          onCharacterLoaded?.(res.character, { recoveredFromCrash: res.recoveredFromCrash });
+          setConnectionNotice(`Connected to ${res.rootName}. Loaded the saved sheet.`);
+        } else if (res.action === 'saved') {
+          setSavedAt(formatStorageTimestamp(res.savedAt));
+          setSaveState('saved');
+          setConnectionNotice(`Saved the current sheet and recovery files in ${res.rootName}/pfmusers.`);
+        } else if (res.action === 'recovery') {
+          setConnectionNotice(`Saved recovery files in ${res.rootName}/pfmusers/Crash. Add a character name, then click Save to create its character folder.`);
+        } else {
+          setConnectionNotice(`Connected to ${res.rootName}. Choose an existing character using the Player and Character fields, or click Save to save the current sheet.`);
         }
       }
     } catch (err) {
@@ -132,11 +151,28 @@ export const SaveButton: React.FC<SaveButtonProps> = ({
       setSaveState('error');
       return;
     }
-    if (saveState === 'saving') return;
+    if (saveState === 'saving' || isConnectingFolder) return;
     setSaveState('saving');
     setErrorMessage(null);
+    setConnectionNotice(null);
 
     try {
+      if (!folderStatus.connected) {
+        // Keep the picker in the click's user activation, before any status await.
+        // Saving must preserve the current sheet rather than restore another one.
+        const connected = await storage.pickFolderAndOpen();
+        await refreshStatus();
+        if (!connected.ok) {
+          if (connected.error.code === 'PICKER_CANCELLED') {
+            setSaveState('idle');
+            setConnectionNotice('No folder was selected. Nothing was written.');
+          } else {
+            setErrorMessage(getStorageErrorMessage(connected.error));
+            setSaveState('error');
+          }
+          return;
+        }
+      }
       const player = (character.player || 'Player 1').trim() || 'Player 1';
       const result = await storage.saveCharacter(player, character);
       await refreshStatus();
@@ -144,6 +180,7 @@ export const SaveButton: React.FC<SaveButtonProps> = ({
       if (result.ok) {
         setSavedAt(formatStorageTimestamp(result.savedAt));
         setSaveState('saved');
+        setConnectionNotice(`Saved in AIgamesheet/pfmusers/${result.player}/${result.name}/character.json.`);
       } else {
         setErrorMessage(getStorageErrorMessage(result.error));
         setSaveState('error');
@@ -198,7 +235,7 @@ export const SaveButton: React.FC<SaveButtonProps> = ({
         <button
           type="button"
           onClick={handleConnectFolderClick}
-          disabled={isConnectingFolder}
+          disabled={isConnectingFolder || saveState === 'saving'}
           className="px-2.5 py-1.5 rounded-lg bg-cyan-950/90 hover:bg-cyan-900 border border-cyan-500/50 text-cyan-200 text-xs font-mono font-bold flex items-center gap-1.5 transition-colors whitespace-nowrap"
           title="Select a local folder to save and load character files"
         >
@@ -213,10 +250,11 @@ export const SaveButton: React.FC<SaveButtonProps> = ({
         /* Connected folder name & last saved time shown next to the CD icon */
         <div className="hidden lg:flex flex-col items-end leading-tight text-[10px] font-mono text-slate-300 px-1">
           {folderStatus.folderName && (
-            <span className="text-emerald-300 font-semibold truncate max-w-[140px]" title={folderStatus.folderName}>
+            <span className="text-emerald-300 font-semibold truncate max-w-[140px]" title={folderStatus.message || folderStatus.folderName}>
               {folderStatus.folderName}
             </span>
           )}
+          {folderStatus.message && <span className="text-amber-300" title={folderStatus.message}>Reconnect next session</span>}
           {displayLastSaved && (
             <span className="text-slate-400">Saved {displayLastSaved}</span>
           )}
@@ -227,7 +265,7 @@ export const SaveButton: React.FC<SaveButtonProps> = ({
       <button
         type="button"
         onClick={handleSaveClick}
-        disabled={saveState === 'saving' || !isBrowserSupported}
+        disabled={saveState === 'saving' || isConnectingFolder || !isBrowserSupported}
         title={tooltipText}
         aria-label={tooltipText}
         className={`relative p-1.5 rounded-lg border font-mono text-xs flex items-center gap-1 transition-colors ${
@@ -261,6 +299,22 @@ export const SaveButton: React.FC<SaveButtonProps> = ({
       </button>
 
       {/* Error Toast Notification (Displays any { ok: false, error } across the adapter) */}
+      {connectionNotice && !errorMessage && (
+        <div
+          role="status"
+          className="fixed bottom-4 right-4 z-50 max-w-sm bg-slate-950 border border-cyan-500/50 text-cyan-100 px-3.5 py-2.5 rounded-xl shadow-2xl flex items-start gap-2.5 font-mono text-xs"
+        >
+          <span className="flex-1">{connectionNotice}</span>
+          <button
+            type="button"
+            onClick={() => setConnectionNotice(null)}
+            title="Dismiss storage status"
+            className="p-0.5 rounded hover:bg-slate-800"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
       {errorMessage && (
         <div
           role="alert"
@@ -270,6 +324,13 @@ export const SaveButton: React.FC<SaveButtonProps> = ({
           <div className="flex-1">
             <div className="font-bold text-rose-300">Storage Error</div>
             <div className="text-[11px] opacity-90 mt-0.5">{errorMessage}</div>
+            <button
+              type="button"
+              onClick={() => exportCharacterJSON(character)}
+              className="mt-2 underline text-cyan-200 hover:text-cyan-100"
+            >
+              Export current sheet as JSON
+            </button>
           </div>
           <button
             type="button"

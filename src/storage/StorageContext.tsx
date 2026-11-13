@@ -230,7 +230,7 @@ function createSafeStorageAdapter(raw: StorageAdapter): StorageAdapter {
     async pickFolderAndOpen(): Promise<StorageResult<{ rootName: string }>> {
       try {
         const res = await raw.pickFolderAndOpen();
-        if (!res.ok) {
+        if (!res.ok && res.error.code !== 'PICKER_CANCELLED') {
           emitStorageToastError(res.error);
         }
         emitStorageStatusRefresh();

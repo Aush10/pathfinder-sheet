@@ -13,7 +13,7 @@
     "clean": "rm -rf dist dist-standalone server.js",
     "lint": "tsc --noEmit",
     "test:storage": "tsx --test src/storage/fsAdapter.test.ts",
-    "test": "tsx --test src/storage/fsAdapter.test.ts src/engine/sheetFieldWrites.test.ts src/components/tools/ClassArchitectModal.test.ts"
+    "test": "tsx --test src/storage/fsAdapter.test.ts src/engine/sheetFieldWrites.test.ts src/engine/tapTest.test.ts src/components/tools/ClassArchitectModal.test.ts server/openai.test.ts server/env.test.ts"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",

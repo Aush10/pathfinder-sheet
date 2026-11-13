@@ -3,6 +3,24 @@
 The folder adapter writes only below a user-selected folder using the browser File
 System Access API (Chrome/Edge). It never writes into the source repository.
 
+The Save button asks for a folder when none is connected, then saves the current
+sheet without loading a different character from that folder. Connect save
+folder restores a previously saved sheet when available. For a fresh empty
+tree, it immediately saves the current sheet and crash recovery files instead of
+waiting for a later edit. An unnamed sheet is saved to recovery until it is named.
+If saved characters exist without an active selection, connecting leaves them
+alone and asks the user to choose a character or explicitly save the current one.
+The app shows a saved location after writing; cancelled folder selection is
+reported as "No folder was selected. Nothing was written."
+The browser remembers the folder handle when possible; if that fails, saving
+still works for the current session and the header asks to reconnect next time.
+
+Sharing a VS Code integrated-browser page with an agent can intercept the native
+folder picker. The app reports this separately from cancellation or denied
+permission. Stop sharing the page before choosing a folder, or use Edge/Chrome
+outside VS Code. Browser-local sheets do not move between browsers: export the
+current sheet as JSON and import it in the other browser first.
+
 The selected folder is accepted only when it is empty or already contains an
 `AIgamesheet` directory. Selecting the `AIgamesheet` directory itself is also
 supported and does not create a second nested `AIgamesheet` directory. Drive

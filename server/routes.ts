@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from 'express';
-import { generateContentWithFallback, getAIClient, missingApiKeyResponse } from './gemini.ts';
+import { generateContentWithFallback, getAIClient, getOpenAIModelsToTry, missingApiKeyResponse } from './openai.ts';
 import { LOOKUP_SYSTEM_INSTRUCTION, buildCompleteSheetSystemInstruction } from './prompts.ts';
 import {
   activeWeblinks,
@@ -16,7 +16,7 @@ function errorMessage(err: unknown, fallback: string): string {
     : fallback;
 }
 
-async function handleGeminiGenerate(req: Request, res: Response) {
+async function handleOpenAIGenerate(req: Request, res: Response) {
   try {
     const ai = getAIClient();
     if (!ai) {
@@ -52,14 +52,14 @@ async function handleGeminiGenerate(req: Request, res: Response) {
       text: response.text ?? '',
     });
   } catch (err: unknown) {
-    console.error('OpenAI /api/gemini/generate error:', err);
+    console.error('OpenAI /api/openai/generate error:', err);
     return res.status(500).json({
       error: errorMessage(err, 'OpenAI generation failed.'),
     });
   }
 }
 
-async function handleGeminiLookup(req: Request, res: Response) {
+async function handleOpenAILookup(req: Request, res: Response) {
   try {
     const ai = getAIClient();
     if (!ai) {
@@ -118,7 +118,7 @@ ${weblinksContext}`;
       sourceUrls,
     });
   } catch (err: unknown) {
-    console.error('OpenAI /api/gemini/lookup error:', err);
+    console.error('OpenAI /api/openai/lookup error:', err);
     return res.status(500).json({
       error: errorMessage(err, 'OpenAI online lookup failed.'),
     });
@@ -138,7 +138,14 @@ async function handleCompleteSheet(req: Request, res: Response) {
       sotOverridePages = [],
       sotWeblinks = [],
       allowedFields = {},
+      tapTest,
     } = req.body || {};
+
+    const tapTestContext = tapTest && typeof tapTest === 'object'
+      && Number.isInteger(tapTest.step) && tapTest.step >= 0
+      && Number.isInteger(tapTest.budget) && tapTest.budget >= 0 && tapTest.budget <= 100
+      ? { step: tapTest.step as number, budget: tapTest.budget as number }
+      : undefined;
 
     const activeLinks = activeWeblinks(sotWeblinks);
     const overrideContext = formatCompleteSheetOverridePages(sotOverridePages);
@@ -166,7 +173,7 @@ ${historyFormatted || 'PLAYER: Hey, I want to build a new character! What should
     const response = await generateContentWithFallback(ai, {
       contents: userPrompt,
       config: {
-        systemInstruction: buildCompleteSheetSystemInstruction(blindSpotsContext),
+        systemInstruction: buildCompleteSheetSystemInstruction(blindSpotsContext, tapTestContext),
         responseMimeType: 'application/json',
       },
     });
@@ -176,7 +183,7 @@ ${historyFormatted || 'PLAYER: Hey, I want to build a new character! What should
       rawText,
     });
   } catch (err: unknown) {
-    console.error('OpenAI /api/gemini/complete-sheet error:', err);
+    console.error('OpenAI /api/openai/complete-sheet error:', err);
     return res.status(500).json({
       error: errorMessage(err, 'OpenAI Complete Sheet generation failed.'),
     });
@@ -276,8 +283,17 @@ async function handleSotFetchReadonlyPage(req: Request, res: Response) {
 }
 
 export function registerApiRoutes(app: Express): void {
-  app.post('/api/gemini/generate', handleGeminiGenerate);
-  app.post('/api/gemini/lookup', handleGeminiLookup);
+  app.get('/api/openai/status', (_req, res) => res.json({
+    provider: 'openai',
+    configured: Boolean(getAIClient()),
+    models: getOpenAIModelsToTry(),
+  }));
+  app.post('/api/openai/generate', handleOpenAIGenerate);
+  app.post('/api/openai/lookup', handleOpenAILookup);
+  app.post('/api/openai/complete-sheet', handleCompleteSheet);
+  // Compatibility aliases for clients loaded before the OpenAI route rename.
+  app.post('/api/gemini/generate', handleOpenAIGenerate);
+  app.post('/api/gemini/lookup', handleOpenAILookup);
   app.post('/api/gemini/complete-sheet', handleCompleteSheet);
   app.post('/api/sot/fetch-readonly-page', handleSotFetchReadonlyPage);
 }

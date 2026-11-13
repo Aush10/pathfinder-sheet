@@ -1,7 +1,7 @@
 /**
  * Pathfinder 1e Modular AI Engine & Source of Truth (SOT) Service
  * Provides:
- * - Server-side Gemini API integration (/api/gemini/generate & /api/gemini/lookup)
+ * - Server-side OpenAI API integration (/api/openai/generate & /api/openai/lookup)
  * - Online SRD Lookup (Google Search + URL Context) with Source of Truth (SOT) Rich-Text Override priority
  * - Plain English to DSL Macro & Buff Box <^...> generation
  * - First-Person Character Voice Journal Generator
@@ -22,6 +22,7 @@ import {
   AbilityName,
 } from '../types/character';
 import { generateProceduralPencilSketch } from './sketchRenderer';
+import { buildTapTestTurnInstruction, filterTapTestUpdates, getTapTestStep, type TapTestTurn } from './tapTest';
 import {
   applyAbilityWrite,
   applySkillWrite,
@@ -254,14 +255,14 @@ export function buildSOTContextForAI(character: PF1Character): {
   return { overrideText, activeUrls };
 }
 
-// Helper to call server-side /api/gemini/generate
-async function callServerGeminiGenerate(params: {
+// Helper to call server-side /api/openai/generate
+async function callServerOpenAIGenerate(params: {
   prompt: string;
   systemInstruction?: string;
   responseMimeType?: string;
   urls?: string[];
 }): Promise<string> {
-  const response = await fetch('/api/gemini/generate', {
+  const response = await fetch('/api/openai/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),
@@ -277,7 +278,7 @@ async function callServerGeminiGenerate(params: {
       // Keep the raw response when it is not JSON.
     }
     throw new Error(
-      `Gemini request failed (${response.status} ${response.statusText})${
+      `OpenAI request failed (${response.status} ${response.statusText})${
         message ? `: ${message}` : ''
       }`
     );
@@ -285,7 +286,7 @@ async function callServerGeminiGenerate(params: {
 
   const data = await response.json();
   if (typeof data.text !== 'string' || !data.text.trim()) {
-    throw new Error('Gemini request succeeded but returned no text.');
+    throw new Error('OpenAI request succeeded but returned no text.');
   }
   return data.text.trim();
 }
@@ -927,9 +928,9 @@ export async function lookupRulesWithSOT(
   }
 
   // =========================================================================
-  // STEP 2 & 3: CHECK SOT LINKS NEXT, THEN VERIFIED ONLINE SRD VIA GEMINI
+  // STEP 2 & 3: CHECK SOT LINKS NEXT, THEN VERIFIED ONLINE SRD VIA OPENAI
   // =========================================================================
-  const response = await fetch('/api/gemini/lookup', {
+  const response = await fetch('/api/openai/lookup', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -952,7 +953,7 @@ export async function lookupRulesWithSOT(
       // Keep raw response when not JSON
     }
     throw new Error(
-      `Gemini lookup failed (${response.status} ${response.statusText})${
+      `OpenAI lookup failed (${response.status} ${response.statusText})${
         message ? `: ${message}` : ''
       }`
     );
@@ -961,7 +962,7 @@ export async function lookupRulesWithSOT(
   const data = await response.json();
   const parsed = data.text ? safeParseJson<any>(data.text) : null;
   if (!parsed || typeof parsed.matched !== 'boolean') {
-    throw new Error('Gemini lookup succeeded but returned invalid JSON.');
+    throw new Error('OpenAI lookup succeeded but returned invalid JSON.');
   }
 
   if (!parsed.matched) {
@@ -983,7 +984,7 @@ export async function lookupRulesWithSOT(
   }
 
   if (!parsed.title) {
-    throw new Error('Gemini lookup matched an entry without a valid title.');
+    throw new Error('OpenAI lookup matched an entry without a valid title.');
   }
 
   return {
@@ -1060,7 +1061,7 @@ Return ONLY a valid JSON object with these keys:
   "explanation": "concise breakdown of how the PF1e math and Macaroni symbols work"
 }`;
 
-  const serverText = await callServerGeminiGenerate({
+  const serverText = await callServerOpenAIGenerate({
     prompt: `User Request: ${prompt}`,
     systemInstruction,
     responseMimeType: 'application/json',
@@ -1069,7 +1070,7 @@ Return ONLY a valid JSON object with these keys:
 
   const parsed = safeParseJson<any>(serverText);
   if (!parsed || typeof parsed.formula !== 'string' || !parsed.formula.trim()) {
-    throw new Error('Gemini returned an invalid macro JSON response (missing "formula" field).');
+    throw new Error('OpenAI returned an invalid macro JSON response (missing "formula" field).');
   }
 
   const rawCat = String(parsed.category || 'action').toLowerCase();
@@ -1130,7 +1131,7 @@ Return ONLY valid JSON with these keys:
   "quirkyQuote": "A witty, cheese-themed Pathfinder 1e tabletop quip"
 }`;
 
-  const serverText = await callServerGeminiGenerate({
+  const serverText = await callServerOpenAIGenerate({
     prompt: `User Buff Request: ${prompt}`,
     systemInstruction,
     responseMimeType: 'application/json',
@@ -1138,7 +1139,7 @@ Return ONLY valid JSON with these keys:
 
   const parsed = safeParseJson<any>(serverText);
   if (!parsed || typeof parsed.name !== 'string' || !parsed.name.trim()) {
-    throw new Error('Gemini returned an invalid buff JSON response (missing "name" field).');
+    throw new Error('OpenAI returned an invalid buff JSON response (missing "name" field).');
   }
 
   return {
@@ -1196,7 +1197,7 @@ Guidelines:
   "tags": ["Combat", "NPC", "Loot"]
 }`;
 
-  const serverText = await callServerGeminiGenerate({
+  const serverText = await callServerOpenAIGenerate({
     prompt: `Session Events to Write About: ${prompt}`,
     systemInstruction,
     responseMimeType: 'application/json',
@@ -1204,7 +1205,7 @@ Guidelines:
 
   const parsed = safeParseJson<any>(serverText);
   if (!parsed || typeof parsed.content !== 'string' || !parsed.content.trim()) {
-    throw new Error('Gemini returned an invalid journal JSON response (missing "content" field).');
+    throw new Error('OpenAI returned an invalid journal JSON response (missing "content" field).');
   }
 
   return {
@@ -2260,7 +2261,7 @@ Rules based on Macaroni directive (${hasHash ? '#' : ''}AI${terminator}):
   const generatedLines: string[] = [];
 
   for (let r = 0; r < repeatCount; r++) {
-    const reply = await callServerGeminiGenerate({
+    const reply = await callServerOpenAIGenerate({
       prompt: `Active Player Prompt: ${promptText}\nAlready suggested below this line: ${existingFollowupLines
         .concat(generatedLines)
         .join(' | ')}`,
@@ -2273,7 +2274,7 @@ Rules based on Macaroni directive (${hasHash ? '#' : ''}AI${terminator}):
   }
 
   if (generatedLines.length === 0) {
-    throw new Error('Gemini returned no scratchpad output.');
+    throw new Error('OpenAI returned no scratchpad output.');
   }
 
   const combinedReply = generatedLines.join('\n');
@@ -2478,7 +2479,7 @@ Return ONLY valid JSON with this structure:
   "summary": "1-sentence summary of how the grid was adapted"
 }`;
 
-    const serverText = await callServerGeminiGenerate({
+    const serverText = await callServerOpenAIGenerate({
       prompt: `Player Archetype Description:\n${cleanDesc}`,
       systemInstruction,
       responseMimeType: 'application/json',
@@ -2640,12 +2641,15 @@ export interface CompleteSheetConverseParams {
   character: PF1Character;
   userPrompt: string;
   isRandomRequested?: boolean;
+  tapTest?: TapTestTurn;
+  signal?: AbortSignal;
 }
 
 export interface CompleteSheetConverseResult {
   updatedCharacter: PF1Character;
   replyMessage: CompleteSheetMessage;
   appliedActions: SheetModificationAction[];
+  tapTestNeedsInput?: boolean;
 }
 
 const CANONICAL_PF1E_RACES = [
@@ -2879,6 +2883,10 @@ export async function completeSheetConverse(
   params: CompleteSheetConverseParams
 ): Promise<CompleteSheetConverseResult> {
   const { conversation, character, userPrompt, isRandomRequested } = params;
+  const tapTest = params.tapTest;
+  if (tapTest && (!getTapTestStep(tapTest.step) || !Number.isInteger(tapTest.budget) || tapTest.budget < 0 || tapTest.budget > 100)) {
+    throw new Error('Invalid tap test step or point-buy budget.');
+  }
   const permissions = character.installedModules?.aiSettings?.allowedFields || DEFAULT_AI_MODULE_SETTINGS.allowedFields;
   const sot = character.sotCatalogue || DEFAULT_SOT_CATALOGUE;
 
@@ -2894,10 +2902,14 @@ Actions & Resources (${(character.characterActions || []).length}): ${(character
 Loaded SOT SRD Documents: ${(sot.overridePages || []).map((p) => `"${p.title}" (${p.category})`).join(', ') || 'None'}
 Active SOT Weblinks: ${(sot.weblinks || []).filter((w) => w.isActive).map((w) => w.title).join(', ') || 'None'}`;
 
-  const messageHistory = [
-    ...conversation.map((m) => ({ role: m.role, text: m.text })),
-    { role: 'user' as const, text: userPrompt },
-  ];
+  const messageHistory = conversation.map((m) => ({ role: m.role, text: m.text }));
+  if (messageHistory.at(-1)?.role !== 'user' || messageHistory.at(-1)?.text !== userPrompt) {
+    messageHistory.push({ role: 'user', text: userPrompt });
+  }
+  if (tapTest) {
+    // Expand the command on every turn, including with a server started before HMR.
+    messageHistory[messageHistory.length - 1].text += `\n\n${buildTapTestTurnInstruction(tapTest.step, tapTest.budget)}`;
+  }
 
   let replyText = '';
   let fieldUpdates: string[] = [];
@@ -3005,10 +3017,11 @@ Active SOT Weblinks: ${(sot.weblinks || []).filter((w) => w.isActive).map((w) =>
   }
 
   // -------------------------------------------------------------------------
-  // STEP 2: Server-Side Gemini Route (/api/gemini/complete-sheet)
+  // STEP 2: Server-Side OpenAI Route (/api/openai/complete-sheet)
   // -------------------------------------------------------------------------
-  const res = await fetch('/api/gemini/complete-sheet', {
+  const res = await fetch('/api/openai/complete-sheet', {
     method: 'POST',
+    signal: params.signal,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       conversation: messageHistory,
@@ -3016,6 +3029,7 @@ Active SOT Weblinks: ${(sot.weblinks || []).filter((w) => w.isActive).map((w) =>
       sotOverridePages: sot.overridePages || [],
       sotWeblinks: sot.weblinks || [],
       allowedFields: permissions,
+      ...(tapTest ? { tapTest } : {}),
     }),
   });
 
@@ -3029,7 +3043,7 @@ Active SOT Weblinks: ${(sot.weblinks || []).filter((w) => w.isActive).map((w) =>
       // Keep raw response when not JSON
     }
     throw new Error(
-      `Gemini complete-sheet request failed (${res.status} ${res.statusText})${
+      `OpenAI complete-sheet request failed (${res.status} ${res.statusText})${
         message ? `: ${message}` : ''
       }`
     );
@@ -3037,7 +3051,7 @@ Active SOT Weblinks: ${(sot.weblinks || []).filter((w) => w.isActive).map((w) =>
 
   const data = await res.json();
   if (!data || typeof data.rawText !== 'string' || !data.rawText.trim()) {
-    throw new Error('Gemini complete-sheet request succeeded but returned no text.');
+    throw new Error('OpenAI complete-sheet request succeeded but returned no text.');
   }
 
   const parsed = safeParseJson<{
@@ -3063,13 +3077,20 @@ Active SOT Weblinks: ${(sot.weblinks || []).filter((w) => w.isActive).map((w) =>
     }
   }
 
+  const stagedUpdates = tapTest ? filterTapTestUpdates(parsed?.sheetUpdates, tapTest.step) : undefined;
+  if (tapTest?.step === 2 && stagedUpdates) {
+    for (const update of stagedUpdates as Record<string, unknown>[]) {
+      update.budget = tapTest.budget;
+      update.random = true;
+    }
+  }
   const writes = runCompleteSheetWrites({
     character,
     userPrompt,
-    sheetUpdates: parsed?.sheetUpdates,
-    textUpdates: fieldUpdates,
-    allowRandom: Boolean(isRandomRequested) || playerAskedToRandomizeAbilities(userPrompt),
-    statedBudget: extractStatedPointBuyBudget(userPrompt),
+    sheetUpdates: tapTest ? stagedUpdates : parsed?.sheetUpdates,
+    textUpdates: tapTest ? [] : fieldUpdates,
+    allowRandom: tapTest ? tapTest.step === 2 : Boolean(isRandomRequested) || playerAskedToRandomizeAbilities(userPrompt),
+    statedBudget: tapTest ? tapTest.budget : extractStatedPointBuyBudget(userPrompt),
   });
   const currentCharacter = writes.character;
   const appliedActions = writes.applied;
@@ -3097,6 +3118,9 @@ Active SOT Weblinks: ${(sot.weblinks || []).filter((w) => w.isActive).map((w) =>
     updatedCharacter: currentCharacter,
     replyMessage,
     appliedActions,
+    ...(tapTest ? {
+      tapTestNeedsInput: Boolean(missingSotRequest || writes.rejected.length || writes.questions.length || parsed?.questions?.some((question) => typeof question === 'string' && question.trim()) || (!writes.applied.length && !writes.blocked.length)),
+    } : {}),
   };
 }
 
