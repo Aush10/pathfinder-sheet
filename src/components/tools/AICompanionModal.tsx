@@ -2104,7 +2104,7 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
 
                           {/* Read-Only Sanitized Body */}
                           <div
-                            className="p-3 rounded-lg bg-black/20 border border-slate-800/80 text-xs font-serif opacity-90 prose prose-invert max-w-none select-text pointer-events-none"
+                            className="min-h-0 max-h-[min(65vh,42rem)] overflow-y-auto overscroll-contain p-3 pr-4 rounded-lg bg-black/20 border border-slate-800/80 text-xs font-serif opacity-90 prose prose-invert max-w-none select-text"
                             dangerouslySetInnerHTML={{ __html: page.htmlContent }}
                           />
 
