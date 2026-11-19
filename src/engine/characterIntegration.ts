@@ -65,6 +65,7 @@ import {
   resolveBuffStatTarget,
   type MacaroniExecutionResult,
 } from './macaroni';
+import { syncCareerAbilitiesToDirectory } from './actionDirectory';
 
 export const LOCAL_STORAGE_CHARACTER_KEY = 'pf1e_character_data_v1';
 export const LOCAL_STORAGE_LAYOUT_KEY = 'pf1e_workspace_layout_v1';
@@ -379,6 +380,11 @@ export function applyCareerProgressionToCharacter(
     favoredClassSkillRanks: favoredSkillRanks,
     skills: updatedSkills,
     featsAndAbilities: combinedAbilities,
+    characterActions: syncCareerAbilitiesToDirectory(
+      character.characterActions || [],
+      careerResult,
+      customGrids
+    ),
     careerData: effectiveCareer || character.careerData,
   });
 

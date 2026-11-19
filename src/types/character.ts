@@ -215,9 +215,18 @@ export interface ResourceTracker {
   notes?: string;
 }
 
+export type ActionDirectoryEntryType = 'resource' | 'ability' | 'spell' | 'counter' | 'alt';
+
+export interface ActionDirectoryTab {
+  id: string;
+  name: string;
+  entryIds: string[];
+}
+
 export interface CharacterActionItem {
   id: string;
   name: string;
+  entryType?: ActionDirectoryEntryType;
   category:
     | 'Spells'
     | 'SLA'
@@ -237,7 +246,7 @@ export interface CharacterActionItem {
     | 'Full-Round'
     | '1 Round'
     | 'Passive / Pool';
-  macroFormula?: string; // e.g. "2d6+CHA"
+  macroFormula?: string; // e.g. "2d6+CHA" (full macro for resource, roll macro for ability/spell)
   macroKey?: string;
   icon?: string;
   description: string;
@@ -247,6 +256,26 @@ export interface CharacterActionItem {
   range?: string;
   target?: string;
   duration?: string;
+  // Resource Bar fields (B1)
+  color?: string;
+  stepperMacro?: string;
+  stepperStepCount?: number;
+  // Ability fields (B2)
+  abilityType?: string; // e.g. 'Racial' | 'Class Feature' | custom tag
+  // Spell fields (B3)
+  isAvailable?: boolean;
+  spellLevel?: number;
+  // Counter fields (B4)
+  totalCountMacro?: string;
+  // Alt fields (B5)
+  parentActionId?: string;
+  altTargetType?: 'ability' | 'spell';
+  showAltCorner?: boolean;
+  // Class progression provenance (C2)
+  sourceClassId?: string;
+  sourceClassName?: string;
+  sourceFeatureKey?: string;
+  sourceLevel?: number;
   // Unified Class Resource & Pool tracking inside Action Directory
   hasResourcePool?: boolean;
   resourceCurrent?: number;
@@ -712,6 +741,8 @@ export interface PF1Character {
   // Resource Trackers, Actions & Abilities (Image 1)
   resourceTrackers?: ResourceTracker[];
   characterActions?: CharacterActionItem[];
+  customAbilityTypes?: string[];
+  actionDirectoryTabs?: ActionDirectoryTab[];
   characterFeats?: FeatItem[];
   generatedOddFeatLevels?: number[];
 

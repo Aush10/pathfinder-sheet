@@ -28,6 +28,7 @@ import {
   CharacterBioData,
 } from '../../types/character';
 import { DerivedCombatStats } from '../../engine/pf1eMath';
+import { calculateAutoChange, reconcileCurrency } from '../../engine/currencyUtils';
 import { StorageInventoryModule } from './StorageInventoryModule';
 import { ImageFileBrowserModal } from '../tools/ImageFileBrowserModal';
 import { executeScratchpadAIMacro, DEFAULT_AI_MODULE_SETTINGS } from '../../engine/aiService';
@@ -184,6 +185,15 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
 
   const updateDowntime = (updates: Partial<DowntimeCapital>) => {
     setField('downtimeCapital', { ...downtime, ...updates });
+  };
+
+  const wealthReconciliation = useMemo(
+    () => reconcileCurrency(character.currency, downtime, true),
+    [character.currency, downtime]
+  );
+
+  const handleDowntimeAutoChange = () => {
+    setField('currency', calculateAutoChange(wealthReconciliation.targetGp));
   };
 
   // Companions helper
@@ -586,6 +596,31 @@ export const SheetPage3BioStorage: React.FC<SheetPage3BioStorageProps> = ({
                 />
                 <span>gp</span>
               </div>
+            </div>
+
+            <div className="pt-1.5 flex items-center justify-between gap-2 text-[10px] font-mono border-t border-amber-600/20">
+              <span
+                className={
+                  wealthReconciliation.isBalanced
+                    ? 'text-emerald-400'
+                    : 'text-rose-400 font-bold'
+                }
+              >
+                Coins: {wealthReconciliation.coinsGp.toLocaleString()} /{' '}
+                {wealthReconciliation.targetGp.toLocaleString()} gp
+              </span>
+              <button
+                type="button"
+                onClick={handleDowntimeAutoChange}
+                className={`px-2 py-0.5 rounded font-bold transition-all ${
+                  !wealthReconciliation.isBalanced
+                    ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 ring-2 ring-rose-500 animate-pulse'
+                    : 'bg-black/40 hover:bg-black/60 text-amber-300 border border-amber-500/40'
+                }`}
+                title="Distribute Current GP + Bank Savings into PP (10), GP (1), SP (0.1), CP (0.01)"
+              >
+                Auto Change
+              </button>
             </div>
           </div>
 

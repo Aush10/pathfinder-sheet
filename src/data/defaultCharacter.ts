@@ -206,6 +206,8 @@ export function createBlankCharacter(): PF1Character {
     generatedOddFeatLevels: [],
     resourceTrackers: [],
     characterActions: [],
+    customAbilityTypes: [],
+    actionDirectoryTabs: [],
     skills: INITIAL_SKILLS.map((skill) => ({
       ...skill,
       isClassSkill: false,

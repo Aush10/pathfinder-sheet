@@ -463,12 +463,12 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
             <button
               onClick={onOpenAddClass}
               className="p-2.5 rounded-lg bg-amber-950/70 hover:bg-amber-900/90 border border-amber-500/50 hover:border-amber-400 text-left transition-all shadow-md group flex items-center gap-2"
-              title="Paste class progression grid, auto-populate BAB, Saves, Feats, and Kits"
+              title="Open Class Architect: progression spreadsheet, multiclass/gestalt timeline, and class kit tools"
             >
               <Swords className="w-5 h-5 text-amber-400 group-hover:scale-110 transition-transform shrink-0" />
               <div className="min-w-0">
                 <div className="text-xs font-bold font-mono text-amber-200 truncate">Add Class</div>
-                <div className="text-[10px] font-mono text-amber-400/80 truncate">Grid & Level Up</div>
+                <div className="text-[10px] font-mono text-amber-400/80 truncate">Class Architect</div>
               </div>
             </button>
           </div>

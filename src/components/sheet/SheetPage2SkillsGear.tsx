@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { PF1Character, SkillItem, InventoryItem, AbilityName, SkillPointsConfig } from '../../types/character';
 import { DerivedCombatStats } from '../../engine/pf1eMath';
+import { calculateAutoChange, reconcileCurrency } from '../../engine/currencyUtils';
 import { FieldCallTooltip } from '../common/FieldCallTooltip';
 import { useCharacter } from '../../context/CharacterContext';
 
@@ -191,12 +192,12 @@ export const SheetPage2SkillsGear: React.FC<SheetPage2SkillsGearProps> = ({
     updateSkill(id, { ranks: clampedToLevel });
   };
 
-  // Wealth conversion to GP
-  const totalWealthGP =
-    (character.currency.cp || 0) * 0.01 +
-    (character.currency.sp || 0) * 0.1 +
-    (character.currency.gp || 0) +
-    (character.currency.pp || 0) * 10;
+  // Wealth conversion to GP & reconciliation
+  const currencyReconciliation = useMemo(
+    () => reconcileCurrency(character.currency, character.downtimeCapital, true),
+    [character.currency, character.downtimeCapital]
+  );
+  const totalWealthGP = currencyReconciliation.coinsGp;
 
   return (
     <div className={`space-y-4 ${fontClass} transition-colors duration-200`}>
@@ -635,14 +636,29 @@ export const SheetPage2SkillsGear: React.FC<SheetPage2SkillsGearProps> = ({
           {/* Currency & Wealth */}
           {visibleModules.currency && (
             <div className={`border rounded-lg overflow-hidden ${cardBg}`}>
-              <div className={`px-4 py-2 border-b flex items-center justify-between ${headerBg}`}>
+              <div className={`px-4 py-2 border-b flex items-center justify-between gap-2 ${headerBg}`}>
                 <div className="flex items-center gap-2">
                   <Coins className="w-4 h-4 text-amber-400" />
                   <span className="font-bold text-xs uppercase tracking-wider">Currency & Wealth</span>
                 </div>
-                <span className="text-xs font-mono font-bold text-amber-500">
-                  Total: {totalWealthGP.toLocaleString()} GP
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-mono font-bold text-amber-500">
+                    Total: {totalWealthGP.toLocaleString()} GP
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setField('currency', calculateAutoChange(currencyReconciliation.targetGp))
+                    }
+                    className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold transition-all ${
+                      !currencyReconciliation.isBalanced
+                        ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 ring-2 ring-rose-500 animate-pulse'
+                        : 'bg-black/15 dark:bg-white/10 hover:bg-black/25 opacity-80'
+                    }`}
+                  >
+                    Auto Change
+                  </button>
+                </div>
               </div>
               <div className="p-3 grid grid-cols-4 gap-2 text-center text-xs">
                 <div>

@@ -35,7 +35,7 @@ import { DeckTool } from './components/tools/DeckTool';
 import { XDXTool } from './components/tools/XDXTool';
 import { MacroDebugTool } from './components/tools/MacroDebugTool';
 import { LoadoutModal } from './components/tools/LoadoutModal';
-import { AddClassModal } from './components/tools/AddClassModal';
+import { ClassArchitectModal } from './components/tools/ClassArchitectModal';
 import { CMBTool } from './components/tools/CMBTool';
 import { NewSheetModal } from './components/tools/NewSheetModal';
 import { ImageFileBrowserModal } from './components/tools/ImageFileBrowserModal';
@@ -430,7 +430,7 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
         theme={layout.theme}
       />
 
-      <AddClassModal
+      <ClassArchitectModal
         isOpen={isAddClassOpen}
         onClose={() => setIsAddClassOpen(false)}
         onOpenAITool={(tab) => handleOpenAITool(tab || 'permissions')}

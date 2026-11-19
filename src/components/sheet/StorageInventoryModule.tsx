@@ -32,6 +32,7 @@ import {
   CustomBuffEffect,
 } from '../../types/character';
 import { DerivedCombatStats } from '../../engine/pf1eMath';
+import { calculateAutoChange, reconcileCurrency } from '../../engine/currencyUtils';
 import { ImageFileBrowserModal } from '../tools/ImageFileBrowserModal';
 
 interface StorageInventoryModuleProps {
@@ -525,19 +526,23 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
   const pushOrDrag = loads.heavy * 5; // push/drag in wireframe = 5x max load
 
   // Coinage helpers (4-quadrant: Plat, Gold, Silver, Copper)
+  const [includeBankInChange, setIncludeBankInChange] = useState(true);
   const currency = character.currency || { pp: 0, gp: 0, sp: 0, cp: 0 };
   const updateCurrency = (key: 'pp' | 'gp' | 'sp' | 'cp', val: number) => {
     setField('currency', { ...currency, [key]: Math.max(0, val) });
   };
 
-  const totalValueInGp = useMemo(() => {
-    return (
-      (currency.pp || 0) * 10 +
-      (currency.gp || 0) +
-      (currency.sp || 0) * 0.1 +
-      (currency.cp || 0) * 0.01
-    );
-  }, [currency]);
+  const currencyReconciliation = useMemo(
+    () => reconcileCurrency(currency, character.downtimeCapital, includeBankInChange),
+    [currency, character.downtimeCapital, includeBankInChange]
+  );
+
+  const totalValueInGp = currencyReconciliation.coinsGp;
+
+  const handleAutoChange = () => {
+    const nextCoins = calculateAutoChange(currencyReconciliation.targetGp);
+    setField('currency', nextCoins);
+  };
 
   // Quick info label renderer
   const renderQuickInfoValue = (item: InventoryItem) => {
@@ -1065,13 +1070,52 @@ export const StorageInventoryModule: React.FC<StorageInventoryModuleProps> = ({
         <div className="md:col-span-5 space-y-3">
           {/* 4-Quadrant Coinage Box (Plat, Gold, Silver, Copper) */}
           <div className="p-3 rounded-xl bg-black/15 dark:bg-black/35 border border-black/10 dark:border-white/10 space-y-2">
-            <div className="flex items-center justify-between font-mono text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-1.5 font-mono text-xs">
               <span className="font-bold text-amber-400 flex items-center gap-1">
                 <Coins className="w-3.5 h-3.5" />
                 <span>Coinage &amp; Wealth</span>
               </span>
-              <span className="text-[11px] opacity-75">
-                Total: <strong className="text-amber-300">{totalValueInGp.toLocaleString()} gp</strong>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[11px] opacity-75">
+                  Total: <strong className="text-amber-300">{totalValueInGp.toLocaleString()} gp</strong>
+                </span>
+                <button
+                  type="button"
+                  onClick={handleAutoChange}
+                  className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold transition-all ${
+                    !currencyReconciliation.isBalanced
+                      ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 ring-2 ring-rose-500 shadow-md animate-pulse'
+                      : 'bg-black/25 hover:bg-black/40 text-amber-300 border border-amber-500/30'
+                  }`}
+                  title={
+                    !currencyReconciliation.isBalanced
+                      ? `Coins (${currencyReconciliation.coinsGp} gp) do not match ${includeBankInChange ? 'Current GP + Bank' : 'Current GP'} (${currencyReconciliation.targetGp} gp). Click Auto Change to distribute 10/1/0.1/0.01.`
+                      : `Auto Change (${currencyReconciliation.targetGp} gp balanced)`
+                  }
+                >
+                  Auto Change
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-2 text-[10px] font-mono">
+              <label className="flex items-center gap-1 cursor-pointer opacity-80">
+                <input
+                  type="checkbox"
+                  checked={includeBankInChange}
+                  onChange={(e) => setIncludeBankInChange(e.target.checked)}
+                  className="rounded accent-amber-500 w-3 h-3"
+                />
+                <span>Include Bank Savings</span>
+              </label>
+              <span
+                className={
+                  currencyReconciliation.isBalanced ? 'text-emerald-400' : 'text-rose-400 font-bold'
+                }
+              >
+                {currencyReconciliation.isBalanced
+                  ? `Balanced (${currencyReconciliation.targetGp.toLocaleString()} gp)`
+                  : `Target: ${currencyReconciliation.targetGp.toLocaleString()} gp`}
               </span>
             </div>
 

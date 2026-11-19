@@ -16,6 +16,7 @@ import {
   PF1Character,
   CustomClassGrid,
   ClassGridRow,
+  CareerLevelEntry,
   CareerProgressionData,
   ArchetypeConfig,
   CharacterActionItem,
@@ -37,8 +38,10 @@ import {
   loadAllHostDeviceSrdDocs,
 } from '../../engine/sotEngine';
 import { AppleEyeIcon } from '../common/AppleEyeIcon';
-import { useCharacter } from '../../context/CharacterContext';
+import { useCharacter, useOptionalCharacter } from '../../context/CharacterContext';
+import { DEFAULT_CHARACTER } from '../../data/defaultCharacter';
 import { applyCareerProgressionToCharacter } from '../../engine/characterIntegration';
+import { syncCareerAbilitiesToDirectory } from '../../engine/actionDirectory';
 
 export interface ClassArchitectModalProps {
   isOpen: boolean;
@@ -158,10 +161,10 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
   onOpenAITool,
   theme: propTheme,
 }) => {
-  const ctx = useCharacter();
-  const character = propCharacter ?? ctx.character;
-  const onUpdateCharacter = propOnUpdateCharacter ?? ctx.updateCharacter;
-  const theme = propTheme ?? ctx.layout.theme;
+  const ctx = useOptionalCharacter();
+  const character = propCharacter ?? ctx?.character ?? DEFAULT_CHARACTER;
+  const onUpdateCharacter = propOnUpdateCharacter ?? ctx?.updateCharacter ?? (() => {});
+  const theme = propTheme ?? ctx?.layout.theme ?? 'parchment';
 
   // Existing custom class grids (default empty or fallback)
   const classGrids: Record<string, CustomClassGrid> = character.customClassGrids || {};
@@ -184,6 +187,8 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
     rawText: '',
     rows: [],
   };
+
+  const currentRows = currentClass?.rows || [];
 
   // Career progression state
   const careerData: CareerProgressionData = character.careerData || {
@@ -220,6 +225,7 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
   const isAIActive = aiSettings.allowedModules?.addClass !== false;
 
   // Local UI states
+  const [viewMode, setViewMode] = useState<'grid' | 'career'>('grid');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
   const [isPasteGridOpen, setIsPasteGridOpen] = useState(false);
@@ -252,7 +258,19 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
     return combined;
   }, [character.sotCatalogue?.overridePages]);
 
-  if (!isOpen) return null;
+  // Gather unique features from the current class grid
+  const allFeaturesInGrid = useMemo(() => {
+    const set = new Set<string>();
+    currentRows.forEach((r) => {
+      if (r.special && r.special !== '—') {
+        r.special.split(/,\s*(?![^()]*\))/).forEach((f) => {
+          const trimmed = f.trim();
+          if (trimmed && trimmed !== '—') set.add(trimmed);
+        });
+      }
+    });
+    return Array.from(set);
+  }, [currentRows]);
 
   // Update current class
   const updateCurrentClass = (updates: Partial<CustomClassGrid>) => {
@@ -280,6 +298,44 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
         ...updates,
       },
     }));
+  };
+
+  const handleAddCareerLevel = () => {
+    if (careerData.levels.length >= 20) return;
+    const nextLvl = careerData.levels.length + 1;
+    const classKeys = Object.keys(classGrids);
+    const fallbackPrimary = classKeys.includes(activeClassId)
+      ? activeClassId
+      : classKeys[0] || 'class1';
+    const fallbackGestalt =
+      classKeys.find((k) => k !== fallbackPrimary) || fallbackPrimary;
+
+    const newEntry: CareerLevelEntry = {
+      level: nextLvl,
+      primaryClassId: fallbackPrimary,
+      primaryClassLevel: nextLvl,
+      isGestalt: careerData.mode === 'gestalt',
+      gestaltClassId: careerData.mode === 'gestalt' ? fallbackGestalt : undefined,
+      gestaltClassLevel: careerData.mode === 'gestalt' ? nextLvl : undefined,
+      favoredClassBonus: 'hp',
+    };
+    updateCareerData({ levels: [...careerData.levels, newEntry] });
+  };
+
+  const handleRemoveCareerLevel = () => {
+    if (careerData.levels.length <= 1) return;
+    updateCareerData({ levels: careerData.levels.slice(0, -1) });
+  };
+
+  const handleUpdateCareerLevel = (
+    lvlNum: number,
+    updates: Partial<CareerLevelEntry>
+  ) => {
+    updateCareerData({
+      levels: careerData.levels.map((entry) =>
+        entry.level === lvlNum ? { ...entry, ...updates } : entry
+      ),
+    });
   };
 
   // Add new class
@@ -450,6 +506,43 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
       const newTotalMaxHp = Math.max(1, baseMultiHp + conHp + additionalHpSum);
 
       const classSummaryTitle = existingClasses.map((c) => `${c.name} ${c.level}`).join(' / ');
+      const updatedGrids = {
+        ...(prev.customClassGrids || {}),
+        [currentClass.id]: currentClass,
+      };
+      const unlockedRows = (currentClass.rows || []).filter(
+        (r) => r.level <= classLvl && r.special && r.special !== '—'
+      );
+      const kitCareerPreview: CalculatedCareerResult = {
+        totalLevel: totalCombinedLevel,
+        classSummaryTitle,
+        totalHp: newTotalMaxHp,
+        hitDiceString: expandedHitDiceString,
+        totalBab: prev.baseAttackBonus || 0,
+        babString: `+${prev.baseAttackBonus || 0}`,
+        fortBase: prev.saves?.fortitude?.base || 0,
+        refBase: prev.saves?.reflex?.base || 0,
+        willBase: prev.saves?.will?.base || 0,
+        totalSkillPoints: 0,
+        allFeatures: [],
+        levelBreakdown: unlockedRows.map((r) => ({
+          level: r.level,
+          className: currentClass.className,
+          classLevel: r.level,
+          hitDie: classHd,
+          hpGained: 0,
+          skillPointsGained: 0,
+          cumulativeBab: r.bab,
+          cumulativeFort: r.fort,
+          cumulativeRef: r.ref,
+          cumulativeWill: r.will,
+          features: r.special
+            .split(/,\s*(?![^()]*\))/)
+            .map((f) => `${currentClass.className} ${r.level}: ${f.trim()}`)
+            .filter(Boolean),
+          isGestalt: false,
+        })),
+      };
 
       return {
         ...prev,
@@ -468,15 +561,17 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
         },
         featsAndAbilities: updatedFeats,
         skills: updatedSkills,
-        customClassGrids: {
-          ...(prev.customClassGrids || {}),
-          [currentClass.id]: currentClass,
-        },
+        characterActions: syncCareerAbilitiesToDirectory(
+          prev.characterActions || [],
+          kitCareerPreview,
+          updatedGrids
+        ),
+        customClassGrids: updatedGrids,
       };
     });
 
     setSuccessMessage(
-      `Added Kit for ${currentClass.className}! Registered proficiencies, expanded Hit Dice (d${currentClass.hitDie}), and marked class skills.`
+      `Added Kit for ${currentClass.className}! Registered proficiencies, expanded Hit Dice (d${currentClass.hitDie}), marked class skills, and synced unlocked abilities.`
     );
   };
 
@@ -516,7 +611,7 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
         ? extracted.rows
         : extracted.rawGridText
         ? parseClassProgressionGrid(extracted.rawGridText)
-        : currentClass.rows;
+        : currentRows;
 
     onUpdateCharacter((prev) => {
       const existingGrids = prev.customClassGrids || classGrids;
@@ -567,7 +662,7 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
       const result = await adaptArchetypeIntoGrid(
         archetypeInput,
         currentClass.className,
-        currentClass.rows,
+        currentRows,
         getSessionApiKey()
       );
 
@@ -606,7 +701,7 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
 
   // Inline cell edit handlers
   const handleStartCellEdit = (rowIdx: number, col: keyof ClassGridRow) => {
-    const row = currentClass.rows[rowIdx];
+    const row = currentRows[rowIdx];
     if (!row) return;
     setEditingCell({ rowIdx, col });
     setEditingCellValue(String(row[col] ?? ''));
@@ -615,7 +710,7 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
   const handleSaveCellEdit = () => {
     if (!editingCell) return;
     const { rowIdx, col } = editingCell;
-    const updatedRows = [...currentClass.rows];
+    const updatedRows = [...currentRows];
     const targetRow = { ...updatedRows[rowIdx] };
 
     if (col === 'level' || col === 'fort' || col === 'ref' || col === 'will') {
@@ -638,28 +733,50 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
     setEditingCell(null);
   };
 
-  // Send Feature to Class Resource / Action Directory
+  // Send Feature to Class Resource / Action Directory (deduplicated)
   const handleSendFeatureToDirectory = () => {
     if (!selectedFeatureForDirectory.trim()) return;
     const featureName = selectedFeatureForDirectory.trim();
-    const cleanMacroKey = featureName.toUpperCase().replace(/[^A-Z0-9]/g, '_').slice(0, 16);
+    const cleanMacroKey = featureName.toUpperCase().replace(/[^A-Z0-9]/g, '_').slice(0, 24);
+    const normalizedClass = currentClass.className.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
+    const normalizedFeat = featureName.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+    const sourceFeatureKey = `${normalizedClass}::${normalizedFeat}`;
+    let alreadyExists = false;
 
     onUpdateCharacter((prev) => {
       const existingActions = [...(prev.characterActions || [])];
       const existingTrackers = [...(prev.resourceTrackers || [])];
+      if (
+        existingActions.some(
+          (a) =>
+            a.sourceFeatureKey === sourceFeatureKey ||
+            a.name.trim().toLowerCase() === featureName.toLowerCase()
+        )
+      ) {
+        alreadyExists = true;
+        return prev;
+      }
+
       const id = `act-cls-${Date.now()}`;
 
       if (directoryTargetType === 'resource') {
         const newAction: CharacterActionItem = {
           id,
           name: featureName,
+          entryType: 'resource',
           category: 'Class Resource',
           actionType: directoryActionType,
           description: `Class feature from ${currentClass.className}.`,
+          color: 'amber',
           hasResourcePool: true,
           resourceCurrent: directoryPoolMax,
           resourceMax: directoryPoolMax,
+          macroFormula: String(directoryPoolMax),
+          stepperMacro: '-1',
           macroKey: cleanMacroKey,
+          sourceClassId: currentClass.id,
+          sourceClassName: currentClass.className,
+          sourceFeatureKey,
         };
         const newTracker: ResourceTracker = {
           id: `res-${id}`,
@@ -679,10 +796,16 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
         const newAction: CharacterActionItem = {
           id,
           name: featureName,
+          entryType: 'ability',
+          abilityType: 'Class Feature',
           category: 'Class Ability',
           actionType: directoryActionType,
+          icon: 'sparkles',
           description: `Class ability from ${currentClass.className}.`,
           macroKey: cleanMacroKey,
+          sourceClassId: currentClass.id,
+          sourceClassName: currentClass.className,
+          sourceFeatureKey,
         };
         return {
           ...prev,
@@ -692,22 +815,14 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
     });
 
     setIsSendDirectoryOpen(false);
-    setSuccessMessage(`Exported "${featureName}" directly to Page 2 Action & Class Resource Directory!`);
+    if (alreadyExists) {
+      setNoticeMessage(`"${featureName}" is already in the Action & Resource Directory (skipped duplicate).`);
+    } else {
+      setSuccessMessage(`Exported "${featureName}" directly to Page 2 Action & Resource Directory!`);
+    }
   };
 
-  // Gather unique features from the current class grid
-  const allFeaturesInGrid = useMemo(() => {
-    const set = new Set<string>();
-    (currentClass.rows || []).forEach((r) => {
-      if (r.special && r.special !== '—') {
-        r.special.split(/,\s*(?![^()]*\))/).forEach((f) => {
-          const trimmed = f.trim();
-          if (trimmed && trimmed !== '—') set.add(trimmed);
-        });
-      }
-    });
-    return Array.from(set);
-  }, [currentClass.rows]);
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3">
@@ -758,10 +873,10 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
         {/* ========================================================================= */}
         <div className="px-4 pt-2.5 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-end gap-1 overflow-x-auto pb-0">
-            {Object.keys(classGrids).map((cid) => {
-              const c = classGrids[cid];
+            {(Object.keys(classGrids).length > 0 ? Object.keys(classGrids) : [activeClassId]).map((cid) => {
+              const c = classGrids[cid] || currentClass;
               const isActive = cid === activeClassId;
-              const displayName = c.className?.trim() || `Class ${cid}`;
+              const displayName = c?.className?.trim() || `Class ${cid}`;
               return (
                 <div
                   key={cid}
@@ -803,7 +918,33 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
             </button>
           </div>
 
-          <div className="flex items-center gap-2 pb-1.5">
+          <div className="flex items-center gap-2 pb-1.5 flex-wrap">
+            {/* View Mode Toggle: Class Grid & Kit vs Career Timeline */}
+            <div className="inline-flex rounded-lg bg-slate-950 border border-slate-800 p-0.5 font-mono text-xs">
+              <button
+                type="button"
+                onClick={() => setViewMode('grid')}
+                className={`px-2.5 py-1 rounded-md transition-colors ${
+                  viewMode === 'grid'
+                    ? 'bg-cyan-500/20 text-cyan-300 font-bold'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Class Grid &amp; Kit
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('career')}
+                className={`px-2.5 py-1 rounded-md transition-colors ${
+                  viewMode === 'career'
+                    ? 'bg-amber-500/20 text-amber-300 font-bold'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Career Timeline (Lvl {careerResult.totalLevel})
+              </button>
+            </div>
+
             {/* SOT Selector Button */}
             <button
               onClick={() => setIsSotPickerOpen(!isSotPickerOpen)}
@@ -882,16 +1023,245 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
         )}
 
         {/* ========================================================================= */}
-        {/* MAIN BODY: Spreadsheet Grid on Left + Class Kit Stat Block on Right */}
+        {/* MAIN BODY: Career Timeline OR Spreadsheet Grid + Class Kit Stat Block     */}
         {/* ========================================================================= */}
+        {viewMode === 'career' ? (
+          <div className="flex-1 p-4 overflow-y-auto space-y-4">
+            {/* Live Calculated Stats Dashboard */}
+            <div className="p-3 rounded-xl bg-slate-900 border border-cyan-500/30 grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2.5 text-center">
+              <div className="p-2 rounded bg-slate-950 border border-slate-800">
+                <div className="text-[10px] font-mono text-slate-400 uppercase">Total Level</div>
+                <div className="text-base font-bold font-mono text-cyan-300">{careerResult.totalLevel}</div>
+              </div>
+              <div className="p-2 rounded bg-slate-950 border border-slate-800">
+                <div className="text-[10px] font-mono text-slate-400 uppercase">Total HP</div>
+                <div className="text-base font-bold font-mono text-rose-400">{careerResult.totalHp}</div>
+                <div className="text-[9px] font-mono text-slate-500 truncate">{careerResult.hitDiceString || '—'}</div>
+              </div>
+              <div className="p-2 rounded bg-slate-950 border border-slate-800">
+                <div className="text-[10px] font-mono text-slate-400 uppercase">Base Attack</div>
+                <div className="text-base font-bold font-mono text-cyan-400">+{careerResult.totalBab}</div>
+                <div className="text-[9px] font-mono text-slate-400">{careerResult.babString}</div>
+              </div>
+              <div className="p-2 rounded bg-slate-950 border border-slate-800">
+                <div className="text-[10px] font-mono text-slate-400 uppercase">Fortitude</div>
+                <div className="text-base font-bold font-mono text-emerald-400">+{careerResult.fortBase}</div>
+              </div>
+              <div className="p-2 rounded bg-slate-950 border border-slate-800">
+                <div className="text-[10px] font-mono text-slate-400 uppercase">Reflex</div>
+                <div className="text-base font-bold font-mono text-sky-400">+{careerResult.refBase}</div>
+              </div>
+              <div className="p-2 rounded bg-slate-950 border border-slate-800">
+                <div className="text-[10px] font-mono text-slate-400 uppercase">Will</div>
+                <div className="text-base font-bold font-mono text-purple-400">+{careerResult.willBase}</div>
+              </div>
+              <div className="p-2 rounded bg-slate-950 border border-slate-800">
+                <div className="text-[10px] font-mono text-slate-400 uppercase">Skill Pts</div>
+                <div className="text-base font-bold font-mono text-amber-300">{careerResult.totalSkillPoints}</div>
+              </div>
+            </div>
+
+            {/* Career Controls */}
+            <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-mono font-bold text-slate-300">Mode:</span>
+                <button
+                  type="button"
+                  onClick={() => updateCareerData({ mode: 'standard' })}
+                  className={`px-2.5 py-1 rounded text-xs font-mono font-bold transition-all ${
+                    careerData.mode === 'standard'
+                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400'
+                      : 'bg-slate-950 text-slate-400 border border-slate-800'
+                  }`}
+                >
+                  Standard Multiclass
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateCareerData({ mode: 'gestalt' })}
+                  className={`px-2.5 py-1 rounded text-xs font-mono font-bold transition-all flex items-center gap-1 ${
+                    careerData.mode === 'gestalt'
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-400'
+                      : 'bg-slate-950 text-slate-400 border border-slate-800'
+                  }`}
+                >
+                  <Split className="w-3 h-3 text-amber-400" />
+                  <span>Gestalt (Class A // Class B)</span>
+                </button>
+              </div>
+
+              <div className="flex items-center gap-3 text-xs font-mono text-slate-300">
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={careerData.useFractionalBab}
+                    onChange={(e) => updateCareerData({ useFractionalBab: e.target.checked })}
+                    className="rounded border-slate-700 bg-slate-950 text-cyan-500"
+                  />
+                  <span>Fractional BAB</span>
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={careerData.useFractionalSaves}
+                    onChange={(e) => updateCareerData({ useFractionalSaves: e.target.checked })}
+                    className="rounded border-slate-700 bg-slate-950 text-cyan-500"
+                  />
+                  <span>Fractional Saves</span>
+                </label>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleRemoveCareerLevel}
+                  disabled={careerData.levels.length <= 1}
+                  className="px-2.5 py-1 rounded bg-slate-950 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-mono disabled:opacity-30"
+                >
+                  - Level
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAddCareerLevel}
+                  disabled={careerData.levels.length >= 20}
+                  className="px-3 py-1 rounded bg-cyan-600 hover:bg-cyan-500 text-slate-950 text-xs font-mono font-bold flex items-center gap-1 disabled:opacity-30"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Level Up ({careerData.levels.length + 1})</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Level-by-level Career Progression Table */}
+            <div className="rounded-xl border border-slate-800 bg-slate-950 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs font-mono">
+                  <thead>
+                    <tr className="bg-slate-900 border-b border-slate-800 text-[10px] uppercase text-slate-400">
+                      <th className="p-2 text-center">Lvl</th>
+                      <th className="p-2">Primary Class</th>
+                      {careerData.mode === 'gestalt' && (
+                        <th className="p-2 text-amber-300">// Gestalt Class</th>
+                      )}
+                      <th className="p-2 text-center">Dom. HD</th>
+                      <th className="p-2 text-center">HP</th>
+                      <th className="p-2 text-center">SP</th>
+                      <th className="p-2 text-center">Favored</th>
+                      <th className="p-2 text-center">BAB</th>
+                      <th className="p-2 text-center">Saves</th>
+                      <th className="p-2 font-sans">Unlocked Features</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {careerData.levels.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={careerData.mode === 'gestalt' ? 10 : 9}
+                          className="p-6 text-center text-slate-500"
+                        >
+                          No career levels added yet. Click &ldquo;Level Up&rdquo; to start level 1 progression.
+                        </td>
+                      </tr>
+                    ) : (
+                      careerData.levels.map((entry, idx) => {
+                        const breakdown = careerResult.levelBreakdown[idx];
+                        const availableIds =
+                          Object.keys(classGrids).length > 0 ? Object.keys(classGrids) : ['class1'];
+                        return (
+                          <tr key={entry.level} className="hover:bg-slate-900/50">
+                            <td className="p-2 text-center font-bold text-cyan-300">{entry.level}</td>
+                            <td className="p-2">
+                              <select
+                                value={entry.primaryClassId}
+                                onChange={(e) =>
+                                  handleUpdateCareerLevel(entry.level, {
+                                    primaryClassId: e.target.value,
+                                  })
+                                }
+                                className="px-2 py-1 rounded bg-slate-900 border border-slate-700 text-xs text-white"
+                              >
+                                {availableIds.map((cid) => (
+                                  <option key={cid} value={cid}>
+                                    {classGrids[cid]?.className || cid}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                            {careerData.mode === 'gestalt' && (
+                              <td className="p-2">
+                                <select
+                                  value={entry.gestaltClassId || availableIds[1] || availableIds[0]}
+                                  onChange={(e) =>
+                                    handleUpdateCareerLevel(entry.level, {
+                                      gestaltClassId: e.target.value,
+                                      isGestalt: true,
+                                    })
+                                  }
+                                  className="px-2 py-1 rounded bg-slate-900 border border-amber-500/50 text-xs text-amber-200"
+                                >
+                                  {availableIds.map((cid) => (
+                                    <option key={cid} value={cid}>
+                                      {classGrids[cid]?.className || cid}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+                            )}
+                            <td className="p-2 text-center text-cyan-300 font-bold">
+                              d{breakdown?.hitDie || 10}
+                            </td>
+                            <td className="p-2 text-center text-rose-400 font-bold">
+                              +{breakdown?.hpGained || 0}
+                            </td>
+                            <td className="p-2 text-center text-amber-300 font-bold">
+                              +{breakdown?.skillPointsGained || 0}
+                            </td>
+                            <td className="p-2 text-center">
+                              <select
+                                value={entry.favoredClassBonus}
+                                onChange={(e) =>
+                                  handleUpdateCareerLevel(entry.level, {
+                                    favoredClassBonus: e.target.value as CareerLevelEntry['favoredClassBonus'],
+                                  })
+                                }
+                                className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 text-[10px] text-slate-300"
+                              >
+                                <option value="hp">+1 HP</option>
+                                <option value="skill">+1 Skill</option>
+                                <option value="none">None</option>
+                              </select>
+                            </td>
+                            <td className="p-2 text-center text-cyan-400 font-bold">
+                              +{breakdown?.cumulativeBab || 0}
+                            </td>
+                            <td className="p-2 text-center text-[11px] text-slate-300 whitespace-nowrap">
+                              F+{breakdown?.cumulativeFort || 0} / R+{breakdown?.cumulativeRef || 0} / W+
+                              {breakdown?.cumulativeWill || 0}
+                            </td>
+                            <td
+                              className="p-2 font-sans text-xs text-slate-300 max-w-xs truncate"
+                              title={breakdown?.features ? breakdown.features.join(', ') : ''}
+                            >
+                              {breakdown?.features?.length ? breakdown.features.join(', ') : '—'}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        ) : (
         <div className="flex-1 p-4 overflow-y-auto grid grid-cols-1 lg:grid-cols-12 gap-4">
           {/* ========================================================================= */}
           {/* LEFT: Progression Spreadsheet Grid + AI Archetype Grid Adapter */}
           {/* ========================================================================= */}
           <div className="lg:col-span-8 flex flex-col space-y-3 min-w-0">
-            {/* Class Name Bar */}
-            <div className="flex items-center justify-between gap-3 p-2.5 rounded-xl bg-slate-900 border border-slate-800">
-              <div className="flex-1 flex items-center gap-2">
+            {/* Class Name + Level Bar */}
+            <div className="flex items-center justify-between gap-3 p-2.5 rounded-xl bg-slate-900 border border-slate-800 flex-wrap">
+              <div className="flex-1 flex items-center gap-2 min-w-[220px]">
                 <span className="text-[11px] font-mono uppercase text-slate-400 font-bold shrink-0">
                   Class Name:
                 </span>
@@ -900,7 +1270,23 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
                   value={currentClass.className}
                   onChange={(e) => updateCurrentClass({ className: e.target.value })}
                   placeholder="e.g. Warpriest, Bard, Fighter, Slayer..."
-                  className="w-full max-w-sm px-2.5 py-1 rounded bg-slate-950 border border-slate-700 text-xs font-bold text-cyan-200 focus:border-cyan-400 font-mono"
+                  className="w-full max-w-xs px-2.5 py-1 rounded bg-slate-950 border border-slate-700 text-xs font-bold text-cyan-200 focus:border-cyan-400 font-mono"
+                />
+                <span className="text-[11px] font-mono uppercase text-slate-400 font-bold shrink-0 ml-1">
+                  Lvl:
+                </span>
+                <input
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={currentClass.level || 1}
+                  onChange={(e) =>
+                    updateCurrentClass({
+                      level: Math.max(1, Math.min(20, parseInt(e.target.value, 10) || 1)),
+                    })
+                  }
+                  className="w-14 text-center px-2 py-1 rounded bg-slate-950 border border-slate-700 text-xs font-bold text-amber-300 focus:border-cyan-400 font-mono"
+                  title="Class level for Kit and feature sync"
                 />
               </div>
 
@@ -957,7 +1343,7 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/50">
-                    {currentClass.rows.length === 0 ? (
+                    {currentRows.length === 0 ? (
                       <tr>
                         <td colSpan={7} className="p-8 text-center text-slate-500 font-mono text-xs">
                           <div className="space-y-2">
@@ -984,7 +1370,7 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
                         </td>
                       </tr>
                     ) : (
-                      currentClass.rows.map((row, idx) => {
+                      currentRows.map((row, idx) => {
                         const isEven = idx % 2 === 0;
                         const isEditingThis = editingCell?.rowIdx === idx;
 
@@ -1121,7 +1507,7 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
                             <td className="p-1 text-center">
                               <button
                                 onClick={() => {
-                                  const updated = currentClass.rows.filter((_, i) => i !== idx);
+                                  const updated = currentRows.filter((_, i) => i !== idx);
                                   updateCurrentClass({ rows: updated });
                                 }}
                                 className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 transition-opacity"
@@ -1146,7 +1532,7 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
                 <strong className="text-amber-300">{careerData.mode.toUpperCase()}</strong>
               </span>
               <span className="text-[11px] text-slate-500">
-                {currentClass.rows.length} rows | Click any cell to edit inline
+                {currentRows.length} rows | Click any cell to edit inline
               </span>
             </div>
 
@@ -1365,6 +1751,7 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
             </div>
           </div>
         </div>
+        )}
 
         {/* ========================================================================= */}
         {/* FOOTER: Active Status + Close */}

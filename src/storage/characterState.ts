@@ -89,6 +89,8 @@ export function normalizeCharacter(input: unknown): PF1Character {
     xdxMacros: arrayOr(source.xdxMacros, blank.xdxMacros || []),
     resourceTrackers: arrayOr(source.resourceTrackers, blank.resourceTrackers || []),
     characterActions: arrayOr(source.characterActions, blank.characterActions || []),
+    customAbilityTypes: arrayOr(source.customAbilityTypes, blank.customAbilityTypes || []),
+    actionDirectoryTabs: arrayOr(source.actionDirectoryTabs, blank.actionDirectoryTabs || []),
     characterFeats: arrayOr(source.characterFeats, blank.characterFeats || []),
     generatedOddFeatLevels: arrayOr(source.generatedOddFeatLevels, blank.generatedOddFeatLevels || []),
     characterBio: {
