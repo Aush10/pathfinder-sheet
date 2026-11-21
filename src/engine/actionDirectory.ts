@@ -273,20 +273,24 @@ export function evaluateDirectoryMacroValue(
     return { display: String(n), numeric: n, rollable: false };
   }
 
-  // Try Macaroni if expression uses Macaroni syntax (!, |, <^, >>, ^)
-  if (/[!|<>^]/.test(normalizedExpr)) {
-    const mac = executeMacaroni(normalizedExpr, {
+  // Try Macaroni if expression uses Macaroni 1.2 sigils/operators (!, |, <^, <>, <?>, <!>, >target<)
+  const hasV12Sigil = /^(?:<<|==|<>|<\?>|<\^>|<!>|>[a-zA-Z0-9_{}]+\s*<[+\-*/=])/.test(raw);
+  if (hasV12Sigil || /[!|<>^]/.test(normalizedExpr)) {
+    const macaroniExpr = hasV12Sigil ? raw : `<<${normalizedExpr}`;
+    const mac = executeMacaroni(macaroniExpr, {
       character,
       formulaContext: context,
       stepCount,
     });
-    const out = mac.fullOutput.trim();
-    const numMatch = out.match(/^-?\d+(\.\d+)?$/);
-    return {
-      display: out || normalizedExpr,
-      numeric: numMatch ? Number(numMatch[0]) : null,
-      rollable: mac.rollable,
-    };
+    if (!mac.isError) {
+      const out = mac.fullOutput.trim();
+      const numMatch = out.match(/^-?\d+(\.\d+)?$/);
+      return {
+        display: mac.isNoOp ? '' : (out || normalizedExpr),
+        numeric: numMatch ? Number(numMatch[0]) : null,
+        rollable: mac.rollable,
+      };
+    }
   }
 
   const evalRes = evaluateFormula(normalizedExpr, context);
@@ -381,7 +385,10 @@ export function stepResourceBarValue(
   context.this = curVal;
   context.step = nextStepCount;
 
-  const mac = executeMacaroni(cleanStepper, {
+  const stepperExpr = /^(?:<<|==|<>|<\?>|<\^>|<!>|>[a-zA-Z0-9_{}]+\s*<[+\-*/=])/.test(rawStepper)
+    ? rawStepper
+    : `<<${cleanStepper}`;
+  const mac = executeMacaroni(stepperExpr, {
     character,
     formulaContext: context,
     thisValue: curVal,

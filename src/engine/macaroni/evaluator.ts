@@ -1,6 +1,18 @@
 /**
- * Macaroni Evaluator: Executes symbolic verb-centric macros with single-purpose grammar
- * Includes full <^...> Buff-Making Parser ({col:row}, Stat.Type, ALLCAPS) & State Application
+ * Macroni Overhaul 1.2 Evaluator
+ * Clean, deterministic interpreter enforcing:
+ * - Mandatory leading sigil (==, <<, <>, <?>, <^>, <!>, >target<op value)
+ * - 5-step resolution order:
+ *     1. {object} references & {dN} fresh dice rolls (never cached; dN reserved)
+ *     2. Innermost [...] brackets outward (strict calculator boundary, PEMDAS)
+ *     3. Outermost [...] bracket
+ *     4. #calls last (legacy fallback treated as {})
+ *     5. Print result / execute sigil behavior
+ * - Safe recursive-descent math parser (no eval / new Function)
+ * - Per-! hidden ID stepper counters (0 -> 1 on first run before multiplication)
+ * - Sigil-aware <?> query options (depth <= 5, self-reopen loop stop)
+ * - <^> buff modifier keyed by (name, bonusType)
+ * - >target<op value field & non-mutating object merge
  */
 
 import {
@@ -10,14 +22,27 @@ import {
   BuffStatTarget,
   CustomBuffEffect,
 } from '../../types/character';
-import { executeDiceRoll } from '../formula';
-import { tokenizeMacaroni } from './lexer';
 import {
-  MacaroniExecutionResult,
-  MacaroniSlotResult,
-  MacaroniQueryRequest,
-  MacaroniQueryOption,
+  findNestedSigilInBody,
+  findReservedSymbolInBody,
+  isArrayCapsuleRef,
+  isReservedDiceName,
+  parseSigilEnvelope,
+  tokenizeMacaroni,
+} from './lexer';
+import {
   MacaroniBuffMakeSpec,
+  MacaroniExecutionResult,
+  MacaroniExternalSheet,
+  MacaroniMergeResult,
+  MacaroniQueryOption,
+  MacaroniQueryRequest,
+  MacaroniScopeAccessEvent,
+  MacaroniScopePermissions,
+  MacaroniSlotResult,
+  MacaroniTraceStep,
+  MergeOperator,
+  NoodleTextSegment,
 } from './types';
 
 export interface MacaroniExecutionContext {
@@ -27,97 +52,66 @@ export interface MacaroniExecutionContext {
   companion?: Record<string, any>;
   thisValue?: number;
   stepCount?: number;
+  stepperStore?: Record<string, number>;
+  stepperScopeId?: string;
+  queryDisplayStore?: Record<string, string>;
+  inlineQueryAnswers?: Record<string, string>;
+  queryDepth?: number;
+  visitedQueryKeys?: string[];
+  visitedObjects?: string[];
+  activeMacros?: string[];
+  tempObjects?: Record<string, string>;
+  arrayStore?: Record<string, string[]>;
+  permissions?: MacaroniScopePermissions;
+  externalSheets?: Record<string, MacaroniExternalSheet>;
+  requesterId?: string;
   uiPresets?: UiMakePreset[];
   depth?: number;
 }
 
-/**
- * 1-Indexed Column & Row Coordinate Maps for the 19x19 Buff Box Matrix
- */
 export const BUFF_MATRIX_COLUMNS: BuffStatTarget[] = [
-  'hp',       // 1
-  'mattack',  // 2
-  'rattack',  // 3
-  'fort',     // 4
-  'ref',      // 5
-  'will',     // 6
-  'ac',       // 7
-  'str',      // 8
-  'dex',      // 9
-  'con',      // 10
-  'int',      // 11
-  'wis',      // 12
-  'cha',      // 13
-  'str_mod',  // 14
-  'dex_mod',  // 15
-  'con_mod',  // 16
-  'int_mod',  // 17
-  'wis_mod',  // 18
-  'cha_mod',  // 19
+  'hp',
+  'mattack',
+  'rattack',
+  'fort',
+  'ref',
+  'will',
+  'ac',
+  'str',
+  'dex',
+  'con',
+  'int',
+  'wis',
+  'cha',
+  'str_mod',
+  'dex_mod',
+  'con_mod',
+  'int_mod',
+  'wis_mod',
+  'cha_mod',
 ];
 
 export const BUFF_MATRIX_ROWS: BuffBonusType[] = [
-  'Untyped',        // 1
-  'Enhancement',    // 2
-  'Circumstance',   // 3
-  'Competence',     // 4
-  'Deflection',     // 5
-  'Dodge',          // 6
-  'Insight',        // 7
-  'Item',           // 8
-  'Inherent',       // 9
-  'Luck',           // 10
-  'Morale',         // 11
-  'Pro/Sac',        // 12
-  'Race',           // 13
-  'NAT armor',      // 14
-  'Armor',          // 15
-  'Level advance',  // 16
-  'Shield',         // 17
-  'Size',           // 18
-  'Alt size',       // 19
+  'Untyped',
+  'Enhancement',
+  'Circumstance',
+  'Competence',
+  'Deflection',
+  'Dodge',
+  'Insight',
+  'Item',
+  'Inherent',
+  'Luck',
+  'Morale',
+  'Pro/Sac',
+  'Race',
+  'NAT armor',
+  'Armor',
+  'Level advance',
+  'Shield',
+  'Size',
+  'Alt size',
 ];
-
-const QUIRKY_BUFF_MESSAGES = [
-  'Extra sharp cheddar applied to your character sheet!',
-  'Nethys nods approvingly at this mathematical cheese.',
-  'Golarion physics bent by +100% pure Macaroni power.',
-  'The GM squints suspiciously at your Armor Class...',
-  'Pathfinder math: where 19 bonus types walk into a tavern.',
-  'Buff simmering nicely! Stir occasionally to prevent dispelling.',
-  'Certified 100% organic Pathfinder 1e Gouda.',
-  'By Cayden Cailean’s tankard, those numbers just went up!',
-];
-
-const QUIRKY_DEBUFF_MESSAGES = [
-  'Oof, someone stepped in cursed dungeon fondue.',
-  'A tragic penalty! Even your dice look slightly apologetic.',
-  'Debuff applied. Time to blame the rogue for triggering the trap.',
-  'Shaken, stirred, and mathematically penalized.',
-];
-
-const QUIRKY_ROLL_MESSAGES = [
-  'The polyhedrals have spoken!',
-  'Rolled with extra parmesan and zero remorse.',
-  'May Desna smile upon this arithmetic.',
-  'Crunching numbers faster than a Barbarian with Power Attack.',
-];
-
-export function pickQuirkyMessage(kind: 'buff' | 'debuff' | 'roll' | 'locked' | 'toggled_off'): string {
-  if (kind === 'locked') {
-    return 'Locked with $ — already simmering in the pot! No double-stacking cheese allowed.';
-  }
-  if (kind === 'toggled_off') {
-    return 'Buff toggled OFF — the arcane cheese has cooled down.';
-  }
-  const pool =
-    kind === 'buff'
-      ? QUIRKY_BUFF_MESSAGES
-      : kind === 'debuff'
-      ? QUIRKY_DEBUFF_MESSAGES
-      : QUIRKY_ROLL_MESSAGES;
-  return pool[Math.floor(Math.random() * pool.length)];
-}
 
 export const DEFAULT_UI_PRESETS: UiMakePreset[] = [
   {
@@ -154,11 +148,38 @@ export const DEFAULT_UI_PRESETS: UiMakePreset[] = [
   },
 ];
 
-/**
- * Resolves a Stat name or alias into a canonical BuffStatTarget
- */
+export function pickQuirkyMessage(kind: 'buff' | 'debuff' | 'roll' | 'locked' | 'toggled_off'): string {
+  if (kind === 'buff') return 'Buff updated in Buff Box.';
+  if (kind === 'debuff') return 'Debuff updated in Buff Box.';
+  if (kind === 'locked') return 'Buff active.';
+  if (kind === 'toggled_off') return 'Buff deactivated.';
+  return 'Macro executed cleanly.';
+}
+
+export function resolveUiMakePreset(
+  tagCandidate: number | undefined,
+  presets: UiMakePreset[] = DEFAULT_UI_PRESETS
+): UiMakePreset {
+  const allPresets = presets.length > 0 ? presets : DEFAULT_UI_PRESETS;
+  const defaultPreset = allPresets.find((p) => p.tag === 1) || allPresets[0] || DEFAULT_UI_PRESETS[0];
+  if (tagCandidate === undefined || Number.isNaN(tagCandidate)) return defaultPreset;
+  const exact = allPresets.find((p) => p.tag === tagCandidate);
+  if (exact) return exact;
+  const candidateStr = String(tagCandidate);
+  let bestMatch: UiMakePreset | null = null;
+  let bestLen = 0;
+  for (const preset of allPresets) {
+    const pStr = String(preset.tag);
+    if (candidateStr.startsWith(pStr) && pStr.length > bestLen) {
+      bestMatch = preset;
+      bestLen = pStr.length;
+    }
+  }
+  return bestMatch || defaultPreset;
+}
+
 export function resolveBuffStatTarget(rawStat: string): BuffStatTarget | null {
-  const clean = rawStat.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+  const clean = String(rawStat || '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
   const map: Record<string, BuffStatTarget> = {
     hp: 'hp',
     health: 'hp',
@@ -207,16 +228,13 @@ export function resolveBuffStatTarget(rawStat: string): BuffStatTarget | null {
   return map[clean] || null;
 }
 
-/**
- * Resolves a Bonus Type name or alias into a canonical BuffBonusType
- */
 export function resolveBuffBonusType(rawType?: string): BuffBonusType {
   if (!rawType) return 'Untyped';
   const clean = rawType.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
   const map: Record<string, BuffBonusType> = {
     untyped: 'Untyped',
     enhancement: 'Enhancement',
-    enhancment: 'Enhancement', // common user spelling
+    enhancment: 'Enhancement',
     enh: 'Enhancement',
     circumstance: 'Circumstance',
     circ: 'Circumstance',
@@ -249,143 +267,2004 @@ export function resolveBuffBonusType(rawType?: string): BuffBonusType {
   return map[clean] || 'Untyped';
 }
 
+export function validateObjectName(name: string): { valid: boolean; reason?: string } {
+  const clean = String(name || '').trim();
+  if (!clean) return { valid: false, reason: 'Object name cannot be empty.' };
+  const base = clean.endsWith('&') ? clean.slice(0, -1) : clean;
+  if (!base) return { valid: false, reason: 'Array capsule name cannot be just "&".' };
+  if (isReservedDiceName(clean) || isReservedDiceName(base)) {
+    return {
+      valid: false,
+      reason: `"${clean}" is reserved for dice rolls ({dN} / {XdN}). Choose a different object name.`,
+    };
+  }
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(base)) {
+    return {
+      valid: false,
+      reason: `"${clean}" must start with a letter/underscore and contain only letters, digits, or underscores (plus optional trailing & for arrays).`,
+    };
+  }
+  return { valid: true };
+}
+
+export const ALLOWED_NOODLE_COLORS = [
+  'red',
+  'blue',
+  'green',
+  'amber',
+  'gold',
+  'cyan',
+  'purple',
+  'orange',
+  'white',
+  'gray',
+  'slate',
+] as const;
+
+const NOODLE_COLOR_SET = new Set<string>(ALLOWED_NOODLE_COLORS);
+
 /**
- * Parses a <^ ... > Buff-Making Construct supporting all 3 formats:
- * 1. Matrix Coordinates: {col:row}+val (e.g. {7:2}+4 or {7:1}+10)
- * 2. Shorthand Stat.BonusType: AC.Armor+4, AC+10, STR.Morale+4, CON.Morale+4
- * 3. Natural ALLCAPS phrase: ENHANCEMENTBONUSTOAC+4, UNTYPEDBONUSTOAC+10, DODGEBONUSTOAC+2
+ * Parses safe Noodle formatting (+bold+, _underline_, #color#) into structured text runs.
+ * Raw HTML is never emitted; unknown #color# tags remain literal plain text.
  */
+export function parseNoodleFormatting(text: string): NoodleTextSegment[] {
+  const input = String(text ?? '');
+  if (!input) return [];
+
+  const segments: NoodleTextSegment[] = [];
+  let bold = false;
+  let underline = false;
+  let activeColor: string | undefined;
+  let buffer = '';
+
+  const flush = () => {
+    if (buffer) {
+      segments.push({ text: buffer, bold, underline, color: activeColor });
+      buffer = '';
+    }
+  };
+
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+
+    // #color# fixed-whitelist color marker
+    if (ch === '#') {
+      const m = input.slice(i).match(/^#([a-zA-Z]+)#/);
+      if (m) {
+        const candidate = m[1].toLowerCase();
+        if (NOODLE_COLOR_SET.has(candidate)) {
+          flush();
+          activeColor = candidate;
+          i += m[0].length - 1;
+          continue;
+        }
+      }
+    }
+
+    // +bold+ toggle when a matching closing + exists later in the string
+    if (ch === '+' && (bold || input.indexOf('+', i + 1) !== -1)) {
+      flush();
+      bold = !bold;
+      continue;
+    }
+
+    // _underline_ toggle when a matching closing _ exists later in the string
+    if (ch === '_' && (underline || input.indexOf('_', i + 1) !== -1)) {
+      flush();
+      underline = !underline;
+      continue;
+    }
+
+    buffer += ch;
+  }
+
+  flush();
+  return segments;
+}
+
+// ============================================================================
+// SAFE RECURSIVE-DESCENT PEMDAS ARITHMETIC PARSER
+// ============================================================================
+
+type MathLexToken =
+  | { kind: 'num'; val: number }
+  | { kind: 'op'; val: string }
+  | { kind: 'id'; val: string }
+  | { kind: 'comma' };
+
+function tokenizeArithmetic(expr: string): { ok: true; tokens: MathLexToken[] } | { ok: false; error: string } {
+  const tokens: MathLexToken[] = [];
+  let i = 0;
+  while (i < expr.length) {
+    const ch = expr[i];
+    if (/\s/.test(ch)) {
+      i++;
+      continue;
+    }
+    if (/[0-9.]/.test(ch)) {
+      const m = expr.slice(i).match(/^(?:\d+\.?\d*|\.\d+)/);
+      if (!m) return { ok: false, error: `Invalid number near "${expr.slice(i, i + 8)}"` };
+      const num = Number(m[0]);
+      if (!Number.isFinite(num)) return { ok: false, error: `Invalid number "${m[0]}"` };
+      tokens.push({ kind: 'num', val: num });
+      i += m[0].length;
+      continue;
+    }
+    if (/[A-Za-z_]/.test(ch)) {
+      const m = expr.slice(i).match(/^[A-Za-z_][A-Za-z0-9_]*/);
+      if (!m) return { ok: false, error: `Unexpected identifier near "${expr.slice(i, i + 8)}"` };
+      tokens.push({ kind: 'id', val: m[0].toLowerCase() });
+      i += m[0].length;
+      continue;
+    }
+    if (ch === ',') {
+      tokens.push({ kind: 'comma' });
+      i++;
+      continue;
+    }
+    if (['+', '-', '*', '/', '%', '(', ')'].includes(ch)) {
+      tokens.push({ kind: 'op', val: ch });
+      i++;
+      continue;
+    }
+    return { ok: false, error: `Unexpected character "${ch}" inside calculator [...]` };
+  }
+  return { ok: true, tokens };
+}
+
+function parseStrictArithmetic(expr: string): { ok: true; value: number } | { ok: false; error: string } {
+  const trimmed = expr.trim();
+  if (!trimmed) return { ok: false, error: 'Empty calculator [] expression' };
+
+  const lexed = tokenizeArithmetic(trimmed);
+  if (!lexed.ok) return lexed;
+  const tokens = lexed.tokens;
+  let pos = 0;
+
+  const peek = () => tokens[pos];
+  const consume = () => tokens[pos++];
+
+  function parseExpression(): number {
+    let left = parseTerm();
+    while (true) {
+      const tok = peek();
+      if (tok && tok.kind === 'op' && (tok.val === '+' || tok.val === '-')) {
+        consume();
+        const right = parseTerm();
+        left = tok.val === '+' ? left + right : left - right;
+      } else {
+        break;
+      }
+    }
+    return left;
+  }
+
+  function parseTerm(): number {
+    let left = parseUnary();
+    while (true) {
+      const tok = peek();
+      if (tok && tok.kind === 'op' && (tok.val === '*' || tok.val === '/' || tok.val === '%')) {
+        consume();
+        const right = parseUnary();
+        if (tok.val === '*') {
+          left = left * right;
+        } else if (tok.val === '/') {
+          if (right === 0) throw new Error('Division by zero');
+          left = left / right;
+        } else {
+          if (right === 0) throw new Error('Modulo by zero');
+          left = left % right;
+        }
+      } else if (tok && tok.kind === 'op' && tok.val === '(') {
+        // Allow implicit multiplication for e.g. 4(3) inside brackets
+        left = left * parseUnary();
+      } else {
+        break;
+      }
+    }
+    return left;
+  }
+
+  function parseUnary(): number {
+    const tok = peek();
+    if (tok && tok.kind === 'op' && tok.val === '+') {
+      consume();
+      return parseUnary();
+    }
+    if (tok && tok.kind === 'op' && tok.val === '-') {
+      consume();
+      return -parseUnary();
+    }
+    return parsePrimary();
+  }
+
+  function parsePrimary(): number {
+    const tok = peek();
+    if (!tok) throw new Error('Unexpected end of expression inside []');
+
+    if (tok.kind === 'num') {
+      consume();
+      return tok.val;
+    }
+
+    if (tok.kind === 'op' && tok.val === '(') {
+      consume();
+      const val = parseExpression();
+      const close = consume();
+      if (!close || close.kind !== 'op' || close.val !== ')') {
+        throw new Error('Missing closing parenthesis ")" inside []');
+      }
+      return val;
+    }
+
+    if (tok.kind === 'id') {
+      consume();
+      const openParen = peek();
+      if (!openParen || openParen.kind !== 'op' || openParen.val !== '(') {
+        throw new Error(`Unresolved symbol "${tok.val}" inside calculator []`);
+      }
+      consume(); // '('
+      const args: number[] = [];
+      if (peek() && !(peek()!.kind === 'op' && (peek() as { kind: 'op'; val: string }).val === ')')) {
+        args.push(parseExpression());
+        while (peek()?.kind === 'comma') {
+          consume();
+          args.push(parseExpression());
+        }
+      }
+      const closeParen = consume();
+      if (!closeParen || closeParen.kind !== 'op' || closeParen.val !== ')') {
+        throw new Error(`Missing closing ")" for ${tok.val}(...)`);
+      }
+      switch (tok.val) {
+        case 'floor':
+          if (args.length !== 1) throw new Error('floor() expects 1 argument');
+          return Math.floor(args[0]);
+        case 'ceil':
+          if (args.length !== 1) throw new Error('ceil() expects 1 argument');
+          return Math.ceil(args[0]);
+        case 'round':
+          if (args.length !== 1) throw new Error('round() expects 1 argument');
+          return Math.round(args[0]);
+        case 'abs':
+          if (args.length !== 1) throw new Error('abs() expects 1 argument');
+          return Math.abs(args[0]);
+        case 'sqrt':
+          if (args.length !== 1) throw new Error('sqrt() expects 1 argument');
+          if (args[0] < 0) throw new Error('sqrt() of negative number');
+          return Math.sqrt(args[0]);
+        case 'min':
+          if (args.length < 1) throw new Error('min() expects at least 1 argument');
+          return Math.min(...args);
+        case 'max':
+          if (args.length < 1) throw new Error('max() expects at least 1 argument');
+          return Math.max(...args);
+        default:
+          throw new Error(`Unknown function "${tok.val}" inside []`);
+      }
+    }
+
+    throw new Error(`Unexpected token inside calculator []`);
+  }
+
+  try {
+    const rawResult = parseExpression();
+    if (pos < tokens.length) {
+      throw new Error(`Unexpected trailing token in calculator [${trimmed}]`);
+    }
+    const clean = Object.is(rawResult, -0)
+      ? 0
+      : Math.abs(rawResult - Math.round(rawResult)) < 1e-10
+      ? Math.round(rawResult)
+      : Number(rawResult.toFixed(6));
+    return { ok: true, value: clean };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export function evaluatePureMath(expr: string): number {
+  const res = parseStrictArithmetic(expr);
+  return res.ok ? res.value : 0;
+}
+
+type CalcCmpOp = '=' | '<>' | '>' | '<' | '>=' | '<=';
+
+function findTopLevelComparison(expr: string): { op: CalcCmpOp; lhs: string; rhs: string } | null {
+  let parenDepth = 0;
+  for (let i = 0; i < expr.length; i++) {
+    const ch = expr[i];
+    if (ch === '(') {
+      parenDepth++;
+      continue;
+    }
+    if (ch === ')') {
+      parenDepth = Math.max(0, parenDepth - 1);
+      continue;
+    }
+    if (parenDepth > 0) continue;
+
+    const two = expr.slice(i, i + 2);
+    let normalized: CalcCmpOp | null = null;
+    let width = 1;
+    if (two === '>=' || two === '=>') {
+      normalized = '>=';
+      width = 2;
+    } else if (two === '<=' || two === '=<') {
+      normalized = '<=';
+      width = 2;
+    } else if (two === '<>') {
+      normalized = '<>';
+      width = 2;
+    } else if (ch === '=' || ch === '>' || ch === '<') {
+      normalized = ch as CalcCmpOp;
+      width = 1;
+    }
+    if (normalized) {
+      return {
+        op: normalized,
+        lhs: expr.slice(0, i).trim(),
+        rhs: expr.slice(i + width).trim(),
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * Evaluates a [...] calculator bracket:
+ * - Resolves arithmetic first (PEMDAS).
+ * - If =, >, <, >=/=>, <=/=<, or <> appears at top level inside [...], turns the bracket into a booli comparison.
+ */
+function evaluateCalculatorBracket(
+  innerExpr: string
+): { ok: true; value: number | boolean; display: string; isBool: boolean } | { ok: false; error: string } {
+  const cmp = findTopLevelComparison(innerExpr);
+  if (!cmp) {
+    const calc = parseStrictArithmetic(innerExpr);
+    if (!calc.ok) return calc;
+    return { ok: true, value: calc.value, display: String(calc.value), isBool: false };
+  }
+
+  if (!cmp.lhs || !cmp.rhs) {
+    return { ok: false, error: `Incomplete comparison "${cmp.op}" inside calculator [${innerExpr}].` };
+  }
+
+  const lhsCalc = parseStrictArithmetic(cmp.lhs);
+  const rhsCalc = parseStrictArithmetic(cmp.rhs);
+  let matched = false;
+
+  if (lhsCalc.ok && rhsCalc.ok) {
+    const a = lhsCalc.value;
+    const b = rhsCalc.value;
+    if (cmp.op === '=') matched = a === b;
+    else if (cmp.op === '<>') matched = a !== b;
+    else if (cmp.op === '>') matched = a > b;
+    else if (cmp.op === '<') matched = a < b;
+    else if (cmp.op === '>=') matched = a >= b;
+    else if (cmp.op === '<=') matched = a <= b;
+  } else {
+    // Allow comparing boolean or string tokens with = or <>
+    const aStr = lhsCalc.ok ? String(lhsCalc.value) : cmp.lhs.trim().toLowerCase();
+    const bStr = rhsCalc.ok ? String(rhsCalc.value) : cmp.rhs.trim().toLowerCase();
+    if (cmp.op === '=') matched = aStr === bStr;
+    else if (cmp.op === '<>') matched = aStr !== bStr;
+    else {
+      return { ok: false, error: !lhsCalc.ok ? lhsCalc.error : !rhsCalc.ok ? rhsCalc.error : 'Invalid comparison' };
+    }
+  }
+
+  return {
+    ok: true,
+    value: matched,
+    display: matched ? 'true' : 'false',
+    isBool: true,
+  };
+}
+
+// ============================================================================
+// CONTEXT & OBJECT RESOLUTION
+// ============================================================================
+
+function resolveFieldFromContext(rawKey: string, ctx: MacaroniExecutionContext): string | number | undefined {
+  const lower = rawKey.trim().toLowerCase();
+
+  // Dynamic multiclass LevelA / LevelB / LevelC ... and HDA / HDB ...
+  const classLevelMatch = lower.match(/^level([a-z])$/);
+  if (classLevelMatch) {
+    const idx = classLevelMatch[1].charCodeAt(0) - 97;
+    const cls = ctx.character?.classes?.[idx];
+    if (cls && typeof cls.level === 'number') return cls.level;
+    if (idx === 0 && typeof ctx.character?.level === 'number') return ctx.character.level;
+    return 0;
+  }
+  const classHdMatch = lower.match(/^hd([a-z])$/);
+  if (classHdMatch) {
+    const idx = classHdMatch[1].charCodeAt(0) - 97;
+    const cls = ctx.character?.classes?.[idx];
+    if (cls && typeof cls.hitDie === 'number') return cls.hitDie;
+  }
+
+  if (lower in ctx.formulaContext) return ctx.formulaContext[lower];
+  if (`#${lower}` in ctx.formulaContext) return ctx.formulaContext[`#${lower}`];
+  if (rawKey in ctx.formulaContext) return ctx.formulaContext[rawKey];
+  return undefined;
+}
+
+function findStoredObjectFormula(name: string, ctx: MacaroniExecutionContext): string | null {
+  const lower = name.trim().toLowerCase();
+  const custom = ctx.character?.customObjects?.find((o) => o.name.trim().toLowerCase() === lower);
+  if (custom) return custom.formula;
+  const xdx = ctx.character?.xdxMacros?.find((m) => m.name.trim().toLowerCase() === lower);
+  if (xdx) return xdx.formula;
+  return null;
+}
+
+function protectQuotes(input: string): { masked: string; literals: string[] } {
+  const literals: string[] = [];
+  const masked = input.replace(/"([^"]*)"|'([^']*)'/g, (_, p1, p2) => {
+    const str = p1 !== undefined ? p1 : p2;
+    const idx = literals.length;
+    literals.push(str);
+    return `__MSTR_${idx}__`;
+  });
+  return { masked, literals };
+}
+
+function restoreQuotes(input: string, literals: string[], keepQuotes = false): string {
+  return input.replace(/__MSTR_(\d+)__/g, (_, idxStr) => {
+    const text = literals[parseInt(idxStr, 10)] ?? '';
+    return keepQuotes ? `"${text}"` : text;
+  });
+}
+
+function checkOutsideCalculatorJuxtaposition(maskedBody: string): string | null {
+  let depth = 0;
+  for (let i = 0; i < maskedBody.length; i++) {
+    const ch = maskedBody[i];
+    if (ch === '[') {
+      if (depth === 0) {
+        // Look back for immediately preceding non-space character
+        let j = i - 1;
+        while (j >= 0 && /\s/.test(maskedBody[j])) j--;
+        if (j >= 0 && /[0-9)\]]/.test(maskedBody[j])) {
+          const snippet = maskedBody.slice(Math.max(0, j - 6), Math.min(maskedBody.length, i + 8)).trim();
+          return `Syntax error near "${snippet}": numbers or values outside [...] cannot multiply a calculator directly. Put the calculation inside brackets (e.g. [${snippet}]).`;
+        }
+      }
+      depth++;
+    } else if (ch === ']') {
+      if (depth === 0) {
+        return 'Unbalanced closing bracket "]".';
+      }
+      depth--;
+      if (depth === 0) {
+        let j = i + 1;
+        while (j < maskedBody.length && /\s/.test(maskedBody[j])) j++;
+        if (j < maskedBody.length && /[0-9([]/.test(maskedBody[j])) {
+          const snippet = maskedBody.slice(Math.max(0, i - 6), Math.min(maskedBody.length, j + 6)).trim();
+          return `Syntax error near "${snippet}": values outside [...] cannot multiply a calculator directly. Wrap everything inside [...].`;
+        }
+      }
+    }
+  }
+  if (depth !== 0) {
+    return 'Unbalanced opening bracket "[".';
+  }
+  return null;
+}
+
+function findInnermostBracket(text: string): { start: number; end: number; inner: string; depth: number } | null {
+  let depth = 0;
+  let lastOpenIdx = -1;
+  let lastOpenDepth = 0;
+
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '[') {
+      lastOpenIdx = i;
+      lastOpenDepth = depth;
+      depth++;
+    } else if (text[i] === ']') {
+      if (lastOpenIdx !== -1) {
+        return {
+          start: lastOpenIdx,
+          end: i,
+          inner: text.slice(lastOpenIdx + 1, i),
+          depth: lastOpenDepth,
+        };
+      }
+      depth = Math.max(0, depth - 1);
+    }
+  }
+  return null;
+}
+
+interface InternalEvalOutcome {
+  ok: boolean;
+  output: string;
+  errorMessage?: string;
+  diceRolls: Array<{ die: string; sides: number; rolled: number }>;
+  stepperSnapshots: Array<{ bangId: string; step: number }>;
+  scopeEvents?: MacaroniScopeAccessEvent[];
+  privateOutput?: boolean;
+  traceSteps: MacaroniTraceStep[];
+  pendingQuery?: MacaroniQueryRequest;
+}
+
+const WRITABLE_MERGE_FIELDS = new Set<string>([
+  'hp',
+  'hp_current',
+  'thp',
+  'temp_hp',
+  'gp',
+  'gold',
+  'str',
+  'strength',
+  'dex',
+  'dexterity',
+  'con',
+  'constitution',
+  'int',
+  'intelligence',
+  'wis',
+  'wisdom',
+  'cha',
+  'charisma',
+]);
+
+function splitArrayRawItems(raw: string): string[] {
+  let clean = raw.trim();
+  const env = parseSigilEnvelope(clean);
+  if (env.valid) clean = env.body.trim();
+  if (clean.startsWith('(') && clean.endsWith(')')) {
+    let depth = 0;
+    let wrapsWhole = true;
+    for (let i = 0; i < clean.length; i++) {
+      if (clean[i] === '(') depth++;
+      else if (clean[i] === ')') {
+        depth--;
+        if (depth === 0 && i < clean.length - 1) {
+          wrapsWhole = false;
+          break;
+        }
+      }
+    }
+    if (wrapsWhole) clean = clean.slice(1, -1).trim();
+  }
+  if (!clean) return [];
+
+  // Choose delimiter & first, then |, then , outside quotes and brackets
+  const trySplit = (delim: string): string[] => {
+    const out: string[] = [];
+    let inQ = false;
+    let qChar = '';
+    let bDepth = 0;
+    let pDepth = 0;
+    let cDepth = 0;
+    let start = 0;
+    for (let i = 0; i < clean.length; i++) {
+      const ch = clean[i];
+      if ((ch === '"' || ch === "'") && (i === 0 || clean[i - 1] !== '\\')) {
+        if (!inQ) {
+          inQ = true;
+          qChar = ch;
+        } else if (ch === qChar) {
+          inQ = false;
+        }
+        continue;
+      }
+      if (inQ) continue;
+      if (ch === '[') bDepth++;
+      else if (ch === ']') bDepth = Math.max(0, bDepth - 1);
+      else if (ch === '(') pDepth++;
+      else if (ch === ')') pDepth = Math.max(0, pDepth - 1);
+      else if (ch === '{') cDepth++;
+      else if (ch === '}') cDepth = Math.max(0, cDepth - 1);
+      else if (bDepth === 0 && pDepth === 0 && cDepth === 0 && ch === delim) {
+        out.push(clean.slice(start, i).trim());
+        start = i + 1;
+      }
+    }
+    out.push(clean.slice(start).trim());
+    return out.filter(Boolean);
+  };
+
+  for (const d of ['&', '|', ',']) {
+    const candidate = trySplit(d);
+    if (candidate.length > 1 || (d === '&' && clean.includes('&'))) {
+      return candidate;
+    }
+  }
+  return [clean];
+}
+
+function parseArrayItemsSafe(
+  rawFormula: string,
+  arrayLabel: string,
+  ctx: MacaroniExecutionContext,
+  state: {
+    diceRolls: Array<{ die: string; sides: number; rolled: number }>;
+    stepperSnapshots: Array<{ bangId: string; step: number }>;
+    scopeEvents: MacaroniScopeAccessEvent[];
+    visitedObjects: string[];
+    scopeId: string;
+  }
+): { ok: true; items: string[] } | { ok: false; error: string } {
+  const rawParts = splitArrayRawItems(rawFormula);
+  if (rawParts.length > 5) {
+    return {
+      ok: false,
+      error: `Array limit exceeded in "{${arrayLabel}}": maximum 5 items per array (got ${rawParts.length}).`,
+    };
+  }
+  for (const part of rawParts) {
+    if (/\{[^{}]*&[^{}]*\}/.test(part)) {
+      return {
+        ok: false,
+        error: `Arrays of arrays are disabled (nested array found inside "{${arrayLabel}}").`,
+      };
+    }
+  }
+  const items: string[] = [];
+  for (let i = 0; i < rawParts.length; i++) {
+    const res = resolveBodyV12(rawParts[i], {
+      ...ctx,
+      depth: (ctx.depth || 0) + 1,
+      visitedObjects: [...state.visitedObjects, arrayLabel.toLowerCase()],
+      stepperScopeId: `${state.scopeId}->${arrayLabel}[${i + 1}]`,
+    });
+    if (!res.ok) {
+      return { ok: false, error: res.errorMessage || `Error evaluating array item #${i + 1} in "{${arrayLabel}}".` };
+    }
+    state.diceRolls.push(...res.diceRolls);
+    state.stepperSnapshots.push(...res.stepperSnapshots);
+    if (res.scopeEvents) state.scopeEvents.push(...res.scopeEvents);
+    items.push(res.output);
+  }
+  return { ok: true, items };
+}
+
+function resolveRefName(
+  rawRef: string,
+  insideCalc: boolean,
+  fromPullSigil: boolean,
+  ctx: MacaroniExecutionContext,
+  state: {
+    diceRolls: Array<{ die: string; sides: number; rolled: number }>;
+    stepperSnapshots: Array<{ bangId: string; step: number }>;
+    scopeEvents: MacaroniScopeAccessEvent[];
+    privateOutput?: boolean;
+    literals?: string[];
+    traceSteps: MacaroniTraceStep[];
+    visitedObjects: string[];
+    scopeId: string;
+    pendingQuery?: MacaroniQueryRequest;
+  }
+): { ok: true; text: string } | { ok: false; error: string } {
+  const maskInertText = (val: string): string => {
+    const clean = String(val ?? '').trim();
+    if (/^[+-]?\d+(?:\.\d+)?$/.test(clean) || !state.literals) return clean;
+    const idx = state.literals.length;
+    state.literals.push(clean);
+    return `__MSTR_${idx}__`;
+  };
+  const cleanName = rawRef.trim();
+
+  // 1. Reserved {dN} / {XdN} fresh die roll (1 die minimum; never cached)
+  const diceMatch = cleanName.match(/^(\d*)d(\d+)$/i);
+  if (diceMatch) {
+    const count = diceMatch[1] ? parseInt(diceMatch[1], 10) : 1;
+    const sides = parseInt(diceMatch[2], 10);
+    if (!Number.isFinite(count) || count < 1) {
+      return { ok: false, error: `Invalid die capsule "{${cleanName}}": 1 die is the minimum.` };
+    }
+    if (!Number.isFinite(sides) || sides < 1) {
+      return { ok: false, error: `Invalid die capsule "{${cleanName}}": sides must be >= 1.` };
+    }
+    let total = 0;
+    for (let r = 0; r < count; r++) {
+      const rolled = Math.floor(Math.random() * sides) + 1;
+      total += rolled;
+      state.diceRolls.push({ die: `d${sides}`, sides, rolled });
+    }
+    return { ok: true, text: String(total) };
+  }
+
+  const lower = cleanName.toLowerCase();
+
+  // 1b. Cross-sheet private read {sheet:<SheetKey>.<Field>} (inert data only, permission-checked)
+  const sheetReadMatch = cleanName.match(/^sheet:([A-Za-z0-9_-]+)\.([A-Za-z0-9_]+)$/i);
+  if (sheetReadMatch) {
+    const sheetKey = sheetReadMatch[1].trim().toLowerCase();
+    const fieldKey = sheetReadMatch[2].trim().toLowerCase();
+    const requester = (ctx.requesterId || ctx.character?.name || 'owner').trim().toLowerCase();
+    const sheets = ctx.externalSheets || {};
+    const targetSheet = Object.values(sheets).find(
+      (s) => s.id.toLowerCase() === sheetKey || s.name.toLowerCase() === sheetKey
+    );
+    if (!targetSheet) {
+      return { ok: false, error: `External sheet "${sheetReadMatch[1]}" not found in scope.` };
+    }
+    const perms = targetSheet.permissions || {};
+    const revoked = (perms.revokedSenders || []).map((x) => x.toLowerCase());
+    if (revoked.includes(requester)) {
+      state.scopeEvents.push({
+        kind: 'permission_denied',
+        targetSheet: targetSheet.name,
+        targetField: fieldKey,
+        note: `Access revoked for requester "${requester}" on sheet "${targetSheet.name}".`,
+      });
+      return { ok: false, error: `Permission denied: access revoked for "${requester}" on sheet "${targetSheet.name}".` };
+    }
+    const allowlist = (perms.readAllowlist || []).map((x) => x.toLowerCase());
+    if (!allowlist.includes('*') && !allowlist.includes(requester)) {
+      state.scopeEvents.push({
+        kind: 'permission_denied',
+        targetSheet: targetSheet.name,
+        targetField: fieldKey,
+        note: `Requester "${requester}" lacks read permission on sheet "${targetSheet.name}".`,
+      });
+      return {
+        ok: false,
+        error: `Permission denied: "${requester}" cannot read "${fieldKey}" from sheet "${targetSheet.name}".`,
+      };
+    }
+
+    const extCtx = targetSheet.formulaContext || {};
+    let readVal: unknown = extCtx[fieldKey];
+    if (readVal === undefined && fieldKey in (targetSheet.character || {})) {
+      readVal = (targetSheet.character as unknown as Record<string, unknown>)[fieldKey];
+    }
+    if (readVal === undefined) {
+      return { ok: false, error: `Stat "${sheetReadMatch[2]}" not readable on sheet "${targetSheet.name}".` };
+    }
+    // Strictly inert scalar text/number — never executed as a macro
+    const inertText = typeof readVal === 'object' ? JSON.stringify(readVal) : String(readVal);
+    state.privateOutput = true;
+    state.scopeEvents.push({
+      kind: 'private_read',
+      targetSheet: targetSheet.name,
+      targetField: fieldKey,
+      value: inertText,
+      isPrivate: true,
+      note: `Private read (${requester} <- ${targetSheet.name}.${fieldKey} = ${inertText})`,
+    });
+    return { ok: true, text: maskInertText(inertText) };
+  }
+
+  // 1c. Opt-in listening point read {listener:<name>} (inert data only)
+  const listenerMatch = cleanName.match(/^listener:([A-Za-z_][A-Za-z0-9_]*)$/i);
+  if (listenerMatch) {
+    const lName = listenerMatch[1].trim().toLowerCase();
+    const entry = ctx.permissions?.listeners?.[lName];
+    if (!entry) {
+      return { ok: false, error: `Listening point "{listener:${listenerMatch[1]}}" does not exist on this sheet.` };
+    }
+    if (entry.revoked) {
+      return { ok: false, error: `Listening point "${listenerMatch[1]}" access is revoked.` };
+    }
+    const inertVal = Array.isArray(entry.lastValue) ? entry.lastValue.join(', ') : String(entry.lastValue ?? '');
+    return { ok: true, text: maskInertText(inertVal) };
+  }
+
+  // 1d. Scoped temporary capsule from preceding (pasta) steps
+  if (ctx.tempObjects && lower in ctx.tempObjects) {
+    return { ok: true, text: ctx.tempObjects[lower] };
+  }
+
+  // 1e. Array capsule {fire&} or 1-based lookup {fire&2} (limit 5, out-of-range -> 0)
+  const arrRef = isArrayCapsuleRef(cleanName);
+  if (arrRef) {
+    const baseLower = arrRef.base.toLowerCase();
+    let items: string[] | undefined = ctx.arrayStore?.[baseLower];
+    if (!items) {
+      const arrFormula =
+        findStoredObjectFormula(`${arrRef.base}&`, ctx) ??
+        findStoredObjectFormula(arrRef.base, ctx);
+      if (arrFormula !== null) {
+        if (state.visitedObjects.includes(`${baseLower}&`) || (ctx.depth || 0) > 8) {
+          return { ok: false, error: `Loop stopped: array "{${arrRef.base}&}" is already running.` };
+        }
+        const parsed = parseArrayItemsSafe(arrFormula, `${arrRef.base}&`, ctx, state);
+        if (!parsed.ok) return { ok: false, error: parsed.error };
+        items = parsed.items;
+        if (!ctx.arrayStore) ctx.arrayStore = {};
+        ctx.arrayStore[baseLower] = items;
+      }
+    }
+    if (!items) {
+      return { ok: false, error: `Unknown array capsule "{${cleanName}}".` };
+    }
+    if (arrRef.index === undefined) {
+      return { ok: true, text: items.join(', ') };
+    }
+    if (arrRef.index < 1 || arrRef.index > items.length) {
+      state.traceSteps.push({
+        stage: `Array Lookup {${cleanName}}`,
+        before: cleanName,
+        after: '0',
+        note: `Index ${arrRef.index} out of range (1..${items.length}); returned 0 safely.`,
+      });
+      return { ok: true, text: '0' };
+    }
+    return { ok: true, text: items[arrRef.index - 1] };
+  }
+
+  // 2. Stored custom object / macro
+  const storedFormula = findStoredObjectFormula(cleanName, ctx);
+  if (storedFormula !== null) {
+    if (state.visitedObjects.includes(lower) || ctx.activeMacros?.includes(lower) || (ctx.depth || 0) > 8) {
+      return { ok: false, error: `Cycle stopped: macro "{${cleanName}}" is already running.` };
+    }
+
+    const env = parseSigilEnvelope(storedFormula);
+    if (!env.valid || !env.kind) {
+      return {
+        ok: false,
+        error: `Object "{${cleanName}}" does not begin with a valid sigil: ${env.errorMessage}`,
+      };
+    }
+
+    // Query object call rules:
+    //   Called with << -> show currently displayed value
+    //   Called with {} -> ask inline and use chosen answer in formula
+    if (env.kind === 'query') {
+      if (fromPullSigil) {
+        const currentDisp = ctx.queryDisplayStore?.[lower];
+        return { ok: true, text: currentDisp !== undefined ? currentDisp : '' };
+      }
+
+      if (ctx.inlineQueryAnswers && lower in ctx.inlineQueryAnswers) {
+        return { ok: true, text: ctx.inlineQueryAnswers[lower] };
+      }
+
+      // Build inline query request so the runtime prompts the user
+      const parsedQuery = buildQueryRequest(env.body, ctx, {
+        depth: ctx.queryDepth || 1,
+        visitedQueryKeys: [...(ctx.visitedQueryKeys || []), lower],
+        inlineTargetName: lower,
+      });
+      if ('error' in parsedQuery) {
+        return { ok: false, error: parsedQuery.error };
+      }
+      state.pendingQuery = parsedQuery.request;
+      return { ok: false, error: `__PENDING_INLINE_QUERY__:${lower}` };
+    }
+
+    let resolvedText = '';
+    const nextActive = [...(ctx.activeMacros || []), lower];
+    if (env.kind === 'neutral') {
+      const neutralRes = resolveBodyV12(env.body, {
+        ...ctx,
+        depth: (ctx.depth || 0) + 1,
+        visitedObjects: [...state.visitedObjects, lower],
+        activeMacros: nextActive,
+        stepperScopeId: `${state.scopeId}->${lower}`,
+      });
+      if (!neutralRes.ok) {
+        if (neutralRes.pendingQuery) state.pendingQuery = neutralRes.pendingQuery;
+        return { ok: false, error: neutralRes.errorMessage || `Error evaluating "{${cleanName}}"` };
+      }
+      if (neutralRes.diceRolls) state.diceRolls.push(...neutralRes.diceRolls);
+      if (neutralRes.stepperSnapshots) state.stepperSnapshots.push(...neutralRes.stepperSnapshots);
+      if (neutralRes.scopeEvents) state.scopeEvents.push(...neutralRes.scopeEvents);
+      if (neutralRes.privateOutput) state.privateOutput = true;
+      resolvedText = neutralRes.output;
+    } else {
+      const childRes = executeMacaroni(storedFormula, {
+        ...ctx,
+        depth: (ctx.depth || 0) + 1,
+        visitedObjects: [...state.visitedObjects, lower],
+        activeMacros: nextActive,
+        stepperScopeId: `${state.scopeId}->${lower}`,
+      });
+
+      if (childRes.isError) {
+        if (childRes.queryEvent) state.pendingQuery = childRes.queryEvent;
+        return { ok: false, error: childRes.errorMessage || `Error evaluating "{${cleanName}}"` };
+      }
+      if (childRes.diceRolls) state.diceRolls.push(...childRes.diceRolls);
+      if (childRes.stepperSnapshots) state.stepperSnapshots.push(...childRes.stepperSnapshots);
+      if (childRes.scopeEvents) state.scopeEvents.push(...childRes.scopeEvents);
+      if (childRes.privateOutput) state.privateOutput = true;
+      resolvedText = childRes.fullOutput;
+    }
+
+    // If inside [...] and unbracketed arithmetic came back (e.g. ==5+5), parenthesize safely
+    if (insideCalc && /[+\-*/%]/.test(resolvedText) && !/^[+-]?\d+(\.\d+)?$/.test(resolvedText)) {
+      resolvedText = `(${resolvedText})`;
+    }
+    return { ok: true, text: resolvedText };
+  }
+
+  // 3. Sheet field / formulaContext lookup (inert data only, never executed as macro)
+  const fieldVal = resolveFieldFromContext(cleanName, ctx);
+  if (fieldVal !== undefined) {
+    return { ok: true, text: String(fieldVal).trim() };
+  }
+
+  return { ok: false, error: `Unknown object or field "{${cleanName}}".` };
+}
+
+function isBooliTruthy(val: string): boolean {
+  const s = String(val ?? '').trim().toLowerCase();
+  if (!s || s === 'false' || s === '0' || s === 'no' || s === 'null' || s === 'undefined') {
+    return false;
+  }
+  const n = Number(s);
+  if (Number.isFinite(n)) return n !== 0;
+  return true;
+}
+
+function splitOutsideDelims(input: string, delim: string): string[] {
+  const out: string[] = [];
+  let inQ = false;
+  let qChar = '';
+  let bDepth = 0;
+  let pDepth = 0;
+  let cDepth = 0;
+  let aDepth = 0;
+  let start = 0;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (ch === '"' || ch === "'") {
+      if (!inQ) {
+        inQ = true;
+        qChar = ch;
+      } else if (ch === qChar && input[i - 1] !== '\\') {
+        inQ = false;
+      }
+      continue;
+    }
+    if (inQ) continue;
+    if (ch === '[') bDepth++;
+    else if (ch === ']') bDepth = Math.max(0, bDepth - 1);
+    else if (ch === '(') pDepth++;
+    else if (ch === ')') pDepth = Math.max(0, pDepth - 1);
+    else if (ch === '{') cDepth++;
+    else if (ch === '}') cDepth = Math.max(0, cDepth - 1);
+    else if (ch === '<' && bDepth === 0) aDepth++;
+    else if (ch === '>' && bDepth === 0) aDepth = Math.max(0, aDepth - 1);
+    else if (
+      bDepth === 0 &&
+      pDepth === 0 &&
+      cDepth === 0 &&
+      aDepth === 0 &&
+      input.slice(i, i + delim.length) === delim
+    ) {
+      out.push(input.slice(start, i));
+      start = i + delim.length;
+      i += delim.length - 1;
+    }
+  }
+  out.push(input.slice(start));
+  return out;
+}
+
+function findFirstTopLevelChar(input: string, target: string): number {
+  let inQ = false;
+  let qChar = '';
+  let bDepth = 0;
+  let pDepth = 0;
+  let cDepth = 0;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (ch === '"' || ch === "'") {
+      if (!inQ) {
+        inQ = true;
+        qChar = ch;
+      } else if (ch === qChar && input[i - 1] !== '\\') {
+        inQ = false;
+      }
+      continue;
+    }
+    if (inQ) continue;
+    if (ch === '[') bDepth++;
+    else if (ch === ']') bDepth = Math.max(0, bDepth - 1);
+    else if (ch === '(') pDepth++;
+    else if (ch === ')') pDepth = Math.max(0, pDepth - 1);
+    else if (ch === '{') cDepth++;
+    else if (ch === '}') cDepth = Math.max(0, cDepth - 1);
+    else if (bDepth === 0 && pDepth === 0 && cDepth === 0 && ch === target) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+function hasTopLevelPastaMarkers(masked: string): boolean {
+  let bDepth = 0;
+  let cDepth = 0;
+  for (let i = 0; i < masked.length; i++) {
+    const ch = masked[i];
+    if (ch === '[') {
+      bDepth++;
+      continue;
+    }
+    if (ch === ']') {
+      bDepth = Math.max(0, bDepth - 1);
+      continue;
+    }
+    if (ch === '{') {
+      cDepth++;
+      continue;
+    }
+    if (ch === '}') {
+      cDepth = Math.max(0, cDepth - 1);
+      continue;
+    }
+    if (bDepth === 0 && cDepth === 0) {
+      if ('()<>/\\?=+'.includes(ch)) return true;
+    }
+  }
+  return false;
+}
+
+function compareBooliValues(leftRaw: string, op: string, rightRaw: string): boolean {
+  const aTrim = leftRaw.trim();
+  const bTrim = rightRaw.trim();
+  const aNum = Number(aTrim);
+  const bNum = Number(bTrim);
+  const bothNum = aTrim !== '' && bTrim !== '' && Number.isFinite(aNum) && Number.isFinite(bNum);
+
+  if (op === '=' || op === '==') return bothNum ? aNum === bNum : aTrim === bTrim;
+  if (op === '<>' || op === '!=') return bothNum ? aNum !== bNum : aTrim !== bTrim;
+  if (!bothNum) {
+    if (op === '>') return aTrim > bTrim;
+    if (op === '<') return aTrim < bTrim;
+    if (op === '>=' || op === '=>') return aTrim >= bTrim;
+    if (op === '<=' || op === '=<') return aTrim <= bTrim;
+    return false;
+  }
+  if (op === '>') return aNum > bNum;
+  if (op === '<') return aNum < bNum;
+  if (op === '>=' || op === '=>') return aNum >= bNum;
+  if (op === '<=' || op === '=<') return aNum <= bNum;
+  return false;
+}
+
+function tokenizePastaSteps(rawBody: string): { ok: true; chunks: Array<{ kind: 'paren' | 'angle' | 'plain'; text: string }> } | { ok: false; error: string } {
+  const chunks: Array<{ kind: 'paren' | 'angle' | 'plain'; text: string }> = [];
+  let i = 0;
+  const n = rawBody.length;
+  let plainStart = 0;
+  let bDepth = 0;
+  let cDepth = 0;
+  let inQ = false;
+  let qChar = '';
+
+  const flushPlain = (endIdx: number) => {
+    const seg = rawBody.slice(plainStart, endIdx).trim();
+    if (seg) chunks.push({ kind: 'plain', text: seg });
+  };
+
+  while (i < n) {
+    const ch = rawBody[i];
+    if (ch === '"' || ch === "'") {
+      if (!inQ) {
+        inQ = true;
+        qChar = ch;
+      } else if (ch === qChar && rawBody[i - 1] !== '\\') {
+        inQ = false;
+      }
+      i++;
+      continue;
+    }
+    if (inQ) {
+      i++;
+      continue;
+    }
+    if (ch === '[') {
+      bDepth++;
+      i++;
+      continue;
+    }
+    if (ch === ']') {
+      bDepth = Math.max(0, bDepth - 1);
+      i++;
+      continue;
+    }
+    if (ch === '{') {
+      cDepth++;
+      i++;
+      continue;
+    }
+    if (ch === '}') {
+      cDepth = Math.max(0, cDepth - 1);
+      i++;
+      continue;
+    }
+
+    if (bDepth === 0 && cDepth === 0 && (ch === '(' || ch === '<')) {
+      flushPlain(i);
+      const openChar = ch;
+      const closeChar = ch === '(' ? ')' : '>';
+      let depth = 1;
+      let j = i + 1;
+      let innerQ = false;
+      let innerQC = '';
+      let innerB = 0;
+      while (j < n && depth > 0) {
+        const jc = rawBody[j];
+        if (jc === '"' || jc === "'") {
+          if (!innerQ) {
+            innerQ = true;
+            innerQC = jc;
+          } else if (jc === innerQC && rawBody[j - 1] !== '\\') {
+            innerQ = false;
+          }
+        } else if (!innerQ) {
+          if (jc === '[') innerB++;
+          else if (jc === ']') innerB = Math.max(0, innerB - 1);
+          else if (innerB === 0) {
+            if (jc === openChar) depth++;
+            else if (jc === closeChar) depth--;
+          }
+        }
+        j++;
+      }
+      if (depth !== 0) {
+        return {
+          ok: false,
+          error:
+            openChar === '<'
+              ? 'Unclosed booli "<...>" (missing closing ">").'
+              : 'Unclosed "(pasta)" group (missing closing ")").',
+        };
+      }
+      chunks.push({
+        kind: openChar === '(' ? 'paren' : 'angle',
+        text: rawBody.slice(i + 1, j - 1).trim(),
+      });
+      i = j;
+      plainStart = j;
+      continue;
+    }
+    i++;
+  }
+  flushPlain(n);
+  return { ok: true, chunks };
+}
+
+function resolveSinglePastaChunk(
+  chunkText: string,
+  isAngleBooli: boolean,
+  ctx: MacaroniExecutionContext,
+  opts: { scopeId?: string; isPullTopLevel?: boolean },
+  acc: {
+    diceRolls: Array<{ die: string; sides: number; rolled: number }>;
+    stepperSnapshots: Array<{ bangId: string; step: number }>;
+    scopeEvents: MacaroniScopeAccessEvent[];
+    traceSteps: MacaroniTraceStep[];
+    privateOutput?: boolean;
+  }
+): { ok: true; output: string } | { ok: false; errorMessage: string; pendingQuery?: MacaroniQueryRequest } {
+  const trimmed = chunkText.trim();
+  if (!trimmed) return { ok: true, output: '' };
+
+  // 1. Naming assignment inside pasta: ("thetest"=[2+2]) or (thetest=[2+2]) or ("fire&"=[3]&[5])
+  if (!isAngleBooli) {
+    const assignMatch = trimmed.match(
+      /^(?:"([A-Za-z_][A-Za-z0-9_]*&?)"|'([A-Za-z_][A-Za-z0-9_]*&?)'|([A-Za-z_][A-Za-z0-9_]*&?))\s*=(?![=<>])\s*(.+)$/s
+    );
+    if (assignMatch) {
+      const rawName = (assignMatch[1] || assignMatch[2] || assignMatch[3] || '').trim();
+      const rhsExpr = assignMatch[4].trim();
+      const nameCheck = validateObjectName(rawName);
+      if (!nameCheck.valid) {
+        return { ok: false, errorMessage: nameCheck.reason || `Invalid variable name "${rawName}".` };
+      }
+      if (rawName.endsWith('&')) {
+        const parsedArr = parseArrayItemsSafe(rhsExpr, rawName, ctx, {
+          diceRolls: acc.diceRolls,
+          stepperSnapshots: acc.stepperSnapshots,
+          scopeEvents: acc.scopeEvents,
+          visitedObjects: [...(ctx.visitedObjects || [])],
+          scopeId: opts.scopeId || ctx.stepperScopeId || 'root',
+        });
+        if (!parsedArr.ok) return { ok: false, errorMessage: parsedArr.error };
+        if (!ctx.arrayStore) ctx.arrayStore = {};
+        ctx.arrayStore[rawName.slice(0, -1).toLowerCase()] = parsedArr.items;
+        acc.traceSteps.push({
+          stage: `Pasta Array (${rawName})`,
+          before: trimmed,
+          after: parsedArr.items.join(', '),
+        });
+        return { ok: true, output: '' };
+      }
+
+      const rhsRes = resolveBodyV12(rhsExpr, ctx, opts);
+      if (!rhsRes.ok) {
+        return { ok: false, errorMessage: rhsRes.errorMessage || 'Error in assignment', pendingQuery: rhsRes.pendingQuery };
+      }
+      acc.diceRolls.push(...rhsRes.diceRolls);
+      acc.stepperSnapshots.push(...rhsRes.stepperSnapshots);
+      if (rhsRes.scopeEvents) acc.scopeEvents.push(...rhsRes.scopeEvents);
+      if (rhsRes.privateOutput) acc.privateOutput = true;
+
+      if (!ctx.tempObjects) ctx.tempObjects = {};
+      ctx.tempObjects[rawName.toLowerCase()] = rhsRes.output;
+      acc.traceSteps.push({
+        stage: `Pasta Assign (${rawName} =)`,
+        before: trimmed,
+        after: rhsRes.output,
+      });
+      return { ok: true, output: '' };
+    }
+  }
+
+  // 2. Booli conditional (? or inside <booli>) with / (THEN) and optional \ (ELSE)
+  const qIdx = findFirstTopLevelChar(trimmed, '?');
+  const slashIdx = findFirstTopLevelChar(trimmed, '/');
+  if (isAngleBooli || qIdx !== -1) {
+    let condPart = trimmed;
+    let thenPart = '';
+    let elsePart = '';
+    let hasBranches = false;
+
+    if (slashIdx !== -1 && (qIdx === -1 || slashIdx > qIdx)) {
+      hasBranches = true;
+      condPart = trimmed.slice(0, slashIdx).trim();
+      const tail = trimmed.slice(slashIdx + 1);
+      const backIdx = findFirstTopLevelChar(tail, '\\');
+      if (backIdx !== -1) {
+        thenPart = tail.slice(0, backIdx).trim();
+        elsePart = tail.slice(backIdx + 1).trim();
+      } else {
+        thenPart = tail.trim();
+      }
+    }
+
+    let conditionMet = false;
+    const condQ = findFirstTopLevelChar(condPart, '?');
+    if (condQ !== -1) {
+      const lhsRaw = condPart.slice(0, condQ).trim();
+      const rhsAfterQ = condPart.slice(condQ + 1).trim();
+      const lhsRes = resolveBodyV12(lhsRaw, ctx, opts);
+      if (!lhsRes.ok) {
+        return { ok: false, errorMessage: lhsRes.errorMessage || 'Booli LHS error', pendingQuery: lhsRes.pendingQuery };
+      }
+      acc.diceRolls.push(...lhsRes.diceRolls);
+      acc.stepperSnapshots.push(...lhsRes.stepperSnapshots);
+      if (lhsRes.scopeEvents) acc.scopeEvents.push(...lhsRes.scopeEvents);
+      if (lhsRes.privateOutput) acc.privateOutput = true;
+
+      if (!rhsAfterQ) {
+        conditionMet = isBooliTruthy(lhsRes.output);
+      } else {
+        const cmpMatch = rhsAfterQ.match(/^(>=|=>|<=|=<|<>|!=|=|>|<)\s*(.+)$/s);
+        const cmpOp = cmpMatch ? cmpMatch[1] : '=';
+        const rhsExpr = cmpMatch ? cmpMatch[2].trim() : rhsAfterQ;
+        const rhsRes = resolveBodyV12(rhsExpr, ctx, opts);
+        if (!rhsRes.ok) {
+          return { ok: false, errorMessage: rhsRes.errorMessage || 'Booli RHS error', pendingQuery: rhsRes.pendingQuery };
+        }
+        acc.diceRolls.push(...rhsRes.diceRolls);
+        acc.stepperSnapshots.push(...rhsRes.stepperSnapshots);
+        if (rhsRes.scopeEvents) acc.scopeEvents.push(...rhsRes.scopeEvents);
+        if (rhsRes.privateOutput) acc.privateOutput = true;
+        conditionMet = compareBooliValues(lhsRes.output, cmpOp, rhsRes.output);
+      }
+    } else {
+      const condRes = resolveBodyV12(condPart, ctx, opts);
+      if (!condRes.ok) {
+        return { ok: false, errorMessage: condRes.errorMessage || 'Booli condition error', pendingQuery: condRes.pendingQuery };
+      }
+      acc.diceRolls.push(...condRes.diceRolls);
+      acc.stepperSnapshots.push(...condRes.stepperSnapshots);
+      if (condRes.scopeEvents) acc.scopeEvents.push(...condRes.scopeEvents);
+      if (condRes.privateOutput) acc.privateOutput = true;
+      conditionMet = isBooliTruthy(condRes.output);
+    }
+
+    if (!hasBranches) {
+      const boolStr = conditionMet ? 'true' : 'false';
+      acc.traceSteps.push({ stage: 'Booli Check', before: trimmed, after: boolStr });
+      return { ok: true, output: boolStr };
+    }
+
+    const chosenBranch = conditionMet ? thenPart : elsePart;
+    acc.traceSteps.push({
+      stage: `Booli (${conditionMet ? 'THEN /' : 'ELSE \\'})`,
+      before: trimmed,
+      after: chosenBranch || '(empty)',
+    });
+    if (!chosenBranch) return { ok: true, output: '' };
+    const branchRes = resolveBodyV12(chosenBranch, ctx, opts);
+    if (!branchRes.ok) {
+      return {
+        ok: false,
+        errorMessage: branchRes.errorMessage || 'Error in booli branch',
+        pendingQuery: branchRes.pendingQuery,
+      };
+    }
+    acc.diceRolls.push(...branchRes.diceRolls);
+    acc.stepperSnapshots.push(...branchRes.stepperSnapshots);
+    if (branchRes.scopeEvents) acc.scopeEvents.push(...branchRes.scopeEvents);
+    if (branchRes.privateOutput) acc.privateOutput = true;
+    acc.traceSteps.push(...branchRes.traceSteps);
+    return { ok: true, output: branchRes.output };
+  }
+
+  // 3. Reject bare / outside calculators [...] and outside booli
+  if (slashIdx !== -1) {
+    return {
+      ok: false,
+      errorMessage: 'Error: "/" can only divide inside calculator brackets [...], or mark THEN inside a booli (? cond / then \\ else).',
+    };
+  }
+
+  // 4. Side-by-side '+' concatenation outside [...]
+  const plusParts = splitOutsideDelims(trimmed, '+');
+  if (plusParts.length > 1) {
+    let joined = '';
+    for (const part of plusParts) {
+      const pTrim = part.trim();
+      if (!pTrim) continue;
+      const quotedOnly = pTrim.match(/^"([^"]*)"$|^'([^']*)'$/);
+      if (quotedOnly) {
+        joined += quotedOnly[1] !== undefined ? quotedOnly[1] : (quotedOnly[2] ?? '');
+        continue;
+      }
+      const pieceRes = resolveBodyV12(pTrim, ctx, opts);
+      if (!pieceRes.ok) {
+        return { ok: false, errorMessage: pieceRes.errorMessage || 'Error in + concatenation', pendingQuery: pieceRes.pendingQuery };
+      }
+      acc.diceRolls.push(...pieceRes.diceRolls);
+      acc.stepperSnapshots.push(...pieceRes.stepperSnapshots);
+      if (pieceRes.scopeEvents) acc.scopeEvents.push(...pieceRes.scopeEvents);
+      if (pieceRes.privateOutput) acc.privateOutput = true;
+      joined += pieceRes.output;
+    }
+    return { ok: true, output: joined };
+  }
+
+  // 5. Standard scalar evaluation
+  const scalar = resolveScalarBody(trimmed, ctx, opts);
+  if (!scalar.ok) {
+    return { ok: false, errorMessage: scalar.errorMessage || 'Scalar error', pendingQuery: scalar.pendingQuery };
+  }
+  acc.diceRolls.push(...scalar.diceRolls);
+  acc.stepperSnapshots.push(...scalar.stepperSnapshots);
+  if (scalar.scopeEvents) acc.scopeEvents.push(...scalar.scopeEvents);
+  if (scalar.privateOutput) acc.privateOutput = true;
+  acc.traceSteps.push(...scalar.traceSteps);
+  return { ok: true, output: scalar.output };
+}
+
+/**
+ * Resolves a body strictly following Macroni 1.2 + Pasta Layer rules:
+ * - If (pasta) sequential steps, <booli> branches, assignments, or side-by-side + exist outside [...], executes left-to-right.
+ * - Otherwise resolves scalar body: {objects}/{dice}/{arrays} -> inner [...] -> outer [...] -> #calls -> output.
+ */
+function resolveBodyV12(
+  rawBody: string,
+  ctx: MacaroniExecutionContext,
+  opts: { scopeId?: string; isPullTopLevel?: boolean } = {}
+): InternalEvalOutcome {
+  const { masked } = protectQuotes(rawBody);
+  if (!hasTopLevelPastaMarkers(masked)) {
+    return resolveScalarBody(rawBody, ctx, opts);
+  }
+
+  // Reject unclosed outside [...] juxtaposition before pasta tokenization too
+  const juxErr = checkOutsideCalculatorJuxtaposition(masked);
+  if (juxErr) {
+    return { ok: false, output: juxErr, errorMessage: juxErr, diceRolls: [], stepperSnapshots: [], traceSteps: [] };
+  }
+
+  const chunked = tokenizePastaSteps(rawBody);
+  if (!chunked.ok) {
+    return {
+      ok: false,
+      output: chunked.error,
+      errorMessage: chunked.error,
+      diceRolls: [],
+      stepperSnapshots: [],
+      traceSteps: [],
+    };
+  }
+
+  // Single plain chunk falls directly through resolveSinglePastaChunk -> resolveScalarBody if plain
+  const seqCtx: MacaroniExecutionContext = {
+    ...ctx,
+    tempObjects: ctx.tempObjects || {},
+    arrayStore: ctx.arrayStore || {},
+  };
+  const acc = {
+    diceRolls: [] as Array<{ die: string; sides: number; rolled: number }>,
+    stepperSnapshots: [] as Array<{ bangId: string; step: number }>,
+    scopeEvents: [] as MacaroniScopeAccessEvent[],
+    traceSteps: [] as MacaroniTraceStep[],
+    privateOutput: false,
+  };
+
+  const outputs: string[] = [];
+  for (let idx = 0; idx < chunked.chunks.length; idx++) {
+    const ch = chunked.chunks[idx];
+    const stepScope = `${opts.scopeId || ctx.stepperScopeId || 'root'}::step-${idx + 1}`;
+    const stepRes = resolveSinglePastaChunk(
+      ch.text,
+      ch.kind === 'angle',
+      seqCtx,
+      { ...opts, scopeId: stepScope },
+      acc
+    );
+    if (!stepRes.ok) {
+      return {
+        ok: false,
+        output: stepRes.errorMessage,
+        errorMessage: stepRes.errorMessage,
+        diceRolls: acc.diceRolls,
+        stepperSnapshots: acc.stepperSnapshots,
+        scopeEvents: acc.scopeEvents,
+        privateOutput: acc.privateOutput,
+        traceSteps: acc.traceSteps,
+        pendingQuery: stepRes.pendingQuery,
+      };
+    }
+    if (stepRes.output !== '') {
+      outputs.push(stepRes.output);
+    }
+  }
+
+  return {
+    ok: true,
+    output: outputs.join(' ').trim(),
+    diceRolls: acc.diceRolls,
+    stepperSnapshots: acc.stepperSnapshots,
+    scopeEvents: acc.scopeEvents.length ? acc.scopeEvents : undefined,
+    privateOutput: acc.privateOutput || undefined,
+    traceSteps: acc.traceSteps,
+  };
+}
+
+function resolveScalarBody(
+  rawBody: string,
+  ctx: MacaroniExecutionContext,
+  opts: { scopeId?: string; isPullTopLevel?: boolean } = {}
+): InternalEvalOutcome {
+  const scopeId = opts.scopeId || ctx.stepperScopeId || 'root';
+  const diceRolls: Array<{ die: string; sides: number; rolled: number }> = [];
+  const stepperSnapshots: Array<{ bangId: string; step: number }> = [];
+  const scopeEvents: MacaroniScopeAccessEvent[] = [];
+  const traceSteps: MacaroniTraceStep[] = [];
+  const visitedObjects = [...(ctx.visitedObjects || [])];
+
+  const { masked, literals } = protectQuotes(rawBody);
+  const juxErr = checkOutsideCalculatorJuxtaposition(masked);
+  if (juxErr) {
+    return {
+      ok: false,
+      output: juxErr,
+      errorMessage: juxErr,
+      diceRolls,
+      stepperSnapshots,
+      traceSteps,
+    };
+  }
+
+  let current = masked;
+
+  // Step 0: Increment & resolve each ! stepper as its own numeric object (0 -> 1 before multiplication)
+  if (current.includes('!')) {
+    if (ctx.permissions?.allowStepper === false) {
+      const err = 'Permission denied: stepper (!) execution is disabled by sheet permissions.';
+      return { ok: false, output: err, errorMessage: err, diceRolls, stepperSnapshots, traceSteps };
+    }
+    const beforeBang = current;
+    let bangIdx = 0;
+    current = current.replace(/!/g, () => {
+      bangIdx += 1;
+      const bangId = `${scopeId}::bang-${bangIdx}`;
+      let nextStep: number;
+      if (ctx.stepperStore) {
+        nextStep = (ctx.stepperStore[bangId] ?? 0) + 1;
+        ctx.stepperStore[bangId] = nextStep;
+      } else if (ctx.stepCount !== undefined) {
+        nextStep = ctx.stepCount <= 0 ? 1 : ctx.stepCount;
+      } else {
+        nextStep = 1;
+      }
+      stepperSnapshots.push({ bangId, step: nextStep });
+      return String(nextStep);
+    });
+    traceSteps.push({
+      stage: '0. Stepper (!) Objects',
+      before: restoreQuotes(beforeBang, literals, true),
+      after: restoreQuotes(current, literals, true),
+      note: stepperSnapshots.map((s) => `${s.bangId}=${s.step}`).join(', '),
+    });
+  }
+
+  const refState = {
+    diceRolls,
+    stepperSnapshots,
+    scopeEvents,
+    privateOutput: false,
+    literals,
+    traceSteps,
+    visitedObjects,
+    scopeId,
+    pendingQuery: undefined as MacaroniQueryRequest | undefined,
+  };
+
+  // Step 1: Resolve {object}, {dN}/{XdN}, {fire&}/{fire&2}, {sheet:...}, {listener:...}
+  if (current.includes('{')) {
+    const beforeRefs = current;
+    let guard = 0;
+    while (/\{([^{}]+)\}/.test(current) && guard < 32) {
+      guard += 1;
+      let errFound: string | null = null;
+      current = current.replace(/\{([^{}]+)\}/g, (_m, name, offset) => {
+        if (errFound) return _m;
+        // Check whether this {name} sits inside [...]
+        let depthAtOffset = 0;
+        for (let k = 0; k < offset; k++) {
+          if (current[k] === '[') depthAtOffset++;
+          else if (current[k] === ']') depthAtOffset = Math.max(0, depthAtOffset - 1);
+        }
+        const resolved = resolveRefName(
+          name,
+          depthAtOffset > 0,
+          Boolean(opts.isPullTopLevel && depthAtOffset === 0),
+          ctx,
+          refState
+        );
+        if (!resolved.ok) {
+          errFound = resolved.error;
+          return _m;
+        }
+        if (resolved.text.includes('__PENDING_INLINE_QUERY__')) {
+          return _m;
+        }
+        return resolved.text;
+      });
+      if (errFound) {
+        const cleanMsg = String(errFound).replace(/^__PENDING_INLINE_QUERY__:/, 'Inline query required: ');
+        return {
+          ok: false,
+          output: cleanMsg,
+          errorMessage: cleanMsg,
+          diceRolls,
+          stepperSnapshots,
+          scopeEvents: scopeEvents.length ? scopeEvents : undefined,
+          privateOutput: refState.privateOutput || undefined,
+          traceSteps,
+          pendingQuery: refState.pendingQuery,
+        };
+      }
+    }
+    traceSteps.push({
+      stage: '1. Objects {} & Dice {dN}',
+      before: restoreQuotes(beforeRefs, literals, true),
+      after: restoreQuotes(current, literals, true),
+      note: diceRolls.length ? diceRolls.map((d) => `${d.die}→${d.rolled}`).join(', ') : undefined,
+    });
+  }
+
+  // Step 2 & 3: Evaluate brackets [...], innermost first, outward, then outermost bracket
+  let bracketPass = 0;
+  let innermost = findInnermostBracket(current);
+  while (innermost) {
+    bracketPass += 1;
+    let innerExpr = innermost.inner;
+
+    // If legacy #calls exist inside brackets, resolve them behind the scenes as {}
+    if (innerExpr.includes('#')) {
+      let hashErr: string | null = null;
+      innerExpr = innerExpr.replace(/#\(([^)]+)\)|#([A-Za-z_][A-Za-z0-9_]*)/g, (_m, b, s) => {
+        if (hashErr) return _m;
+        const resolved = resolveRefName(b || s, true, false, ctx, refState);
+        if (!resolved.ok) {
+          hashErr = resolved.error;
+          return _m;
+        }
+        return resolved.text;
+      });
+      if (hashErr) {
+        return {
+          ok: false,
+          output: hashErr,
+          errorMessage: hashErr,
+          diceRolls,
+          stepperSnapshots,
+          scopeEvents: scopeEvents.length ? scopeEvents : undefined,
+          traceSteps,
+        };
+      }
+    }
+
+    // Also allow compact NdM inside [...] (e.g. 1d20), enforcing minimum 1 die
+    let diceErr: string | null = null;
+    innerExpr = innerExpr.replace(/\b(\d*)d(\d+)\b/gi, (m, cStr, sStr) => {
+      if (diceErr) return m;
+      const count = cStr ? parseInt(cStr, 10) : 1;
+      const sides = parseInt(sStr, 10);
+      if (count < 1) {
+        diceErr = `Invalid die "${m}": 1 die is the minimum.`;
+        return m;
+      }
+      if (sides < 1) {
+        diceErr = `Invalid die "${m}": sides must be >= 1.`;
+        return m;
+      }
+      let sum = 0;
+      for (let r = 0; r < count; r++) {
+        const rolled = Math.floor(Math.random() * sides) + 1;
+        sum += rolled;
+        diceRolls.push({ die: `d${sides}`, sides, rolled });
+      }
+      return String(sum);
+    });
+    if (diceErr) {
+      return { ok: false, output: diceErr, errorMessage: diceErr, diceRolls, stepperSnapshots, traceSteps };
+    }
+
+    const calc = evaluateCalculatorBracket(innerExpr);
+    if (!calc.ok) {
+      return {
+        ok: false,
+        output: calc.error,
+        errorMessage: calc.error,
+        diceRolls,
+        stepperSnapshots,
+        traceSteps,
+      };
+    }
+
+    let replacement = calc.display;
+    if (!calc.isBool && innermost.depth >= 1) {
+      // Implicit multiplication ONLY inside an enclosing [...] (e.g. [4[3]] -> [4*3])
+      const prevChar = current[innermost.start - 1];
+      const nextChar = current[innermost.end + 1];
+      if (prevChar && /[0-9)]/.test(prevChar)) {
+        replacement = `*${replacement}`;
+      }
+      if (nextChar && /[0-9(]/.test(nextChar)) {
+        replacement = `${replacement}*`;
+      }
+    }
+
+    const beforeBracket = current;
+    current = current.slice(0, innermost.start) + replacement + current.slice(innermost.end + 1);
+    const hasMore = Boolean(findInnermostBracket(current));
+    traceSteps.push({
+      stage: hasMore
+        ? `2. Inner Bracket #${bracketPass}`
+        : bracketPass === 1
+        ? '3. Calculator Bracket []'
+        : '3. Outermost Bracket []',
+      before: restoreQuotes(beforeBracket, literals, true),
+      after: restoreQuotes(current, literals, true),
+      note: `[${innermost.inner}] = ${calc.display}`,
+    });
+
+    innermost = findInnermostBracket(current);
+  }
+
+  // Step 4: #calls last (kept for legacy macros and treated as {} behind the scenes)
+  if (current.includes('#')) {
+    const beforeHash = current;
+    let hashErr: string | null = null;
+    current = current.replace(/#\(([^)]+)\)|#([A-Za-z_][A-Za-z0-9_]*)/g, (_m, b, s) => {
+      if (hashErr) return _m;
+      const resolved = resolveRefName(b || s, false, false, ctx, refState);
+      if (!resolved.ok) {
+        hashErr = resolved.error;
+        return _m;
+      }
+      return resolved.text;
+    });
+    if (hashErr) {
+      return {
+        ok: false,
+        output: hashErr,
+        errorMessage: hashErr,
+        diceRolls,
+        stepperSnapshots,
+        traceSteps,
+      };
+    }
+    traceSteps.push({
+      stage: '4. Legacy #Calls',
+      before: restoreQuotes(beforeHash, literals, true),
+      after: restoreQuotes(current, literals, true),
+    });
+  }
+
+  // Bare '/' outside [...] in scalar context is disallowed
+  if (current.includes('/')) {
+    const err = 'Error: "/" can only divide inside calculator brackets [...], or mark THEN inside a booli.';
+    return { ok: false, output: err, errorMessage: err, diceRolls, stepperSnapshots, traceSteps };
+  }
+
+  // Step 5: Print result (restore string literals unquoted; preserve author's explicit spaces when inside a plain string literal)
+  const rawRestored = restoreQuotes(current, literals, false).replace(/\s{2,}/g, ' ');
+  const finalOutput = /^__MSTR_\d+__$/.test(current.trim()) ? rawRestored : rawRestored.trim();
+
+  traceSteps.push({
+    stage: '5. Final Output',
+    before: restoreQuotes(current, literals, true),
+    after: finalOutput,
+  });
+
+  return {
+    ok: true,
+    output: finalOutput,
+    diceRolls,
+    stepperSnapshots,
+    scopeEvents: scopeEvents.length ? scopeEvents : undefined,
+    privateOutput: refState.privateOutput || undefined,
+    traceSteps,
+  };
+}
+
+// ============================================================================
+// QUERY (<?>) PARSING & SIGIL-DEPENDENT EXECUTION
+// ============================================================================
+
+function splitOutsideQuotesByPipe(body: string): string[] {
+  const parts: string[] = [];
+  let inQuote = false;
+  let quoteChar = '';
+  let start = 0;
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if ((ch === '"' || ch === "'") && (i === 0 || body[i - 1] !== '\\')) {
+      if (!inQuote) {
+        inQuote = true;
+        quoteChar = ch;
+      } else if (ch === quoteChar) {
+        inQuote = false;
+      }
+    } else if (!inQuote && ch === '|') {
+      parts.push(body.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+  parts.push(body.slice(start).trim());
+  return parts.filter((s) => s.length > 0);
+}
+
+function buildQueryRequest(
+  body: string,
+  ctx: MacaroniExecutionContext,
+  meta: { depth: number; visitedQueryKeys: string[]; inlineTargetName?: string }
+): { request: MacaroniQueryRequest } | { error: string } {
+  if (meta.depth > 5) {
+    return { error: 'Stopped: query depth exceeded maximum of 5 levels.' };
+  }
+
+  const segments = splitOutsideQuotesByPipe(body);
+  if (segments.length === 0) {
+    return { error: 'Query <?> requires a prompt and at least one option.' };
+  }
+
+  let prompt = 'Choose an option';
+  let optSegments = segments;
+  const firstQuote = segments[0].match(/^"([^"]*)"$/);
+  if (firstQuote) {
+    prompt = firstQuote[1];
+    optSegments = segments.slice(1);
+  }
+
+  if (optSegments.length === 0) {
+    return { error: 'Query <?> requires at least one clickable option after "|".' };
+  }
+
+  const options: MacaroniQueryOption[] = optSegments.map((seg) => {
+    const labeledMatch = seg.match(/^"([^"]*)"\s*=\s*\{([A-Za-z_][A-Za-z0-9_]*)\}$/);
+    const bareObjMatch = seg.match(/^\{([A-Za-z_][A-Za-z0-9_]*)\}$/);
+
+    const objName = labeledMatch?.[2] || bareObjMatch?.[1];
+    if (objName) {
+      const label = labeledMatch ? labeledMatch[1] : objName;
+      const formula = findStoredObjectFormula(objName, ctx);
+      let targetSigil: MacaroniQueryOption['targetSigil'] = 'none';
+      if (formula) {
+        const env = parseSigilEnvelope(formula);
+        targetSigil = env.valid && env.kind ? env.kind : 'none';
+      }
+      return {
+        label,
+        value: objName,
+        objectName: objName,
+        targetSigil,
+        targetFormula: formula || undefined,
+      };
+    }
+
+    return {
+      label: seg.replace(/^"|"$/g, ''),
+      value: seg,
+      targetSigil: 'none',
+    };
+  });
+
+  return {
+    request: {
+      id: `query-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      prompt,
+      options,
+      depth: meta.depth,
+      visitedQueryKeys: meta.visitedQueryKeys,
+      inlineCallSite: meta.inlineTargetName
+        ? { targetQueryName: meta.inlineTargetName, parentExpression: '' }
+        : undefined,
+      onSelect: () => {},
+    },
+  };
+}
+
+export interface QueryClickOutcome {
+  action: 'replace_window' | 'show_in_place' | 'noop' | 'stopped';
+  message: string;
+  result?: MacaroniExecutionResult;
+  nextQueryEvent?: MacaroniQueryRequest;
+}
+
+/**
+ * Handles clicking an option inside a <?> Query dialog according to Macroni 1.2 rules:
+ * - Target sigil is Make (<>, <?>, <^>, <!>): replaces query window
+ * - Target sigil is Pull (<<): shows result where query started; keeps query open
+ * - Target sigil is Neutral (==) or none: nothing happens
+ * - Query depth capped at 5; reopening an already-active query stops with message
+ */
+export function resolveQueryOptionAction(
+  option: MacaroniQueryOption,
+  ctx: MacaroniExecutionContext,
+  currentQuery: MacaroniQueryRequest
+): QueryClickOutcome {
+  if (!option.objectName || !option.targetFormula) {
+    return { action: 'noop', message: 'Option has no target macro (no effect).' };
+  }
+
+  const objKey = option.objectName.toLowerCase();
+  const env = parseSigilEnvelope(option.targetFormula);
+  if (!env.valid || !env.kind || env.kind === 'neutral') {
+    return { action: 'noop', message: 'Neutral (==) or un-sigiled object: nothing happens.' };
+  }
+
+  const visited = currentQuery.visitedQueryKeys || [];
+  const nextDepth = (currentQuery.depth || 1) + 1;
+
+  if (env.kind === 'query') {
+    if (visited.includes(objKey)) {
+      return {
+        action: 'stopped',
+        message: `Stopped: query "${option.objectName}" tried to reopen itself.`,
+      };
+    }
+    if (nextDepth > 5) {
+      return {
+        action: 'stopped',
+        message: 'Stopped: query depth limit (5 levels) exceeded.',
+      };
+    }
+  }
+
+  const evalRes = executeMacaroni(option.targetFormula, {
+    ...ctx,
+    queryDepth: nextDepth,
+    visitedQueryKeys: [...visited, objKey],
+  });
+
+  if (evalRes.isError) {
+    return {
+      action: 'stopped',
+      message: evalRes.errorMessage || 'Query option failed.',
+      result: evalRes,
+    };
+  }
+
+  if (env.kind === 'pull') {
+    return {
+      action: 'show_in_place',
+      message: evalRes.fullOutput,
+      result: evalRes,
+    };
+  }
+
+  if (env.kind === 'make' || env.kind === 'query' || env.kind === 'modifier' || env.kind === 'stepper') {
+    return {
+      action: 'replace_window',
+      message: evalRes.fullOutput,
+      result: evalRes,
+      nextQueryEvent: evalRes.queryEvent,
+    };
+  }
+
+  return { action: 'noop', message: 'Nothing happens.' };
+}
+
+// ============================================================================
+// MODIFIER (<^>) PARSING & BUFF BOX UPSERT BY (NAME, BONUSTYPE)
+// ============================================================================
+
 export function parseMacaroniBuffMake(
   innerContent: string,
   macroName: string | undefined,
   isLockedOnce: boolean,
   ctx: MacaroniExecutionContext
 ): MacaroniBuffMakeSpec | null {
-  const raw = `<^${innerContent}>`;
   const trimmed = innerContent.trim();
-  if (!trimmed || trimmed === 'make_buff') {
+  if (!trimmed) return null;
+
+  // Format A (Macroni 1.2 structured inline): Name | Target | BonusType | ValueExpr
+  const pipeParts = trimmed.split('|').map((s) => s.trim()).filter(Boolean);
+  if (pipeParts.length >= 4) {
+    const buffName = pipeParts[0].replace(/^"|"$/g, '');
+    const stat = resolveBuffStatTarget(pipeParts[1]);
+    const bonusType = resolveBuffBonusType(pipeParts[2]);
+    const valBody = pipeParts.slice(3).join('|');
+    const resolvedVal = resolveBodyV12(valBody, ctx, { scopeId: `buff:${buffName}` });
+    if (!stat || !resolvedVal.ok) return null;
+    const numVal = Number(resolvedVal.output);
+    if (!Number.isFinite(numVal)) return null;
+    const col = BUFF_MATRIX_COLUMNS.indexOf(stat) + 1;
+    const row = BUFF_MATRIX_ROWS.indexOf(bonusType) + 1;
     return {
-      raw,
-      name: macroName || 'Custom_Macaroni_Buff',
-      isDirectMatrix: !macroName,
+      raw: `<^> ${trimmed}`,
+      name: buffName,
+      isDirectMatrix: false,
       isLockedOnce,
-      category: isLockedOnce ? 'permanent' : 'activatable',
-      bonusType: 'Untyped',
-      values: { ac: 4 },
-      matrixEntries: [{ col: 7, row: 1, stat: 'ac', bonusType: 'Untyped', value: 4 }],
-      summaryText: `${macroName || 'Matrix[AC, Untyped]'}: +4 AC (Untyped)`,
+      category: numVal < 0 ? 'debuff' : 'activatable',
+      bonusType,
+      values: { [stat]: numVal },
+      matrixEntries: [{ col, row, stat, bonusType, value: numVal }],
+      summaryText: `${buffName} (${bonusType}) ➜ ${stat.toUpperCase()} ${numVal >= 0 ? `+${numVal}` : numVal}`,
     };
   }
 
-  const pieces = trimmed.split(',').map((p) => p.trim()).filter(Boolean);
-  const matrixEntries: MacaroniBuffMakeSpec['matrixEntries'] = [];
-  const values: Partial<Record<BuffStatTarget, number>> = {};
-  let primaryBonusType: BuffBonusType = 'Untyped';
-  let hasBonusTypeSet = false;
+  return null;
+}
 
-  for (const piece of pieces) {
-    // Format 1: {col:row}+val or {col:row}-val
-    const coordMatch = piece.match(/^\{(\d+)\s*:\s*(\d+)\}\s*([+-]?\s*(?:\[[^\]]+\]|\d+))/);
-    if (coordMatch) {
-      const colNum = Math.max(1, Math.min(19, parseInt(coordMatch[1], 10)));
-      const rowNum = Math.max(1, Math.min(19, parseInt(coordMatch[2], 10)));
-      const rawValStr = coordMatch[3].replace(/\s+/g, '');
-      let numVal = 0;
-      if (rawValStr.includes('[')) {
-        const b = evaluateBracketContent(rawValStr.replace(/[[\]]/g, ''), ctx);
-        numVal = evaluatePureMath(b.text);
-      } else {
-        numVal = parseInt(rawValStr, 10) || 0;
-      }
-
-      const stat = BUFF_MATRIX_COLUMNS[colNum - 1] || 'ac';
-      const bonusType = BUFF_MATRIX_ROWS[rowNum - 1] || 'Untyped';
-      if (!hasBonusTypeSet) {
-        primaryBonusType = bonusType;
-        hasBonusTypeSet = true;
-      }
-      values[stat] = (values[stat] || 0) + numVal;
-      matrixEntries.push({ col: colNum, row: rowNum, stat, bonusType, value: numVal });
-      continue;
-    }
-
-    // Format 3: Natural ALLCAPS phrase e.g. ENHANCEMENTBONUSTOAC+4, UNTYPEDBONUSTOAC+10, DODGEBONUSTOAC+2
-    const phraseMatch = piece.match(/^([A-Za-z_]+?)(?:BONUS|PENALTY)?TO([A-Za-z_]+?)\s*([+-]\s*\d+)$/i);
-    if (phraseMatch) {
-      const bType = resolveBuffBonusType(phraseMatch[1]);
-      const stat = resolveBuffStatTarget(phraseMatch[2]) || 'ac';
-      const numVal = parseInt(phraseMatch[3].replace(/\s+/g, ''), 10) || 0;
-      const colNum = BUFF_MATRIX_COLUMNS.indexOf(stat) + 1;
-      const rowNum = BUFF_MATRIX_ROWS.indexOf(bType) + 1;
-      if (!hasBonusTypeSet) {
-        primaryBonusType = bType;
-        hasBonusTypeSet = true;
-      }
-      values[stat] = (values[stat] || 0) + numVal;
-      matrixEntries.push({ col: colNum, row: rowNum, stat, bonusType: bType, value: numVal });
-      continue;
-    }
-
-    // Format 2: Stat.BonusType+val or Stat+val (e.g. AC.Armor+4, AC+10, STR.Morale+4, WILL-2)
-    const statDotMatch = piece.match(/^([A-Za-z_]+)(?:\.([A-Za-z_ /]+))?\s*([+-]\s*(?:\[[^\]]+\]|\d+))$/);
-    if (statDotMatch) {
-      const stat = resolveBuffStatTarget(statDotMatch[1]);
-      if (stat) {
-        const bType = statDotMatch[2] ? resolveBuffBonusType(statDotMatch[2]) : primaryBonusType;
-        const rawValStr = statDotMatch[3].replace(/\s+/g, '');
-        let numVal = 0;
-        if (rawValStr.includes('[')) {
-          const sign = rawValStr.startsWith('-') ? -1 : 1;
-          const b = evaluateBracketContent(rawValStr.replace(/^[+-]?\[|\]$/g, ''), ctx);
-          numVal = sign * evaluatePureMath(b.text);
-        } else {
-          numVal = parseInt(rawValStr, 10) || 0;
-        }
-        const colNum = BUFF_MATRIX_COLUMNS.indexOf(stat) + 1;
-        const rowNum = BUFF_MATRIX_ROWS.indexOf(bType) + 1;
-        if (!hasBonusTypeSet && statDotMatch[2]) {
-          primaryBonusType = bType;
-          hasBonusTypeSet = true;
-        }
-        values[stat] = (values[stat] || 0) + numVal;
-        matrixEntries.push({ col: colNum, row: rowNum, stat, bonusType: bType, value: numVal });
-        continue;
-      }
-    }
+export function applyModifierPromptSelection(
+  character: PF1Character,
+  selection: {
+    name: string;
+    target: BuffStatTarget;
+    bonusType: BuffBonusType;
+    value: number;
   }
+): { updatedCharacter: PF1Character; summaryText: string } {
+  const spec: MacaroniBuffMakeSpec = {
+    raw: `<^> ${selection.name} | ${selection.target} | ${selection.bonusType} | ${selection.value}`,
+    name: selection.name.trim() || 'Custom Buff',
+    isDirectMatrix: false,
+    isLockedOnce: false,
+    category: selection.value < 0 ? 'debuff' : 'activatable',
+    bonusType: selection.bonusType,
+    values: { [selection.target]: selection.value },
+    matrixEntries: [
+      {
+        col: BUFF_MATRIX_COLUMNS.indexOf(selection.target) + 1,
+        row: BUFF_MATRIX_ROWS.indexOf(selection.bonusType) + 1,
+        stat: selection.target,
+        bonusType: selection.bonusType,
+        value: selection.value,
+      },
+    ],
+    summaryText: `${selection.name} (${selection.bonusType}) ➜ ${selection.target.toUpperCase()} ${selection.value >= 0 ? `+${selection.value}` : selection.value}`,
+  };
 
-  if (matrixEntries.length === 0) return null;
-
-  // Determine category: if all values are negative -> 'debuff', else if locked with $ and permanent keyword -> 'permanent', else 'activatable'
-  const allNegative = matrixEntries.every((e) => e.value < 0);
-  const category: 'activatable' | 'permanent' | 'debuff' = allNegative
-    ? 'debuff'
-    : isLockedOnce && macroName && /dodge|feat|perm|trait|inherent/i.test(macroName)
-    ? 'permanent'
-    : 'activatable';
-
-  const summaryParts = matrixEntries.map(
-    (e) => `${e.stat.toUpperCase()} ${e.value >= 0 ? `+${e.value}` : e.value} (${e.bonusType})`
-  );
-  const targetLabel = macroName ? `${macroName}${isLockedOnce ? ' [$ Locked]' : ''}` : 'Base Matrix';
+  const applied = applyMacaroniToCharacter(character, {
+    raw: spec.raw,
+    fullOutput: spec.summaryText,
+    slots: [],
+    isError: false,
+    tokens: [],
+    rollable: false,
+    buffMakeEvents: [spec],
+  });
 
   return {
-    raw,
-    name: macroName || undefined,
-    isDirectMatrix: !macroName,
-    isLockedOnce,
-    category,
-    bonusType: primaryBonusType,
-    values,
-    matrixEntries,
-    summaryText: `${targetLabel} ➜ ${summaryParts.join(', ')}`,
+    updatedCharacter: applied.updatedCharacter,
+    summaryText: applied.statusMessage,
   };
 }
 
-/**
- * Applies Macaroni Buff-Make events and state mutations directly to a PF1Character
- * Returns the updated character and a live status summary string.
- */
 export function applyMacaroniToCharacter(
   character: PF1Character,
   result: MacaroniExecutionResult
@@ -400,352 +2279,110 @@ export function applyMacaroniToCharacter(
   let quirkyKind: 'buff' | 'debuff' | 'roll' | 'locked' | 'toggled_off' = 'roll';
   let didMutate = false;
 
-  // 1. Apply <^...> Buff Make Events
+  // 1. Buff Modifier (<^>): identified by (name, bonusType). Updates existing instead of duplicating or toggling off.
   if (result.buffMakeEvents && result.buffMakeEvents.length > 0) {
     for (const buffSpec of result.buffMakeEvents) {
       didMutate = true;
-      if (buffSpec.isDirectMatrix || !buffSpec.name) {
-        // Unnamed buff macro -> write directly into the 19-row base matrix
-        const nextBuffBox = { ...(nextChar.buffBox || {}) } as PF1Character['buffBox'];
-        for (const entry of buffSpec.matrixEntries) {
-          const rowObj = { ...(nextBuffBox[entry.bonusType] || {}) };
-          rowObj[entry.stat] = entry.value;
-          nextBuffBox[entry.bonusType] = rowObj;
-        }
-        nextChar = { ...nextChar, buffBox: nextBuffBox };
-        quirkyKind = buffSpec.category === 'debuff' ? 'debuff' : 'buff';
-        statusNotes.push(`Direct Matrix Updated: ${buffSpec.summaryText}`);
-      } else {
-        // Named buff macro -> create, lock ($), or toggle in customBuffs
-        const currentBuffs = [...(nextChar.customBuffs || [])];
-        const existingIdx = currentBuffs.findIndex(
-          (b) => b.name.toLowerCase() === buffSpec.name!.toLowerCase()
-        );
+      const buffName = (buffSpec.name || 'Custom Buff').trim();
+      const currentBuffs = [...(nextChar.customBuffs || [])];
+      const existingIdx = currentBuffs.findIndex(
+        (b) =>
+          b.name.trim().toLowerCase() === buffName.toLowerCase() &&
+          b.bonusType === buffSpec.bonusType
+      );
 
-        if (existingIdx >= 0) {
-          const existing = currentBuffs[existingIdx];
-          if (buffSpec.isLockedOnce && existing.isActive) {
-            // $ locks it once when active
-            quirkyKind = 'locked';
-            statusNotes.push(`${existing.name} is already ACTIVE & locked ($)`);
-          } else {
-            const nextActive = buffSpec.isLockedOnce ? true : !existing.isActive;
-            currentBuffs[existingIdx] = {
-              ...existing,
-              isActive: nextActive,
-              bonusType: buffSpec.bonusType,
-              category: buffSpec.category,
-              values: buffSpec.values,
-            };
-            nextChar = { ...nextChar, customBuffs: currentBuffs };
-            quirkyKind = nextActive
-              ? buffSpec.category === 'debuff'
-                ? 'debuff'
-                : 'buff'
-              : 'toggled_off';
-            statusNotes.push(
-              `${existing.name}: ${nextActive ? 'ACTIVATED' : 'DEACTIVATED'} (${Object.entries(
-                buffSpec.values
-              )
-                .map(([k, v]) => `${k.toUpperCase()} ${(v || 0) >= 0 ? `+${v}` : v}`)
-                .join(', ')})`
-            );
-          }
-        } else {
-          // Create new named buff in customBuffs
-          const newBuff: CustomBuffEffect = {
-            id: `mac-buff-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-            name: buffSpec.name,
-            category: buffSpec.category,
-            bonusType: buffSpec.bonusType,
-            isActive: true,
-            values: buffSpec.values,
-            notes: `Created via Macaroni: ${buffSpec.raw}${buffSpec.isLockedOnce ? ' ($ Locked)' : ''}`,
-          };
-          nextChar = {
-            ...nextChar,
-            customBuffs: [newBuff, ...currentBuffs],
-          };
-          quirkyKind = buffSpec.category === 'debuff' ? 'debuff' : 'buff';
-          statusNotes.push(`Created & Activated: ${buffSpec.summaryText}`);
-        }
+      if (existingIdx >= 0) {
+        currentBuffs[existingIdx] = {
+          ...currentBuffs[existingIdx],
+          isActive: true,
+          category: buffSpec.category,
+          bonusType: buffSpec.bonusType,
+          values: buffSpec.values,
+          notes: `Updated via Macroni <^>: ${buffSpec.raw}`,
+        };
+        nextChar = { ...nextChar, customBuffs: currentBuffs };
+        statusNotes.push(`Updated Buff: ${buffSpec.summaryText}`);
+      } else {
+        const newBuff: CustomBuffEffect = {
+          id: `mac-buff-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          name: buffName,
+          category: buffSpec.category,
+          bonusType: buffSpec.bonusType,
+          isActive: true,
+          values: buffSpec.values,
+          notes: `Created via Macroni <^>: ${buffSpec.raw}`,
+        };
+        nextChar = { ...nextChar, customBuffs: [newBuff, ...currentBuffs] };
+        statusNotes.push(`Added Buff: ${buffSpec.summaryText}`);
       }
+      quirkyKind = buffSpec.category === 'debuff' ? 'debuff' : 'buff';
     }
   }
 
-  // 2. Apply stateMutations (from ^ mutators or >> remote pushes on @me)
+  // 2. Apply field stateMutations from >target<op value
   if (result.stateMutations && result.stateMutations.length > 0) {
     for (const mut of result.stateMutations) {
       const f = mut.field.toLowerCase();
       if (f === 'hp' || f === 'hp_current') {
         didMutate = true;
-        const newHp = Math.min(nextChar.hpTotalMax, nextChar.hpCurrent + mut.delta);
-        nextChar = { ...nextChar, hpCurrent: newHp };
-        statusNotes.push(`HP ${mut.delta >= 0 ? `+${mut.delta}` : mut.delta} (Now ${newHp})`);
+        const nextHp =
+          mut.absoluteValue !== undefined
+            ? mut.absoluteValue
+            : Math.min(nextChar.hpTotalMax, nextChar.hpCurrent + mut.delta);
+        nextChar = { ...nextChar, hpCurrent: nextHp };
+        statusNotes.push(mut.description);
       } else if (f === 'thp' || f === 'temp_hp') {
         didMutate = true;
-        const newThp = Math.max(0, (nextChar.hpTemp || 0) + mut.delta);
-        nextChar = { ...nextChar, hpTemp: newThp };
-        statusNotes.push(`Temp HP ${mut.delta >= 0 ? `+${mut.delta}` : mut.delta} (Now ${newThp})`);
+        const nextThp =
+          mut.absoluteValue !== undefined
+            ? Math.max(0, mut.absoluteValue)
+            : Math.max(0, (nextChar.hpTemp || 0) + mut.delta);
+        nextChar = { ...nextChar, hpTemp: nextThp };
+        statusNotes.push(mut.description);
       } else if (f === 'gp' || f === 'gold') {
         didMutate = true;
-        const newGp = Math.max(0, (nextChar.currency?.gp || 0) + mut.delta);
-        nextChar = {
-          ...nextChar,
-          currency: { ...nextChar.currency, gp: newGp },
-        };
-        statusNotes.push(`GP ${mut.delta >= 0 ? `+${mut.delta}` : mut.delta} (Now ${newGp} gp)`);
+        const nextGp =
+          mut.absoluteValue !== undefined
+            ? Math.max(0, mut.absoluteValue)
+            : Math.max(0, (nextChar.currency?.gp || 0) + mut.delta);
+        nextChar = { ...nextChar, currency: { ...nextChar.currency, gp: nextGp } };
+        statusNotes.push(mut.description);
+      } else if (['str', 'strength', 'dex', 'dexterity', 'con', 'constitution', 'int', 'intelligence', 'wis', 'wisdom', 'cha', 'charisma'].includes(f)) {
+        const abKey = f.slice(0, 3).toUpperCase() as keyof PF1Character['abilities'];
+        const abObj = nextChar.abilities?.[abKey];
+        if (abObj) {
+          didMutate = true;
+          const nextAbilities = { ...nextChar.abilities };
+          nextAbilities[abKey] = {
+            ...abObj,
+            miscMod: (abObj.miscMod || 0) + mut.delta,
+          };
+          nextChar = { ...nextChar, abilities: nextAbilities };
+          statusNotes.push(mut.description);
+        }
       }
     }
   }
 
-  const quirkyMessage = pickQuirkyMessage(quirkyKind);
-  const statusMessage =
-    statusNotes.length > 0 ? statusNotes.join(' • ') : result.fullOutput || 'Macro executed';
-
   return {
     updatedCharacter: nextChar,
-    statusMessage,
-    quirkyMessage,
+    statusMessage: statusNotes.length > 0 ? statusNotes.join(' • ') : result.fullOutput || 'Macro executed',
+    quirkyMessage: pickQuirkyMessage(quirkyKind),
     didMutate,
   };
 }
 
-/**
- * Resolves a UI Make tag using exact match -> prefix greedy match -> default fallback
- */
-export function resolveUiMakePreset(
-  tagCandidate: number | undefined,
-  presets: UiMakePreset[] = DEFAULT_UI_PRESETS
-): UiMakePreset {
-  const allPresets = presets.length > 0 ? presets : DEFAULT_UI_PRESETS;
-  const defaultPreset = allPresets.find((p) => p.tag === 1) || allPresets[0] || DEFAULT_UI_PRESETS[0];
-
-  if (tagCandidate === undefined || Number.isNaN(tagCandidate)) {
-    return defaultPreset;
-  }
-
-  // 1. Exact match
-  const exact = allPresets.find((p) => p.tag === tagCandidate);
-  if (exact) return exact;
-
-  // 2. Prefix greedy match: e.g. tag 112 matches 11
-  const candidateStr = String(tagCandidate);
-  let bestMatch: UiMakePreset | null = null;
-  let bestMatchLen = 0;
-
-  for (const preset of allPresets) {
-    const pStr = String(preset.tag);
-    if (candidateStr.startsWith(pStr) && pStr.length > bestMatchLen) {
-      bestMatch = preset;
-      bestMatchLen = pStr.length;
-    }
-  }
-
-  if (bestMatch) return bestMatch;
-
-  // 3. Fallback to default
-  return defaultPreset;
-}
-
-/**
- * Evaluates pure math safely with functions and ceil division /+
- */
-export function evaluatePureMath(expr: string): number {
-  let s = expr.trim();
-  if (!s) return 0;
-
-  // Functions: floor, round, ceil, abs, sqrt
-  s = s.replace(/(floor|round|ceil|abs|sqrt)\s*\(([^()]+)\)/gi, (_, fn, inner) => {
-    const val = evaluatePureMath(inner);
-    const f = fn.toLowerCase();
-    if (f === 'floor') return String(Math.floor(val));
-    if (f === 'round') return String(Math.round(val));
-    if (f === 'ceil') return String(Math.ceil(val));
-    if (f === 'abs') return String(Math.abs(val));
-    if (f === 'sqrt') return String(Math.sqrt(val));
-    return String(val);
-  });
-
-  // Min & Max
-  s = s.replace(/(min|max)\s*\(([^,()]+),([^()]+)\)/gi, (_, fn, a, b) => {
-    const vA = evaluatePureMath(a);
-    const vB = evaluatePureMath(b);
-    return String(fn.toLowerCase() === 'min' ? Math.min(vA, vB) : Math.max(vA, vB));
-  });
-
-  // Ceil division: /+
-  s = s.replace(/(\d+)\s*\/\+\s*(\d+)/g, (_, a, b) => String(Math.ceil(parseInt(a, 10) / parseInt(b, 10))));
-
-  const sanitized = s.replace(/[^0-9+\-*/().\s]/g, '');
-  if (!sanitized.trim()) return 0;
-  try {
-    // eslint-disable-next-line no-new-func
-    const fn = new Function(`"use strict"; return (${sanitized});`);
-    const val = fn();
-    return typeof val === 'number' && !Number.isNaN(val) ? val : 0;
-  } catch {
-    return 0;
-  }
-}
-
-/**
- * Evaluates bracketed calculation [ ... ]
- */
-function evaluateBracketContent(
-  inner: string,
-  ctx: MacaroniExecutionContext
-): { text: string; diceOutcome?: any } {
-  let text = inner.trim();
-
-  // Resolve external scope calls: ~target[#AC] or ~target#AC
-  text = text.replace(/~([a-zA-Z0-9_-]+)(?:\[#?([a-zA-Z0-9_]+)\]|#([a-zA-Z0-9_]+))/g, (_, targetScope, key1, key2) => {
-    const fieldKey = (key1 || key2).toLowerCase();
-    if (targetScope.toLowerCase() === 'target' && ctx.target) {
-      return String(ctx.target[fieldKey] ?? ctx.target[`#${fieldKey}`] ?? 0);
-    }
-    if (targetScope.toLowerCase() === 'companion' && ctx.companion) {
-      return String(ctx.companion[fieldKey] ?? ctx.companion[`#${fieldKey}`] ?? 0);
-    }
-    return '0';
-  });
-
-  // Resolve #CALLs inside brackets
-  text = text.replace(/#\(([^)]+)\)|#([a-zA-Z0-9_]+(?:\.[0-9]+)?)/g, (_, bracketed, simple) => {
-    const callName = (bracketed || simple).toLowerCase();
-    // Check if indexed slot call: e.g. firebolt.1
-    const dotIdx = callName.indexOf('.');
-    if (dotIdx > 0) {
-      const baseName = callName.slice(0, dotIdx);
-      const slotNum = parseInt(callName.slice(dotIdx + 1), 10) || 1;
-      const baseMacro = ctx.formulaContext[baseName] || ctx.formulaContext[`#${baseName}`];
-      if (typeof baseMacro === 'string') {
-        const subRes = executeMacaroni(baseMacro, { ...ctx, depth: (ctx.depth || 0) + 1 });
-        const slot = subRes.slots.find((s) => s.slot === slotNum);
-        return slot ? slot.evaluated : '0';
-      }
-    }
-    if (callName in ctx.formulaContext) {
-      const val = ctx.formulaContext[callName];
-      if (typeof val === 'number') return String(val);
-      if (typeof val === 'string') {
-        const res = evaluateMathOnlyCall(val, ctx);
-        return res;
-      }
-    }
-    return '0';
-  });
-
-  // Resolve keyword this
-  if (ctx.thisValue !== undefined) {
-    text = text.replace(/\bthis\b/gi, String(ctx.thisValue));
-  }
-
-  // Handle stepper progression: e.g. 10-1! with stepCount
-  const stepMatch = text.match(/(\d+)\s*([+-])\s*(\d+)\s*!/);
-  if (stepMatch) {
-    const base = parseInt(stepMatch[1], 10);
-    const op = stepMatch[2];
-    const stepDelta = parseInt(stepMatch[3], 10);
-    const count = ctx.stepCount || 1;
-    const effectiveVal = op === '-' ? base - (stepDelta * count) : base + (stepDelta * count);
-    text = text.replace(stepMatch[0], String(effectiveVal));
-  }
-
-  // Handle DC+#STAT shorthand inside brackets
-  text = text.replace(/\bDC\b/gi, () => {
-    const lvl = Number(ctx.formulaContext.level || ctx.character.level || 1);
-    return String(10 + Math.floor(lvl / 2));
-  });
-
-  // Handle dice in bracket: e.g. 1d20 + 17
-  const hasDice = /\d*d\d+/i.test(text);
-  if (hasDice) {
-    const diceMatch = text.match(/([+-]?\s*\d*d\d+(?:[kKdD]\d+)?)/i);
-    if (diceMatch) {
-      const dice = diceMatch[1].trim();
-      const withoutDice = text.replace(diceMatch[0], ' ');
-      const cleanRemainder = withoutDice.replace(/[^0-9+\-*/().\s]/g, '').trim();
-      let mod = 0;
-      if (cleanRemainder && /[0-9]/.test(cleanRemainder)) {
-        mod = evaluatePureMath(cleanRemainder);
-      }
-      const formula = `${dice.replace(/\s+/g, '')}${mod !== 0 ? (mod > 0 ? `+${mod}` : `${mod}`) : ''}`;
-      const outcome = executeDiceRoll(formula);
-      return { text: formula, diceOutcome: outcome };
-    }
-  }
-
-  const numResult = evaluatePureMath(text);
-  return { text: String(numResult) };
-}
-
-/**
- * Extracts math-only values from a macro, ignoring dialogues, flavor text, and prompts
- */
 export function evaluateMathOnlyCall(formula: string, ctx: MacaroniExecutionContext): string {
-  const withoutQuotes = formula.replace(/"[^"]*"|'[^']*'/g, '');
-  const withoutAlerts = withoutQuotes.replace(/<[^>]*>/g, '');
-  const tokens = tokenizeMacaroni(withoutAlerts);
-  let mathStr = '';
-
-  for (const tok of tokens) {
-    if (tok.type === 'eval_bracket') {
-      const bRes = evaluateBracketContent(tok.value, ctx);
-      mathStr += ` ${bRes.text} `;
-    } else if (tok.type === 'hash_call') {
-      const key = tok.value.toLowerCase();
-      const val = ctx.formulaContext[key] ?? ctx.formulaContext[`#${key}`];
-      if (val !== undefined) mathStr += ` ${val} `;
-    } else if (tok.type === 'dice' || tok.type === 'number' || tok.type === 'operator') {
-      mathStr += ` ${tok.value} `;
-    }
-  }
-
-  const trimmed = mathStr.trim();
-  if (/\d*d\d+/i.test(trimmed)) {
-    const b = evaluateBracketContent(trimmed, ctx);
-    return b.text;
-  }
-  return trimmed ? String(evaluatePureMath(trimmed)) : '0';
+  const env = parseSigilEnvelope(formula);
+  const body = env.valid ? env.body : formula;
+  const res = resolveBodyV12(body, ctx);
+  return res.ok ? res.output : '0';
 }
 
-/**
- * Splits by delimiter outside quotes and brackets
- */
-function splitOutsideEnclosures(text: string, delimiter: string): string[] {
-  const result: string[] = [];
-  let inQuote = false;
-  let quoteChar = '';
-  let bracketDepth = 0;
-  let start = 0;
+// ============================================================================
+// MAIN EXECUTION ENTRY POINT
+// ============================================================================
 
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if ((ch === '"' || ch === "'") && (i === 0 || text[i - 1] !== '\\')) {
-      if (!inQuote) {
-        inQuote = true;
-        quoteChar = ch;
-      } else if (ch === quoteChar) {
-        inQuote = false;
-      }
-    } else if (!inQuote) {
-      if (ch === '[' || ch === '{' || ch === '<') bracketDepth++;
-      else if (ch === ']' || ch === '}' || ch === '>') bracketDepth = Math.max(0, bracketDepth - 1);
-      else if (bracketDepth === 0 && text.substring(i, i + delimiter.length) === delimiter) {
-        result.push(text.substring(start, i));
-        start = i + delimiter.length;
-        i += delimiter.length - 1;
-      }
-    }
-  }
-  result.push(text.substring(start));
-  return result;
-}
-
-/**
- * Main Macaroni Macro Execution Engine
- */
 export function executeMacaroni(
   expression: string,
   ctx: MacaroniExecutionContext
@@ -753,13 +2390,13 @@ export function executeMacaroni(
   const depth = ctx.depth || 0;
   const tokens = tokenizeMacaroni(expression);
 
-  if (depth > 6) {
+  if (depth > 8) {
     return {
       raw: expression,
       fullOutput: 'Error: circular reference detected',
       slots: [],
       isError: true,
-      errorMessage: 'Circular reference limit (depth 6) exceeded',
+      errorMessage: 'Circular reference limit (depth 8) exceeded.',
       tokens,
       rollable: false,
     };
@@ -776,361 +2413,629 @@ export function executeMacaroni(
     };
   }
 
-  let formulaBody = expression.trim();
-
-  // Strip label if "name: formula" (e.g. MageArmor:|<^{7:2}+4>|$)
-  const nameColonMatch = formulaBody.match(/^([a-zA-Z0-9_]+)\s*:\s*(.*)$/);
-  let macroIdentifier = '';
-  if (nameColonMatch && !formulaBody.startsWith('"') && !formulaBody.startsWith('<')) {
-    macroIdentifier = nameColonMatch[1];
-    formulaBody = nameColonMatch[2].trim();
-  }
-
-  const alertEvents: Array<{ tag?: number; message: string; preset?: UiMakePreset }> = [];
-  const buffMakeEvents: MacaroniBuffMakeSpec[] = [];
-  const appliedPushes: string[] = [];
-  const stateMutations: Array<{ field: string; delta: number; description: string }> = [];
-  let queryEvent: MacaroniQueryRequest | undefined;
-  let isFinished = false;
-
-  // Check if the overall formula has a terminal $ lock (e.g. MageArmor:|<^{7:2}+4>|$)
-  const hasTerminalDollarLock = /\|\s*\$\s*$/.test(formulaBody) || /\$\s*$/.test(formulaBody);
-
-  // Check for this: formula binding
-  if (macroIdentifier.toLowerCase() === 'this') {
-    const parts = splitOutsideEnclosures(formulaBody, '|').map((s) => s.trim());
-    const stepPart = parts[0] || '';
-    const stepRes = evaluateBracketContent(stepPart, ctx);
-    const currentVal = evaluatePureMath(stepRes.text);
-    ctx.thisValue = currentVal;
-
-    // Process pipe conditions: | this=0 | $
-    for (let pIdx = 1; pIdx < parts.length; pIdx++) {
-      const part = parts[pIdx];
-      const condMatch = part.match(/^this\s*(=|<=|>=|<|>|==)\s*(-?\d+)/);
-      if (condMatch) {
-        const op = condMatch[1];
-        const targetNum = parseInt(condMatch[2], 10);
-        let condPass = false;
-        if (op === '=' || op === '==') condPass = currentVal === targetNum;
-        else if (op === '<=') condPass = currentVal <= targetNum;
-        else if (op === '>=') condPass = currentVal >= targetNum;
-        else if (op === '<') condPass = currentVal < targetNum;
-        else if (op === '>') condPass = currentVal > targetNum;
-
-        if (condPass && pIdx + 1 < parts.length) {
-          const actionPart = parts[pIdx + 1];
-          if (actionPart === '$') {
-            isFinished = true;
-          }
-        }
-      } else if (part === '$') {
-        isFinished = true;
-      }
-    }
-
+  const envelope = parseSigilEnvelope(expression);
+  if (!envelope.valid || !envelope.sigil || !envelope.kind) {
     return {
       raw: expression,
-      fullOutput: isFinished ? `0 ($ finished)` : String(currentVal),
-      slots: [{ slot: 1, raw: expression, evaluated: String(currentVal), isNumericOnly: true }],
+      fullOutput: envelope.errorMessage || 'Invalid macro sigil',
+      slots: [],
+      isError: true,
+      errorMessage: envelope.errorMessage || 'Invalid macro sigil',
+      tokens,
+      rollable: false,
+    };
+  }
+
+  // Reject reserved symbols (>>, $, stray ^, non-call #) immediately
+  const reservedErr = findReservedSymbolInBody(envelope.body);
+  if (reservedErr) {
+    return {
+      raw: expression,
+      fullOutput: reservedErr,
+      slots: [],
+      isError: true,
+      errorMessage: reservedErr,
+      tokens,
+      rollable: false,
+      sigil: envelope.sigil,
+      sigilKind: envelope.kind,
+    };
+  }
+
+  // Enforce no chained or nested sigils inside body
+  const nestedSigil = findNestedSigilInBody(envelope.body);
+  if (nestedSigil) {
+    const err = `Sigils cannot be chained or nested inside a macro body (found "${nestedSigil}").`;
+    return {
+      raw: expression,
+      fullOutput: err,
+      slots: [],
+      isError: true,
+      errorMessage: err,
+      tokens,
+      rollable: false,
+      sigil: envelope.sigil,
+      sigilKind: envelope.kind,
+    };
+  }
+
+  // Side-effect sigil permission checks (6c)
+  if (envelope.kind === 'stepper' && ctx.permissions?.allowStepper === false) {
+    const err = 'Permission denied: <!> stepper is disabled by sheet permissions.';
+    return {
+      raw: expression,
+      fullOutput: err,
+      slots: [],
+      isError: true,
+      errorMessage: err,
+      tokens,
+      rollable: false,
+      sigil: envelope.sigil,
+      sigilKind: envelope.kind,
+    };
+  }
+  if (envelope.kind === 'modifier' && ctx.permissions?.allowModifier === false) {
+    const err = 'Permission denied: <^> modifier is disabled by sheet permissions.';
+    return {
+      raw: expression,
+      fullOutput: err,
+      slots: [],
+      isError: true,
+      errorMessage: err,
+      tokens,
+      rollable: false,
+      sigil: envelope.sigil,
+      sigilKind: envelope.kind,
+    };
+  }
+
+  // 1. Neutral (==): stored object that does nothing when run on its own
+  if (envelope.kind === 'neutral') {
+    return {
+      raw: expression,
+      fullOutput: '',
+      slots: [],
       isError: false,
       tokens,
       rollable: false,
-      isFinished,
-      quirkyMessage: isFinished
-        ? 'Countdown reached zero ($ finished) — buff has expired!'
-        : `Stepper ticked! ${currentVal} rounds of cheesy goodness remain.`,
+      sigil: '==',
+      sigilKind: 'neutral',
+      isNoOp: true,
+      traceSteps: [
+        {
+          stage: 'Sigil: == (Neutral)',
+          before: expression,
+          after: '(no-op)',
+          note: 'Neutral stored object: does nothing when run directly; callable via {name}.',
+        },
+      ],
+      quirkyMessage: 'Neutral object (==) — callable by other macros.',
     };
   }
 
-  // 1. Separate by & into multi-result slots (.1, .2, ...)
-  const slotRawStrings = splitOutsideEnclosures(formulaBody, '&').map((s) => s.trim()).filter(Boolean);
-  const slots: MacaroniSlotResult[] = [];
-
-  for (let sIdx = 0; sIdx < slotRawStrings.length; sIdx++) {
-    const slotStr = slotRawStrings[sIdx];
-    let slotOutput = '';
-
-    // Check if this slot is a pipe-wrapped buff make construct like |<^{7:2}+4>|$
-    const pipeParts = splitOutsideEnclosures(slotStr, '|').map((s) => s.trim()).filter(Boolean);
-    let activePart = pipeParts[0] || '';
-
-    if (pipeParts.length > 1) {
-      // If the first non-empty pipe part is a <^...> buff make, evaluate it directly and check for $ in remaining parts
-      if (activePart.startsWith('<^')) {
-        if (pipeParts.includes('$')) {
-          isFinished = true;
-        }
-      } else {
-        const primaryEval = evaluateMacaroniSegment(activePart, ctx, macroIdentifier, hasTerminalDollarLock);
-        let conditionMet = false;
-
-        for (let p = 1; p < pipeParts.length; p++) {
-          const branch = pipeParts[p];
-          if (/^\d+$/.test(branch)) {
-            const expected = parseInt(branch, 10);
-            const actualNum = evaluatePureMath(primaryEval.output);
-            if (actualNum === expected && p + 1 < pipeParts.length) {
-              conditionMet = true;
-              activePart = `${primaryEval.output} ${pipeParts[p + 1]}`;
-              break;
-            }
-          } else if (branch === '$') {
-            isFinished = true;
-          }
-        }
-
-        if (!conditionMet && !activePart.startsWith('<^')) {
-          activePart = primaryEval.output;
-        }
-      }
-    }
-
-    const segmentOutcome = evaluateMacaroniSegment(
-      activePart,
-      ctx,
-      macroIdentifier || undefined,
-      hasTerminalDollarLock || isFinished
-    );
-    slotOutput = segmentOutcome.output;
-
-    if (segmentOutcome.alerts) alertEvents.push(...segmentOutcome.alerts);
-    if (segmentOutcome.buffs) buffMakeEvents.push(...segmentOutcome.buffs);
-    if (segmentOutcome.pushes) appliedPushes.push(...segmentOutcome.pushes);
-    if (segmentOutcome.mutations) stateMutations.push(...segmentOutcome.mutations);
-    if (segmentOutcome.query) queryEvent = segmentOutcome.query;
-    if (segmentOutcome.isFinished) isFinished = true;
-
-    slots.push({
-      slot: sIdx + 1,
-      raw: slotStr,
-      evaluated: slotOutput,
-      isNumericOnly: !/[a-zA-Z]/.test(slotOutput) && !slotOutput.includes('"'),
-      diceOutcome: segmentOutcome.diceOutcome,
+  // 2. Query (<?>): dialogue with clickable options
+  if (envelope.kind === 'query') {
+    const qRes = buildQueryRequest(envelope.body, ctx, {
+      depth: ctx.queryDepth || 1,
+      visitedQueryKeys: ctx.visitedQueryKeys || [],
     });
+    if ('error' in qRes) {
+      return {
+        raw: expression,
+        fullOutput: qRes.error,
+        slots: [],
+        isError: true,
+        errorMessage: qRes.error,
+        tokens,
+        rollable: false,
+        sigil: '<?>',
+        sigilKind: 'query',
+      };
+    }
+    return {
+      raw: expression,
+      fullOutput: `Query: "${qRes.request.prompt}" (${qRes.request.options.length} option(s))`,
+      slots: [{ slot: 1, raw: envelope.body, evaluated: qRes.request.prompt, isNumericOnly: false }],
+      isError: false,
+      tokens,
+      rollable: false,
+      sigil: '<?>',
+      sigilKind: 'query',
+      queryEvent: qRes.request,
+      traceSteps: [
+        {
+          stage: 'Sigil: <?> (Query)',
+          before: expression,
+          after: qRes.request.prompt,
+          note: qRes.request.options.map((o) => `${o.label} [${o.targetSigil || 'none'}]`).join(', '),
+        },
+      ],
+    };
   }
 
-  const fullOutput = slots.map((s) => s.evaluated).join(' & ');
-  const quirkyKind =
-    buffMakeEvents.length > 0
-      ? buffMakeEvents[0].category === 'debuff'
-        ? 'debuff'
-        : 'buff'
-      : 'roll';
+  // 3. Merge (>target<op value): field mutation OR non-mutating object composition
+  if (envelope.kind === 'merge') {
+    const targetName = envelope.mergeTarget || '';
+    const op = envelope.mergeOperator || '+';
+    const valueExpr = envelope.mergeValueExpr || '';
 
-  return {
+    if (envelope.mergeIsObject) {
+      const targetLower = targetName.toLowerCase();
+
+      // Opt-in listener push: >{listener:SheetName.inbox}<=val OR >{listener:inbox}<=val
+      const listenerTargetMatch = targetName.match(/^listener:(?:([A-Za-z0-9_-]+)\.)?([A-Za-z_][A-Za-z0-9_]*)$/i);
+      if (listenerTargetMatch) {
+        const sheetKey = listenerTargetMatch[1]?.toLowerCase();
+        const lName = listenerTargetMatch[2].toLowerCase();
+        const requester = (ctx.requesterId || ctx.character?.name || 'owner').toLowerCase();
+
+        const targetSheet = sheetKey
+          ? Object.values(ctx.externalSheets || {}).find(
+              (s) => s.id.toLowerCase() === sheetKey || s.name.toLowerCase() === sheetKey
+            )
+          : undefined;
+        if (sheetKey && !targetSheet) {
+          const err = `Target sheet "${listenerTargetMatch[1]}" not found for listener push.`;
+          return { raw: expression, fullOutput: err, slots: [], isError: true, errorMessage: err, tokens, rollable: false, sigil: 'merge', sigilKind: 'merge' };
+        }
+
+        const targetPerms = targetSheet ? targetSheet.permissions : ctx.permissions;
+        const targetLabel = targetSheet ? targetSheet.name : (ctx.character?.name || 'Current Sheet');
+        const listenerEntry = targetPerms?.listeners?.[lName];
+        if (!listenerEntry) {
+          const err = `No opt-in listening point "${lName}" on sheet "${targetLabel}". Push does nothing.`;
+          return {
+            raw: expression,
+            fullOutput: err,
+            slots: [],
+            isError: true,
+            errorMessage: err,
+            tokens,
+            rollable: false,
+            sigil: 'merge',
+            sigilKind: 'merge',
+            scopeEvents: [{ kind: 'permission_denied', targetSheet: targetLabel, listenerName: lName, note: err }],
+          };
+        }
+        if (
+          listenerEntry.revoked ||
+          (targetPerms?.revokedSenders || []).some((x) => x.toLowerCase() === requester) ||
+          (listenerEntry.allowedSenders &&
+            !listenerEntry.allowedSenders.some((x) => x.toLowerCase() === '*' || x.toLowerCase() === requester))
+        ) {
+          const err = `Permission denied: "${requester}" cannot push to listener "${lName}" on "${targetLabel}".`;
+          return {
+            raw: expression,
+            fullOutput: err,
+            slots: [],
+            isError: true,
+            errorMessage: err,
+            tokens,
+            rollable: false,
+            sigil: 'merge',
+            sigilKind: 'merge',
+            scopeEvents: [{ kind: 'permission_denied', targetSheet: targetLabel, listenerName: lName, note: err }],
+          };
+        }
+
+        // Evaluate RHS strictly on sender sheet; deliver inert data (never executed as macro)
+        const payloadOutcome = resolveBodyV12(valueExpr, ctx, { scopeId: `push:${lName}` });
+        if (!payloadOutcome.ok) {
+          return {
+            raw: expression,
+            fullOutput: payloadOutcome.errorMessage || 'Error evaluating listener payload',
+            slots: [],
+            isError: true,
+            errorMessage: payloadOutcome.errorMessage,
+            tokens,
+            rollable: false,
+            sigil: 'merge',
+            sigilKind: 'merge',
+            queryEvent: payloadOutcome.pendingQuery,
+          };
+        }
+        const inertPayload = payloadOutcome.output;
+        listenerEntry.lastValue = inertPayload;
+        listenerEntry.updatedAt = Date.now();
+        const pushNote = `Pushed inert data to ${targetLabel}.listener:${lName} = ${inertPayload}`;
+        return {
+          raw: expression,
+          fullOutput: inertPayload,
+          slots: [{ slot: 1, raw: valueExpr, evaluated: inertPayload, isNumericOnly: /^[+-]?\d+(\.\d+)?$/.test(inertPayload) }],
+          isError: false,
+          tokens,
+          rollable: payloadOutcome.diceRolls.length > 0,
+          sigil: 'merge',
+          sigilKind: 'merge',
+          appliedPushes: [pushNote],
+          scopeEvents: [
+            {
+              kind: 'listener_push',
+              targetSheet: targetLabel,
+              listenerName: lName,
+              value: inertPayload,
+              note: pushNote,
+            },
+          ],
+          diceRolls: payloadOutcome.diceRolls.length ? payloadOutcome.diceRolls : undefined,
+          traceSteps: payloadOutcome.traceSteps,
+        };
+      }
+
+      // Loop guard for recursive object merges (Section 5)
+      const mergeActiveKey = `merge:${targetLower}`;
+      if (ctx.activeMacros?.includes(mergeActiveKey) || ctx.visitedObjects?.includes(targetLower)) {
+        const err = `Loop stopped: macro "{${targetName}}" is already running.`;
+        return { raw: expression, fullOutput: err, slots: [], isError: true, errorMessage: err, tokens, rollable: false, sigil: 'merge', sigilKind: 'merge' };
+      }
+
+      // Object merge: >{firebreath}<+{morefire} runs target as if op + valueExpr appended
+      const targetFormula = findStoredObjectFormula(targetName, ctx);
+      if (!targetFormula) {
+        const err = `Merge target object "{${targetName}}" was not found.`;
+        return {
+          raw: expression,
+          fullOutput: err,
+          slots: [],
+          isError: true,
+          errorMessage: err,
+          tokens,
+          rollable: false,
+          sigil: 'merge',
+          sigilKind: 'merge',
+        };
+      }
+      const targetEnv = parseSigilEnvelope(targetFormula);
+      if (!targetEnv.valid || !targetEnv.sigil) {
+        const err = `Merge target "{${targetName}}" has an invalid sigil.`;
+        return {
+          raw: expression,
+          fullOutput: err,
+          slots: [],
+          isError: true,
+          errorMessage: err,
+          tokens,
+          rollable: false,
+          sigil: 'merge',
+          sigilKind: 'merge',
+        };
+      }
+
+      // Array capsule merge push >{fire&}<+val (respecting 5-item cap)
+      if (targetLower.endsWith('&')) {
+        const arrRes = parseArrayItemsSafe(
+          targetFormula,
+          targetName,
+          ctx,
+          { diceRolls: [], stepperSnapshots: [], scopeEvents: [], visitedObjects: [...(ctx.visitedObjects || [])], scopeId: `merge-arr:${targetLower}` }
+        );
+        if (!arrRes.ok) {
+          return { raw: expression, fullOutput: arrRes.error, slots: [], isError: true, errorMessage: arrRes.error, tokens, rollable: false, sigil: 'merge', sigilKind: 'merge' };
+        }
+        const rhsOutcome = resolveBodyV12(valueExpr, ctx, { scopeId: `merge-arr-val:${targetLower}` });
+        if (!rhsOutcome.ok) {
+          return { raw: expression, fullOutput: rhsOutcome.errorMessage || 'Array merge error', slots: [], isError: true, errorMessage: rhsOutcome.errorMessage, tokens, rollable: false, sigil: 'merge', sigilKind: 'merge' };
+        }
+        const nextArr = op === '=' ? [rhsOutcome.output] : [...arrRes.items, rhsOutcome.output];
+        if (nextArr.length > 5) {
+          const err = `Array limit exceeded in ">{${targetName}}<": limit of 5 items per array (cannot define item #${nextArr.length}).`;
+          return { raw: expression, fullOutput: err, slots: [], isError: true, errorMessage: err, tokens, rollable: false, sigil: 'merge', sigilKind: 'merge' };
+        }
+        const joined = nextArr.join(', ');
+        return {
+          raw: expression,
+          fullOutput: joined,
+          slots: [{ slot: 1, raw: valueExpr, evaluated: joined, isNumericOnly: false }],
+          isError: false,
+          tokens,
+          rollable: false,
+          sigil: 'merge',
+          sigilKind: 'merge',
+          mergeResult: { kind: 'object', target: targetName, operator: op, valueExpr, evaluatedOperand: rhsOutcome.output, newValue: joined },
+        };
+      }
+
+      const composedSigil =
+        targetEnv.sigil === '==' || targetEnv.sigil === 'merge' ? '<<' : targetEnv.sigil;
+      const effectiveExpr =
+        op === '='
+          ? `${composedSigil}[${valueExpr}]`
+          : `${composedSigil}[{${targetName}}${op}${valueExpr}]`;
+
+      const composedRes = executeMacaroni(effectiveExpr, {
+        ...ctx,
+        depth: depth + 1,
+        activeMacros: [...(ctx.activeMacros || []), mergeActiveKey],
+      });
+      const mergeResult: MacaroniMergeResult = {
+        kind: 'object',
+        target: targetName,
+        operator: op,
+        valueExpr,
+        evaluatedOperand: composedRes.fullOutput,
+        newValue: composedRes.fullOutput,
+        effectiveExpression: effectiveExpr,
+      };
+      return {
+        ...composedRes,
+        raw: expression,
+        tokens,
+        sigil: 'merge',
+        sigilKind: 'merge',
+        mergeResult,
+        traceSteps: [
+          {
+            stage: `Merge Object >{${targetName}}<${op}`,
+            before: expression,
+            after: effectiveExpr,
+            note: 'Runs composed expression without changing stored target object.',
+          },
+          ...(composedRes.traceSteps || []),
+        ],
+      };
+    }
+
+    // Sheet field write permission & strict whitelist checks (Section 6a + 6c)
+    if (ctx.permissions?.allowWrite === false) {
+      const err = 'Permission denied: merge writes are disabled by sheet permissions.';
+      return { raw: expression, fullOutput: err, slots: [], isError: true, errorMessage: err, tokens, rollable: false, sigil: 'merge', sigilKind: 'merge' };
+    }
+    if (!WRITABLE_MERGE_FIELDS.has(targetName.toLowerCase())) {
+      const err = `Unknown or non-writable merge target "${targetName}". Field names are whitelisted (hp, thp, gp, str/strength, dex/dexterity, con/constitution, int/intelligence, wis/wisdom, cha/charisma).`;
+      return {
+        raw: expression,
+        fullOutput: err,
+        slots: [],
+        isError: true,
+        errorMessage: err,
+        tokens,
+        rollable: false,
+        sigil: 'merge',
+        sigilKind: 'merge',
+      };
+    }
+
+    // Field merge: >strength<+{strdmg}
+    const valOutcome = resolveBodyV12(valueExpr, ctx, { scopeId: `merge:${targetName}` });
+    if (!valOutcome.ok) {
+      return {
+        raw: expression,
+        fullOutput: valOutcome.errorMessage || 'Error evaluating merge value',
+        slots: [],
+        isError: true,
+        errorMessage: valOutcome.errorMessage,
+        tokens,
+        rollable: false,
+        sigil: 'merge',
+        sigilKind: 'merge',
+        queryEvent: valOutcome.pendingQuery,
+      };
+    }
+
+    const rhsNum = Number(valOutcome.output);
+    if (!Number.isFinite(rhsNum)) {
+      const err = `Merge into field "${targetName}" requires a numeric value, got "${valOutcome.output}".`;
+      return {
+        raw: expression,
+        fullOutput: err,
+        slots: [],
+        isError: true,
+        errorMessage: err,
+        tokens,
+        rollable: false,
+        sigil: 'merge',
+        sigilKind: 'merge',
+      };
+    }
+
+    const rawCurrent = resolveFieldFromContext(targetName, ctx);
+    const lhsNum = Number(rawCurrent ?? 0) || 0;
+    let nextNum = lhsNum;
+    if (op === '+') nextNum = lhsNum + rhsNum;
+    else if (op === '-') nextNum = lhsNum - rhsNum;
+    else if (op === '*') nextNum = lhsNum * rhsNum;
+    else if (op === '/') {
+      if (rhsNum === 0) {
+        return {
+          raw: expression,
+          fullOutput: 'Error: division by zero in merge',
+          slots: [],
+          isError: true,
+          errorMessage: 'Division by zero in merge',
+          tokens,
+          rollable: false,
+          sigil: 'merge',
+          sigilKind: 'merge',
+        };
+      }
+      nextNum = Number((lhsNum / rhsNum).toFixed(4));
+    } else if (op === '=') {
+      nextNum = rhsNum;
+    }
+
+    const delta = nextNum - lhsNum;
+    const desc = `${targetName}: ${lhsNum} ${op} ${rhsNum} ➜ ${nextNum}`;
+    const mergeResult: MacaroniMergeResult = {
+      kind: 'field',
+      target: targetName,
+      operator: op,
+      valueExpr,
+      evaluatedOperand: valOutcome.output,
+      previousValue: lhsNum,
+      newValue: nextNum,
+    };
+
+    return {
+      raw: expression,
+      fullOutput: String(nextNum),
+      slots: [{ slot: 1, raw: valueExpr, evaluated: String(nextNum), isNumericOnly: true }],
+      isError: false,
+      tokens,
+      rollable: valOutcome.diceRolls.length > 0,
+      sigil: 'merge',
+      sigilKind: 'merge',
+      mergeResult,
+      appliedPushes: [desc],
+      stateMutations: [
+        {
+          field: targetName,
+          delta,
+          absoluteValue: op === '=' ? nextNum : undefined,
+          description: desc,
+        },
+      ],
+      diceRolls: valOutcome.diceRolls.length ? valOutcome.diceRolls : undefined,
+      traceSteps: valOutcome.traceSteps,
+    };
+  }
+
+  // 4. Modifier (<^>): structured inline spec OR interactive prompt for target, name, bonusType
+  if (envelope.kind === 'modifier') {
+    const inlineBuff = parseMacaroniBuffMake(envelope.body, undefined, false, ctx);
+    if (inlineBuff) {
+      return {
+        raw: expression,
+        fullOutput: inlineBuff.summaryText,
+        slots: [{ slot: 1, raw: envelope.body, evaluated: inlineBuff.summaryText, isNumericOnly: false }],
+        isError: false,
+        tokens,
+        rollable: false,
+        sigil: '<^>',
+        sigilKind: 'modifier',
+        buffMakeEvents: [inlineBuff],
+        quirkyMessage: pickQuirkyMessage(inlineBuff.category === 'debuff' ? 'debuff' : 'buff'),
+      };
+    }
+
+    const valOutcome = envelope.body
+      ? resolveBodyV12(envelope.body, ctx, { scopeId: 'modifier' })
+      : {
+          ok: true,
+          output: '0',
+          diceRolls: [],
+          stepperSnapshots: [],
+          traceSteps: [],
+        };
+
+    if (!valOutcome.ok) {
+      return {
+        raw: expression,
+        fullOutput: valOutcome.errorMessage || 'Error evaluating modifier value',
+        slots: [],
+        isError: true,
+        errorMessage: valOutcome.errorMessage,
+        tokens,
+        rollable: false,
+        sigil: '<^>',
+        sigilKind: 'modifier',
+        queryEvent: valOutcome.pendingQuery,
+      };
+    }
+
+    const numVal = Number(valOutcome.output);
+    const safeNum = Number.isFinite(numVal) ? numVal : 0;
+    return {
+      raw: expression,
+      fullOutput: `Modifier ready: ${safeNum >= 0 ? `+${safeNum}` : safeNum} (choose target, name, and bonus type)`,
+      slots: [{ slot: 1, raw: envelope.body, evaluated: String(safeNum), isNumericOnly: true }],
+      isError: false,
+      tokens,
+      rollable: valOutcome.diceRolls.length > 0,
+      sigil: '<^>',
+      sigilKind: 'modifier',
+      modifierPrompt: {
+        evaluatedValue: valOutcome.output || '0',
+        numericValue: safeNum,
+      },
+      diceRolls: valOutcome.diceRolls.length ? valOutcome.diceRolls : undefined,
+      traceSteps: valOutcome.traceSteps,
+    };
+  }
+
+  // 5. Pull (<<), Make (<>), and Stepper (<!>) evaluate the body via the 5-step resolution order
+  const resolved = resolveBodyV12(envelope.body, ctx, {
+    scopeId: ctx.stepperScopeId || `${envelope.kind}:${expression}`,
+    isPullTopLevel: envelope.kind === 'pull',
+  });
+
+  if (!resolved.ok) {
+    if (resolved.pendingQuery) {
+      if (resolved.pendingQuery.inlineCallSite && !resolved.pendingQuery.inlineCallSite.parentExpression) {
+        resolved.pendingQuery.inlineCallSite.parentExpression = expression;
+      }
+      return {
+        raw: expression,
+        fullOutput: resolved.pendingQuery.prompt || 'Query opened',
+        slots: [],
+        isError: false,
+        tokens,
+        rollable: false,
+        sigil: envelope.sigil,
+        sigilKind: envelope.kind,
+        queryEvent: resolved.pendingQuery,
+        traceSteps: resolved.traceSteps,
+      };
+    }
+    return {
+      raw: expression,
+      fullOutput: resolved.errorMessage || 'Macro error',
+      slots: [],
+      isError: true,
+      errorMessage: resolved.errorMessage,
+      tokens,
+      rollable: false,
+      sigil: envelope.sigil,
+      sigilKind: envelope.kind,
+      traceSteps: resolved.traceSteps,
+    };
+  }
+
+  const slot: MacaroniSlotResult = {
+    slot: 1,
+    raw: envelope.body,
+    evaluated: resolved.output,
+    isNumericOnly: /^[+-]?\d+(\.\d+)?$/.test(resolved.output),
+  };
+
+  const baseResult: MacaroniExecutionResult = {
     raw: expression,
-    fullOutput,
-    slots,
+    fullOutput: resolved.output,
+    slots: [slot],
     isError: false,
     tokens,
-    rollable: /d\d+/i.test(fullOutput),
-    alertEvents: alertEvents.length ? alertEvents : undefined,
-    buffMakeEvents: buffMakeEvents.length ? buffMakeEvents : undefined,
-    queryEvent,
-    appliedPushes: appliedPushes.length ? appliedPushes : undefined,
-    stateMutations: stateMutations.length ? stateMutations : undefined,
-    isFinished,
-    quirkyMessage: pickQuirkyMessage(quirkyKind),
+    rollable: resolved.diceRolls.length > 0,
+    sigil: envelope.sigil,
+    sigilKind: envelope.kind,
+    privateOutput: resolved.privateOutput,
+    diceRolls: resolved.diceRolls.length ? resolved.diceRolls : undefined,
+    stepperSnapshots: resolved.stepperSnapshots.length ? resolved.stepperSnapshots : undefined,
+    scopeEvents: resolved.scopeEvents,
+    traceSteps: resolved.traceSteps,
+    quirkyMessage: pickQuirkyMessage('roll'),
   };
-}
 
-/**
- * Evaluates a single Macaroni segment (one slot of an & multi-slot formula)
- */
-function evaluateMacaroniSegment(
-  seg: string,
-  ctx: MacaroniExecutionContext,
-  macroIdentifier?: string,
-  isLockedOnce?: boolean
-): {
-  output: string;
-  alerts?: Array<{ tag?: number; message: string; preset?: UiMakePreset }>;
-  buffs?: MacaroniBuffMakeSpec[];
-  pushes?: string[];
-  mutations?: Array<{ field: string; delta: number; description: string }>;
-  query?: MacaroniQueryRequest;
-  diceOutcome?: any;
-  isFinished?: boolean;
-} {
-  let text = seg.trim();
-  const alerts: Array<{ tag?: number; message: string; preset?: UiMakePreset }> = [];
-  const buffs: MacaroniBuffMakeSpec[] = [];
-  const pushes: string[] = [];
-  const mutations: Array<{ field: string; delta: number; description: string }> = [];
-  let query: MacaroniQueryRequest | undefined;
-  let isFinished = Boolean(isLockedOnce);
-  let lastDiceOutcome: any = undefined;
-
-  // 0. Process Buff-Make Constructs: <^{7:2}+4>, <^AC.Armor+4>, <^ENHANCEMENTBONUSTOAC+4>, <^>
-  text = text.replace(/<\^\s*([^>]*)>/g, (_, inner) => {
-    const parsedBuff = parseMacaroniBuffMake(inner, macroIdentifier, Boolean(isLockedOnce), ctx);
-    if (parsedBuff) {
-      buffs.push(parsedBuff);
-      return `[Buff: ${parsedBuff.summaryText}]`;
-    }
-    return `[Buff Make]`;
-  });
-
-  // 1. Process UI Make Alerts: <11"message"> or <"message">
-  text = text.replace(/<(\d*)\s*"([^"]*)">/g, (_, tagStr, message) => {
-    const tag = tagStr ? parseInt(tagStr, 10) : undefined;
-    const preset = resolveUiMakePreset(tag, ctx.uiPresets);
-    alerts.push({ tag, message, preset });
-    return `[Alert: "${message}"]`;
-  });
-
-  // 2. Process Interactive Query: <? "Prompt" | opt1 / opt2 / [] >
-  const queryMatch = text.match(/<\?\s*(?:"([^"]*)")?\s*\|?\s*([^>]+)>/);
-  if (queryMatch) {
-    const promptTitle = queryMatch[1] || 'Macro Decision Required';
-    const rawOptions = queryMatch[2].split('/').map((o) => o.trim()).filter(Boolean);
-    const options: MacaroniQueryOption[] = rawOptions.map((opt) => {
-      if (opt === '[]' || opt.toLowerCase() === '[custom]') {
-        return { label: 'Custom Formula', value: 'custom', isCustomInput: true };
-      }
-      if (opt.startsWith('#')) {
-        const statKey = opt.slice(1).toLowerCase();
-        const statVal = String(ctx.formulaContext[statKey] ?? ctx.formulaContext[`#${statKey}`] ?? 0);
-        return { label: `${opt} (${statVal})`, value: statVal, isStat: true };
-      }
-      return { label: opt, value: opt };
-    });
-
-    query = {
-      id: `query-${Date.now()}`,
-      prompt: promptTitle,
-      options,
-      onSelect: () => {},
+  if (envelope.kind === 'make') {
+    baseResult.makePopup = {
+      title: 'Make',
+      result: resolved.output,
+      rawBody: envelope.body,
     };
-    text = text.replace(queryMatch[0], `[Query: "${promptTitle}"]`);
+    baseResult.alertEvents = [
+      {
+        tag: 1,
+        message: resolved.output,
+        preset: resolveUiMakePreset(1, ctx.uiPresets),
+      },
+    ];
+  } else if (envelope.kind === 'stepper') {
+    const latestStep = resolved.stepperSnapshots[resolved.stepperSnapshots.length - 1]?.step ?? (ctx.stepCount || 1);
+    baseResult.stepperWindow = {
+      formula: expression,
+      currentStep: latestStep,
+      result: resolved.output,
+      bangIds: resolved.stepperSnapshots.map((s) => s.bangId),
+    };
   }
 
-  // 3. Process Listen / Pull: <<macro_name (Executes and pulls live output of another macro)
-  text = text.replace(/<<([a-zA-Z0-9_.]+)/g, (_, pullName) => {
-    const clean = pullName.toLowerCase();
-    const dotIdx = clean.indexOf('.');
-    const baseName = dotIdx > 0 ? clean.slice(0, dotIdx) : clean;
-    const slotNum = dotIdx > 0 ? parseInt(clean.slice(dotIdx + 1), 10) || 1 : undefined;
-
-    const targetFormula =
-      ctx.formulaContext[baseName] ??
-      ctx.character?.customObjects?.find((o) => o.name.toLowerCase() === baseName)?.formula;
-
-    if (typeof targetFormula === 'string') {
-      const subRes = executeMacaroni(targetFormula, { ...ctx, depth: (ctx.depth || 0) + 1 });
-      if (slotNum !== undefined) {
-        const foundSlot = subRes.slots.find((s) => s.slot === slotNum);
-        return foundSlot ? foundSlot.evaluated : subRes.fullOutput;
-      }
-      return subRes.fullOutput;
-    }
-    if (typeof targetFormula === 'number') {
-      return String(targetFormula);
-    }
-    return `[<<${pullName}]`;
-  });
-
-  // 4. Process Send Pushes: >>target, >>HP-5, >>THP+10
-  text = text.replace(/>>([~A-Za-z0-9_]+(?:\^[A-Za-z0-9_]+)?)(?:\s*([+-]\s*\d+))?/g, (_, target, delta) => {
-    const cleanDelta = delta ? delta.replace(/\s+/g, '') : '';
-    const numDelta = cleanDelta ? parseInt(cleanDelta, 10) || 0 : 0;
-    pushes.push(`Send ${cleanDelta || 'result'} to ${target}`);
-    if (numDelta !== 0) {
-      mutations.push({
-        field: target.replace(/^~/, ''),
-        delta: numDelta,
-        description: `>>${target}${cleanDelta}`,
-      });
-    }
-    return `[Sent ${cleanDelta} ➜ ${target}]`;
-  });
-
-  // 5. Process Delta Mutators: HP^-d6, HP^+10, or ^-d6
-  text = text.replace(/([a-zA-Z_][a-zA-Z0-9_]*)?\^([+-]?[0-9a-zA-Z_]+)/g, (_, fieldName, deltaExpr) => {
-    const targetField = fieldName || 'HP';
-    let resolvedDelta = 0;
-    let rollDesc = deltaExpr;
-
-    if (/\d*d\d+/i.test(deltaExpr)) {
-      const sign = deltaExpr.startsWith('-') ? -1 : 1;
-      const cleanDice = deltaExpr.replace(/^[+-]/, '');
-      const rolled = executeDiceRoll(cleanDice);
-      resolvedDelta = sign * rolled.total;
-      rollDesc = `${resolvedDelta} (${cleanDice}=[${rolled.rolls.join(',')}])`;
-    } else {
-      resolvedDelta = parseInt(deltaExpr, 10) || 0;
-    }
-
-    const desc = `${targetField} ${resolvedDelta >= 0 ? `+${resolvedDelta}` : resolvedDelta}`;
-    pushes.push(`Mutate ${desc}`);
-    mutations.push({
-      field: targetField,
-      delta: resolvedDelta,
-      description: desc,
-    });
-    return `[${targetField}^${rollDesc}]`;
-  });
-
-  // 6. Process Terminal $
-  if (text.includes('$')) {
-    isFinished = true;
-    text = text.replace(/\$/g, '').trim();
-  }
-
-  // 7. Process Math-Only Calls: {firebreath}
-  text = text.replace(/\{([^{}]+)\}/g, (_, name) => {
-    const clean = name.trim().toLowerCase();
-    const formula = ctx.formulaContext[clean] ?? ctx.formulaContext[`#${clean}`];
-    if (typeof formula === 'string') {
-      return evaluateMathOnlyCall(formula, ctx);
-    }
-    return String(formula ?? '0');
-  });
-
-  // 8. Process Evaluate Brackets: [1d4 + #STR]
-  text = text.replace(/\[([^\]]+)\]/g, (_, inner) => {
-    const res = evaluateBracketContent(inner, ctx);
-    if (res.diceOutcome) lastDiceOutcome = res.diceOutcome;
-    return res.text;
-  });
-
-  // 9. Process Raw #CALLs outside brackets
-  text = text.replace(/#\(([^)]+)\)|#([a-zA-Z0-9_]+(?:\.[0-9]+)?)/g, (_, b, s) => {
-    const callName = (b || s).toLowerCase();
-    const dotIdx = callName.indexOf('.');
-    if (dotIdx > 0) {
-      const baseName = callName.slice(0, dotIdx);
-      const slotNum = parseInt(callName.slice(dotIdx + 1), 10) || 1;
-      const baseMacro = ctx.formulaContext[baseName] ?? ctx.formulaContext[`#${baseName}`];
-      if (typeof baseMacro === 'string') {
-        const subRes = executeMacaroni(baseMacro, { ...ctx, depth: (ctx.depth || 0) + 1 });
-        const slot = subRes.slots.find((sl) => sl.slot === slotNum);
-        return slot ? slot.evaluated : '0';
-      }
-    }
-    const val = ctx.formulaContext[callName] ?? ctx.formulaContext[`#${callName}`];
-    if (typeof val === 'number') return String(val);
-    if (typeof val === 'string') {
-      return evaluateMathOnlyCall(val, ctx);
-    }
-    return '0';
-  });
-
-  const cleaned = text
-    .replace(/"([^"]*)"/g, '$1')
-    .replace(/\+\s*\+/g, '+')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
-
-  return {
-    output: cleaned,
-    alerts: alerts.length ? alerts : undefined,
-    buffs: buffs.length ? buffs : undefined,
-    pushes: pushes.length ? pushes : undefined,
-    mutations: mutations.length ? mutations : undefined,
-    query,
-    diceOutcome: lastDiceOutcome,
-    isFinished,
-  };
+  return baseResult;
 }

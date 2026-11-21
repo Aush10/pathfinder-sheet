@@ -75,9 +75,15 @@ export function buildFormulaContext(
     // Standard variables
     level: character.level,
     lvl: character.level,
+    levela: character.classes?.[0]?.level ?? 0,
+    levelb: character.classes?.[1]?.level ?? 0,
+    levelc: character.classes?.[2]?.level ?? 0,
     bab: character.baseAttackBonus,
     cl: character.casterLevel,
     casterlevel: character.casterLevel,
+    hda: character.classes?.[0]?.hitDie ?? 0,
+    hdb: character.classes?.[1]?.hitDie ?? 0,
+    hdc: character.classes?.[2]?.hitDie ?? 0,
 
     // Vitals & HP DSL placeholders (HDmath assumes max HP every level per spec)
     hdmath: hdMathMax,
@@ -413,6 +419,67 @@ function splitOutsideQuotes(text: string, delimiter: string): string[] {
 }
 
 /**
+ * Zero-eval recursive-descent arithmetic evaluator (+, -, *, /, unary +/-, parentheses).
+ * Prevents any dynamic JS code execution via eval or Function().
+ */
+function evaluateSafeArithmetic(expr: string): number {
+  const s = expr.replace(/\s+/g, '');
+  if (!s) return 0;
+  let pos = 0;
+
+  function parseExpression(): number {
+    let val = parseTerm();
+    while (pos < s.length && (s[pos] === '+' || s[pos] === '-')) {
+      const op = s[pos++];
+      const rhs = parseTerm();
+      val = op === '+' ? val + rhs : val - rhs;
+    }
+    return val;
+  }
+
+  function parseTerm(): number {
+    let val = parseUnary();
+    while (pos < s.length && (s[pos] === '*' || s[pos] === '/')) {
+      const op = s[pos++];
+      const rhs = parseUnary();
+      val = op === '*' ? val * rhs : rhs === 0 ? 0 : val / rhs;
+    }
+    return val;
+  }
+
+  function parseUnary(): number {
+    if (s[pos] === '+') {
+      pos++;
+      return parseUnary();
+    }
+    if (s[pos] === '-') {
+      pos++;
+      return -parseUnary();
+    }
+    return parsePrimary();
+  }
+
+  function parsePrimary(): number {
+    if (s[pos] === '(') {
+      pos++;
+      const val = parseExpression();
+      if (s[pos] === ')') pos++;
+      return val;
+    }
+    const start = pos;
+    while (pos < s.length && /[0-9.]/.test(s[pos])) {
+      pos++;
+    }
+    if (start === pos) return 0;
+    const num = Number(s.slice(start, pos));
+    return Number.isFinite(num) ? num : 0;
+  }
+
+  const out = parseExpression();
+  return Number.isFinite(out) ? out : 0;
+}
+
+/**
  * Pure math solver supporting basic arithmetic, power, functions, and ceil division /+
  */
 function solvePureMath(expr: string): number {
@@ -444,9 +511,7 @@ function solvePureMath(expr: string): number {
   const sanitized = s.replace(/[^0-9+\-*/().\s]/g, '');
   if (!sanitized.trim()) return 0;
   try {
-    // eslint-disable-next-line no-new-func
-    const fn = new Function(`"use strict"; return (${sanitized});`);
-    const val = fn();
+    const val = evaluateSafeArithmetic(sanitized);
     return typeof val === 'number' && !Number.isNaN(val) ? val : 0;
   } catch {
     return 0;
@@ -553,6 +618,9 @@ export function evaluateFormula(
     trimmed = trimmed.slice(colonIndex + 1).trim();
   }
 
+  // Strip optional leading Macroni 1.2 sigil so formula preview/trace does not leak sigils
+  trimmed = trimmed.replace(/^(?:<<|==|<>|<\?>|<\^>|<!>)\s*/, '');
+
   try {
     // 1. Handle pipeline execution with pipes | outside of quotes
     const pipeSegments = splitOutsideQuotes(trimmed, '|');
@@ -599,6 +667,9 @@ export function evaluateFormula(
 
     // 4. Substitute identifiers and macros in non-string parts
     let replaced = placeholderReplaced;
+
+    // Normalize Macroni {dN} dice shorthand to 1dN before macro brace replacement
+    replaced = replaced.replace(/\{d(\d+)\}/gi, '1d$1');
 
     // Replace {macro} or <<macro
     replaced = replaced.replace(/([<{]{1,2}|@\{)([a-zA-Z0-9_]+)([>}]*)/g, (_, _p, name) => {

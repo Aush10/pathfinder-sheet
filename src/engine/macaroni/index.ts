@@ -1,5 +1,5 @@
 /**
- * Macaroni Engine entry point
+ * Macroni Overhaul 1.2 Engine Entry Point
  */
 
 export * from './types';
