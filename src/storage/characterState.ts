@@ -1,6 +1,9 @@
 import { createBlankCharacter } from '../data/defaultCharacter';
+import { EMPTY_SOT_CATALOGUE, rehydrateSrdPagesFromHost, setActiveHostSrdOwner } from '../engine/sotEngine';
 import type { AbilityName, PF1Character } from '../types/character';
-import type { StorageAdapter } from './types';
+import type { LoadedCharacter, StorageAdapter } from './types';
+
+export const AUTOSAVE_DEBOUNCE_MS = 2500;
 
 const FORBIDDEN_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
@@ -154,25 +157,136 @@ export function normalizeCharacter(input: unknown): PF1Character {
       overridePages: arrayOr(sourceSot.overridePages, []),
       macaroniSuggestions: arrayOr(sourceSot.macaroniSuggestions, []),
     };
+  } else {
+    normalized.sotCatalogue = {
+      weblinks: [...EMPTY_SOT_CATALOGUE.weblinks],
+      overridePages: [...EMPTY_SOT_CATALOGUE.overridePages],
+      macaroniSuggestions: [...EMPTY_SOT_CATALOGUE.macaroniSuggestions],
+    };
   }
 
   return normalized;
 }
 
+export function blankCharacterWithEmptySot(): PF1Character {
+  const blank = createBlankCharacter();
+  return {
+    ...blank,
+    sotCatalogue: {
+      weblinks: [...EMPTY_SOT_CATALOGUE.weblinks],
+      overridePages: [...EMPTY_SOT_CATALOGUE.overridePages],
+      macaroniSuggestions: [...EMPTY_SOT_CATALOGUE.macaroniSuggestions],
+    },
+  };
+}
+
+export type CrashPreference =
+  | { action: 'use-saved' }
+  | { action: 'use-crash' }
+  | { action: 'ask'; crash: LoadedCharacter };
+
 /**
- * Restores the on-screen sheet from the selected storage tree.
- * Crash recovery wins when its checksum differs from the last deliberate save.
+ * Prefer Crash only when it is the same characterId and newer than the named save.
+ * An older crash or a crash for a different character never replaces the named save.
  */
-export async function restoreSheetFromStorage(adapter: StorageAdapter): Promise<{
+export function evaluateCrashPreference(
+  crash: LoadedCharacter | null,
+  saved: LoadedCharacter | null,
+): CrashPreference {
+  if (!crash) return { action: 'use-saved' };
+  if (!saved) return { action: 'use-crash' };
+  if (crash.sha256 && saved.sha256 && crash.sha256 === saved.sha256) return { action: 'use-saved' };
+  if (crash.characterId !== saved.characterId) return { action: 'use-saved' };
+  const crashAt = Date.parse(crash.savedAt);
+  const savedAt = Date.parse(saved.savedAt);
+  if (!Number.isFinite(crashAt) || !Number.isFinite(savedAt) || crashAt <= savedAt) {
+    return { action: 'use-saved' };
+  }
+  return { action: 'ask', crash };
+}
+
+export function createSerializedWriteQueue<T, R>(write: (value: T) => Promise<R>): {
+  enqueue: (value: T) => Promise<R | undefined>;
+  isInFlight: () => boolean;
+} {
+  let inFlight = false;
+  let pending: { value: T; resolvers: Array<(result: R | undefined) => void> } | undefined;
+
+  async function drain(): Promise<void> {
+    if (inFlight) return;
+    inFlight = true;
+    try {
+      while (pending) {
+        const job = pending;
+        pending = undefined;
+        try {
+          const result = await write(job.value);
+          for (const resolve of job.resolvers) resolve(result);
+        } catch {
+          for (const resolve of job.resolvers) resolve(undefined);
+        }
+      }
+    } finally {
+      inFlight = false;
+      if (pending) void drain();
+    }
+  }
+
+  return {
+    enqueue(value: T) {
+      return new Promise<R | undefined>((resolve) => {
+        if (pending) {
+          pending.value = value;
+          pending.resolvers.push(resolve);
+        } else {
+          pending = { value, resolvers: [resolve] };
+        }
+        void drain();
+      });
+    },
+    isInFlight: () => inFlight,
+  };
+}
+
+export interface PendingCrashSnapshot {
+  character: PF1Character;
+  characterId: string;
+  savedAt: string;
+}
+
+export interface RestoreSheetResult {
   character: PF1Character | null;
   recoveredFromCrash: boolean;
-}> {
+  characterId?: string;
+  pendingCrash?: PendingCrashSnapshot;
+}
+
+function finishRestore(
+  loaded: LoadedCharacter,
+  recoveredFromCrash: boolean,
+  pendingCrash?: PendingCrashSnapshot,
+): RestoreSheetResult {
+  const character = rehydrateSrdPagesFromHost(normalizeCharacter(loaded.character), loaded.characterId);
+  setActiveHostSrdOwner(loaded.characterId);
+  return {
+    character,
+    recoveredFromCrash,
+    characterId: loaded.characterId,
+    ...(pendingCrash ? { pendingCrash } : {}),
+  };
+}
+
+/**
+ * Restores the on-screen sheet from the selected storage tree.
+ * Named saves win unless Crash is the same character and newer; that case asks first.
+ */
+export async function restoreSheetFromStorage(adapter: StorageAdapter): Promise<RestoreSheetResult> {
   const crashRes = await adapter.loadCrash();
   const crash = crashRes.ok ? crashRes.character : null;
   const activeRes = await adapter.getActiveCharacter();
   const active = activeRes.ok ? activeRes.activeCharacter : null;
 
-  let saved = null;
+  let saved: LoadedCharacter | null = null;
   if (active) {
     const listed = await adapter.listCharacters(active.player);
     const stillPresent = listed.ok && listed.characters.some((entry) => entry.name === active.name);
@@ -182,15 +296,30 @@ export async function restoreSheetFromStorage(adapter: StorageAdapter): Promise<
     }
   }
 
-  if (crash) {
-    const sameAsSaved = Boolean(saved?.sha256 && crash.sha256 && saved.sha256 === crash.sha256);
-    if (!sameAsSaved) {
-      return { character: normalizeCharacter(crash.character), recoveredFromCrash: true };
+  const preference = evaluateCrashPreference(crash, saved);
+
+  if (preference.action === 'use-saved' && crash && saved && crash.sha256 && saved.sha256 && crash.sha256 === saved.sha256) {
+    try {
+      await adapter.dismissCrash();
+    } catch {
+      // Matching crash leftovers are non-authoritative.
     }
   }
 
+  if (preference.action === 'ask' && saved && crash) {
+    return finishRestore(saved, false, {
+      character: rehydrateSrdPagesFromHost(normalizeCharacter(crash.character), crash.characterId),
+      characterId: crash.characterId,
+      savedAt: crash.savedAt,
+    });
+  }
+
+  if (preference.action === 'use-crash' && crash) {
+    return finishRestore(crash, true);
+  }
+
   if (saved) {
-    return { character: normalizeCharacter(saved.character), recoveredFromCrash: false };
+    return finishRestore(saved, false);
   }
 
   return { character: null, recoveredFromCrash: false };

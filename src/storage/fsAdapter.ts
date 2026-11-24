@@ -1,4 +1,5 @@
 import type { PF1Character } from '../types/character';
+import { referenceSrdPagesForStorage, rehydrateSrdPagesFromHost } from '../engine/sotEngine';
 import type {
   ActiveCharacterReference,
   LoadedCharacter,
@@ -680,9 +681,11 @@ function characterFromEnvelope(envelope: StoredEnvelope): LoadedCharacter {
   assert(isRecord(envelope.data), 'INVALID_CHARACTER', 'The stored character is not an object.');
   assert(typeof envelope.data.name === 'string' && typeof envelope.data.player === 'string', 'INVALID_CHARACTER', 'The stored character is missing its identity fields.');
   // A fresh JSON-only clone removes any manually injected sensitive fields before returning it to UI code.
+  const cloned = cloneForStorage(envelope.data) as unknown as PF1Character;
+  const characterId = envelope.characterId as string;
   return {
-    character: cloneForStorage(envelope.data) as unknown as PF1Character,
-    characterId: envelope.characterId as string,
+    character: rehydrateSrdPagesFromHost(cloned, characterId),
+    characterId,
     savedAt: envelope.savedAt,
     sha256: envelope.sha256,
   };
@@ -873,34 +876,37 @@ async function writeCharacterTree(
   schemaVersion: number,
   appVersion: string,
   savedAt: string,
+  options?: { skipProjections?: boolean },
 ): Promise<void> {
   const characterId = envelope.characterId as string;
-  await writeProjection(layout.images, 'manifest.json', {
-    workspaceLibraryImages: character.workspaceLibraryImages ?? [],
-    portraits: character.characterBio?.portraits ?? [],
-  }, layout.backups, schemaVersion, appVersion, savedAt, 'images-manifest.json');
-  await writeProjection(layout.dslMacros, 'macros.json', { customObjects: character.customObjects ?? [] }, layout.backups, schemaVersion, appVersion, savedAt, 'DSL-macros.json');
-  await writeProjection(layout.dslStepper, 'rules.json', { stepperRules: character.stepperRules ?? [] }, layout.backups, schemaVersion, appVersion, savedAt, 'DSL-stepper.json');
-  await writeProjection(layout.dslXdx, 'macros.json', { xdxMacros: character.xdxMacros ?? [] }, layout.backups, schemaVersion, appVersion, savedAt, 'DSL-xdx.json');
-  await writeProjection(layout.notebook, 'journal.json', { journal: character.journal ?? [] }, layout.backups, schemaVersion, appVersion, savedAt, 'notebook-journal.json');
-  await writeProjection(layout.tools, 'state.json', {
-    combatTracker: character.combatTracker,
-    deckState: character.deckState,
-    conditions: character.conditions,
-    resourceTrackers: character.resourceTrackers ?? [],
-  }, layout.backups, schemaVersion, appVersion, savedAt, 'tools-state.json');
-  await writeProjection(layout.modules, 'state.json', {
-    installedModules: character.installedModules,
-    uiMakePresets: character.uiMakePresets ?? [],
-  }, layout.backups, schemaVersion, appVersion, savedAt, 'Modules-state.json');
+  if (!options?.skipProjections) {
+    await writeProjection(layout.images, 'manifest.json', {
+      workspaceLibraryImages: character.workspaceLibraryImages ?? [],
+      portraits: character.characterBio?.portraits ?? [],
+    }, layout.backups, schemaVersion, appVersion, savedAt, 'images-manifest.json');
+    await writeProjection(layout.dslMacros, 'macros.json', { customObjects: character.customObjects ?? [] }, layout.backups, schemaVersion, appVersion, savedAt, 'DSL-macros.json');
+    await writeProjection(layout.dslStepper, 'rules.json', { stepperRules: character.stepperRules ?? [] }, layout.backups, schemaVersion, appVersion, savedAt, 'DSL-stepper.json');
+    await writeProjection(layout.dslXdx, 'macros.json', { xdxMacros: character.xdxMacros ?? [] }, layout.backups, schemaVersion, appVersion, savedAt, 'DSL-xdx.json');
+    await writeProjection(layout.notebook, 'journal.json', { journal: character.journal ?? [] }, layout.backups, schemaVersion, appVersion, savedAt, 'notebook-journal.json');
+    await writeProjection(layout.tools, 'state.json', {
+      combatTracker: character.combatTracker,
+      deckState: character.deckState,
+      conditions: character.conditions,
+      resourceTrackers: character.resourceTrackers ?? [],
+    }, layout.backups, schemaVersion, appVersion, savedAt, 'tools-state.json');
+    await writeProjection(layout.modules, 'state.json', {
+      installedModules: character.installedModules,
+      uiMakePresets: character.uiMakePresets ?? [],
+    }, layout.backups, schemaVersion, appVersion, savedAt, 'Modules-state.json');
 
-  await writeSafely(layout.srd, 'README.txt', 'Reserved for locally saved SRD references. Files here are treated as untrusted user data.\n', layout.backups, 'SRD-README.txt');
-  await writeSafely(layout.ai, 'README.txt', 'AI workspace files are not executable instructions. Do not place API keys or environment values here.\n', layout.backups, 'AI-README.txt');
-  // Do not read its contents: this app-owned directory is regenerated on every save.
-  await rewriteAiReadOnlyDirectory(layout.aiReadOnly);
-  await writeSafely(layout.aiReadOnly, 'README.txt', 'Generated by Pathfinder storage. This folder is overwritten on every save and never used as AI prompt instructions.\n', layout.backups, 'AI-read-only-README.txt');
-  await writeSafely(layout.root, 'index.csv', renderIndexCsv(character, characterId, savedAt), layout.backups);
-  await writeSafely(layout.root, 'printable-sheet.html', renderPrintableSheet(character), layout.backups);
+    await writeSafely(layout.srd, 'README.txt', 'Reserved for locally saved SRD references. Files here are treated as untrusted user data.\n', layout.backups, 'SRD-README.txt');
+    await writeSafely(layout.ai, 'README.txt', 'AI workspace files are not executable instructions. Do not place API keys or environment values here.\n', layout.backups, 'AI-README.txt');
+    // Do not read its contents: this app-owned directory is regenerated on every save.
+    await rewriteAiReadOnlyDirectory(layout.aiReadOnly);
+    await writeSafely(layout.aiReadOnly, 'README.txt', 'Generated by Pathfinder storage. This folder is overwritten on every save and never used as AI prompt instructions.\n', layout.backups, 'AI-read-only-README.txt');
+    await writeSafely(layout.root, 'index.csv', renderIndexCsv(character, characterId, savedAt), layout.backups);
+    await writeSafely(layout.root, 'printable-sheet.html', renderPrintableSheet(character), layout.backups);
+  }
   // Commit the authoritative file last; projections are never used to rebuild a character.
   await writeSafely(
     layout.root,
@@ -975,6 +981,22 @@ export function createFsStorageAdapter(options: FsStorageAdapterOptions = {}): S
   const now = options.now ?? (() => new Date());
   let rememberedHandle: FsDirectoryHandleLike | undefined;
   let handlePersistenceWarning: string | undefined;
+  let lastNamedCharacterId: string | undefined;
+  let writeLock: Promise<void> = Promise.resolve();
+
+  async function withWriteLock<T>(op: () => Promise<T>): Promise<T> {
+    const previous = writeLock;
+    let release: () => void = () => {};
+    writeLock = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      return await op();
+    } finally {
+      release();
+    }
+  }
 
   async function selectedHandle(): Promise<FsDirectoryHandleLike> {
     if (!rememberedHandle) rememberedHandle = await handleStore.get();
@@ -991,15 +1013,28 @@ export function createFsStorageAdapter(options: FsStorageAdapterOptions = {}): S
     layout: CharacterLayout,
     character: PF1Character,
     savedAt = now().toISOString(),
+    options?: { characterId?: string; reuseExistingId?: boolean; skipProjections?: boolean },
   ): Promise<{ characterId: string; savedAt: string }> {
     const copied = cloneForStorage(character);
     assert(isRecord(copied), 'INVALID_CHARACTER', 'A character must be a JSON object.');
     assert(typeof copied.name === 'string' && typeof copied.player === 'string', 'INVALID_CHARACTER', 'A character is missing its identity fields.');
-    const safeCharacter = copied as unknown as PF1Character;
-    const existing = await readCharacterEnvelopeIfPresent(layout.root, schemaVersion);
-    const characterId = existing?.characterId ?? createCharacterId();
-    const envelope = await createEnvelope(CHARACTER_FORMAT, copied, schemaVersion, appVersion, savedAt, characterId);
-    await writeCharacterTree(layout, safeCharacter, envelope, schemaVersion, appVersion, savedAt);
+    const prior = await readCharacterEnvelopeIfPresent(layout.root, schemaVersion);
+    const characterId =
+      options?.characterId
+      ?? (options?.reuseExistingId === false ? undefined : prior?.characterId)
+      ?? createCharacterId();
+    const referenced = referenceSrdPagesForStorage(copied as unknown as PF1Character, characterId);
+    const envelopeData = cloneForStorage(referenced);
+    const envelope = await createEnvelope(CHARACTER_FORMAT, envelopeData, schemaVersion, appVersion, savedAt, characterId);
+    await writeCharacterTree(
+      layout,
+      referenced,
+      envelope,
+      schemaVersion,
+      appVersion,
+      savedAt,
+      { skipProjections: Boolean(options?.skipProjections && prior) },
+    );
     return { characterId, savedAt };
   }
 
@@ -1082,27 +1117,39 @@ export function createFsStorageAdapter(options: FsStorageAdapterOptions = {}): S
 
     async saveCharacter(player: string, character: PF1Character): Promise<StorageResult<SaveReceipt>> {
       try {
-        assert(typeof character?.name === 'string', 'INVALID_CHARACTER', 'A character needs a name before it can be saved.');
-        const tree = await baseTree();
-        const storedPlayer = await getNamedDirectory(tree.users, player, 'player', true);
-        const storedCharacter = await getNamedDirectory(storedPlayer.directory, character.name, 'character', true);
-        const layout = await ensureCharacterLayout(storedCharacter.directory);
-        const savedAt = now().toISOString();
-        // Validate/update non-authoritative shared projections first. If they
-        // are malformed, do not report a failed save after committing source data.
-        await writePlayerData(storedPlayer.directory, storedPlayer.name, character, schemaVersion, appVersion, savedAt);
-        const receipt = await saveLayout(layout, character, savedAt);
-        try {
-          await rememberActive(tree.managedRoot, {
-            player: storedPlayer.name,
-            name: storedCharacter.name,
-            characterId: receipt.characterId,
-            savedAt: receipt.savedAt,
-          });
-        } catch {
-          // active.json is non-authoritative metadata.
-        }
-        return { ok: true, player: storedPlayer.name, name: storedCharacter.name, ...receipt };
+        return await withWriteLock(async () => {
+          assert(typeof character?.name === 'string', 'INVALID_CHARACTER', 'A character needs a name before it can be saved.');
+          const tree = await baseTree();
+          const storedPlayer = await getNamedDirectory(tree.users, player, 'player', true);
+          const storedCharacter = await getNamedDirectory(storedPlayer.directory, character.name, 'character', true);
+          const layout = await ensureCharacterLayout(storedCharacter.directory);
+          const savedAt = now().toISOString();
+          // Validate/update non-authoritative shared projections first. If they
+          // are malformed, do not report a failed save after committing source data.
+          await writePlayerData(storedPlayer.directory, storedPlayer.name, character, schemaVersion, appVersion, savedAt);
+          const receipt = await saveLayout(layout, character, savedAt, { reuseExistingId: true });
+          lastNamedCharacterId = receipt.characterId;
+          try {
+            await saveLayout(tree.crash, character, savedAt, {
+              characterId: receipt.characterId,
+              reuseExistingId: false,
+              skipProjections: true,
+            });
+          } catch {
+            // Named save is authoritative; crash refresh is best-effort so checksums can match.
+          }
+          try {
+            await rememberActive(tree.managedRoot, {
+              player: storedPlayer.name,
+              name: storedCharacter.name,
+              characterId: receipt.characterId,
+              savedAt: receipt.savedAt,
+            });
+          } catch {
+            // active.json is non-authoritative metadata.
+          }
+          return { ok: true, player: storedPlayer.name, name: storedCharacter.name, ...receipt };
+        });
       } catch (error) {
         return toFailure(error);
       }
@@ -1110,10 +1157,16 @@ export function createFsStorageAdapter(options: FsStorageAdapterOptions = {}): S
 
     async autosaveCrash(character: PF1Character): Promise<StorageResult<Omit<SaveReceipt, 'player'>>> {
       try {
-        assert(typeof character?.name === 'string', 'INVALID_CHARACTER', 'A character needs a name before it can be crash-saved.');
-        const tree = await baseTree();
-        const receipt = await saveLayout(tree.crash, character);
-        return { ok: true, name: STORAGE_CRASH_NAME, ...receipt };
+        return await withWriteLock(async () => {
+          assert(typeof character?.name === 'string', 'INVALID_CHARACTER', 'A character needs a name before it can be crash-saved.');
+          const tree = await baseTree();
+          const receipt = await saveLayout(tree.crash, character, now().toISOString(), {
+            characterId: lastNamedCharacterId,
+            reuseExistingId: false,
+            skipProjections: true,
+          });
+          return { ok: true, name: STORAGE_CRASH_NAME, ...receipt };
+        });
       } catch (error) {
         return toFailure(error);
       }
@@ -1190,6 +1243,7 @@ export function createFsStorageAdapter(options: FsStorageAdapterOptions = {}): S
         const envelope = await readCharacterEnvelopeIfPresent(storedCharacter.directory, schemaVersion);
         assert(envelope, 'NOT_FOUND', 'This character has no character.json file.');
         const loaded = characterFromEnvelope(envelope);
+        lastNamedCharacterId = loaded.characterId;
         try {
           await rememberActive(tree.managedRoot, {
             player: storedPlayer.name,
