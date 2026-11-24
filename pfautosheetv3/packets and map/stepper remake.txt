@@ -1,0 +1,13 @@
+stepper remake 
+take turn and round stepper format
+
+for now just take the stepper and level stepper slates off entirely save them but we wont be using for a while 
+//*[@id="root"]/div/div[2]/main/div/div/div/div[3]/div/div[2]
+
+
+hide the stepper tool as well
+//*[@id="root"]/div/div[2]/aside/div[3]/div[1]/button[1]/div/div[1]
+
+
+
+change the scroll bars color shape and transparency to match the sheets 

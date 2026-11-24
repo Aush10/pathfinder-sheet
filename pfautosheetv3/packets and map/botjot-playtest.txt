@@ -1,0 +1,26 @@
+﻿PF1 AUTOSHEET - PLAYTEST NOTEPAD (PAut-3 side)   Sun 11-22-2026, started 1:13 PM CT
+Reference: notes2\botjot.txt (audit)
+
+[SERVER STATE @ 1:13 PM]
+- npm run dev up: node --experimental-strip-types server.ts, pid 32652, :3000 (+ Vite HMR :24678)
+- /api/openai/status -> configured:true, models gpt-4o-mini, gpt-4o
+- Browser: Chrome Canary (fresh profile? -> browser storage starts empty, SRDs must be re-loaded)
+- Also running: ai-agent-hub server.mjs, Codex runtimes (no port clash on 3000)
+
+[PREDICTIONS FOR CHARACTER CREATION RUN]
+P1  SRD import: wrong-shape .srd.json (no "format":"PF1E_SOT_READONLY_SRD_V1") loads as one text blob, no error shown.
+P2  Large SRDs (armorist ~240 KB, stored twice): storage-full errors swallowed -> file looks loaded but isn't persisted after reload.
+P3  Add Class -> ClassArchitectModal (not old AddClassModal). Blank / "New Class" name -> class name becomes "The Armorist\n\nLevel\tBase A".
+P4  Progression table: Special column swallows Max Bonus / CL / Talents columns.
+P5  Class skills: Fly and Heal appear when they shouldn't.
+P6  Applying built-in buff suggestions (Dodge, Haste, Mage Armor, SRD-derived) -> macro engine 1.2 rejects old "Name:|<^...>|$" syntax -> error.
+P7  Complete Sheet: sends every saved SRD's full text each turn -> slow / big token use / possible context-length error with several SRDs.
+P8  Export with blank character name -> re-import fails.
+
+[OBSERVATIONS]  (time - what happened - matches prediction? - notes)
+
+[CLARIFICATIONS / QUESTIONS]
+
+[GOALS / FIXES -> later sorted for Roadmaplate: Codex/Copilot (backend repetitive) | Antigravity (UI) | AFK pilot (connection layer)]
+
+[1:33 PM] Server restarted after minor fixes: new pid 2408 on :3000, OpenAI configured. HEAD = 72ce9fc 'sot engine completer'.

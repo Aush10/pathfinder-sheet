@@ -1,0 +1,481 @@
+BOTJOT - PF1 AUTOSHEET AUDIT
+Written by PAut-3 (your Pfautosheet tool 3) - Sun Nov 22, 2026, about 1:05 PM CT
+Purpose: a reference for this afternoon's live character-creation test (PT).
+
+Scope / how this was done
+- I worked from a copy of your folders, without node_modules, .git or *.zip. I read the code, ran the
+  test suites, ran a type-check and a build, and started the dev server once on my own machine
+  (Linux, Node 24). I did not click through the UI in a browser. Every claim below comes from a file
+  I read or a command I ran. Where something is a prediction, I say so.
+- Not inspected: C:\Users\Austin\Documents\pf1mod and C:\Users\Austin\Documents\PROJECTS\pf1mod (not
+  copied over).
+- C:\Users\Austin\Documents\test folder\pf1 agent skeleton\sheet-engine came over EMPTY. The Copilot
+  handoff doc points to ...\pf1 agent skeleton\sheet-engine\sheet-engine (a nested folder). That
+  nested folder either didn't copy or only held node_modules. Worth a look.
+- Nothing was deleted or changed on your PC.
+
+Short names used below
+  APP  = C:\Users\Austin\Documents\PROJECTS\pathfinder-1e-modular-workspace
+  LAZY = C:\Users\Austin\Documents\lazy as fuck\lazyafpf1builds
+  SKEL = C:\Users\Austin\Documents\test folder\pf1 agent skeleton
+
+
+======================================================================
+0. TL;DR - TOP FINDINGS
+======================================================================
+1. APP is the live codebase (git main, up to date with origin, last commit "macaro lang update").
+   LAZY\sheet-engine is NOT a newer replacement app. It is the 11-11 standalone SOT-indexing and
+   step-engine prototype. Its source files are all dated 11-11 4:51-5:00 PM, the same afternoon as
+   the SKEL notes. Nothing in APP imports it.
+2. "Add Class" in the running app opens ClassArchitectModal. The older AddClassModal.tsx (82 KB) is
+   no longer imported anywhere. docs\PROGRAM_MAP.md says the opposite, so that doc is stale on
+   this point.
+3. SRD ingestion is browser-only. Each SRD is stored twice in localStorage: once as a "host copy"
+   and once inside the character object. If storage fills up, the failure is silent. One SRD
+   (armorist) is about 240 KB of JSON with 198 KB of raw HTML.
+4. Complete Sheet still sends every saved SOT doc's full text on every turn. That is the
+   token-blowup problem described in SKEL\the problem.txt, and it is still unfixed in APP.
+5. Confirmed parser bugs using your real armorist.srd.json:
+   (a) "Populate from SRD" on a class named "New Class" or left blank names the class
+       "The Armorist\n\nLevel\tBase A".
+   (b) The progression grid's "Special" column keeps the extra Max Bonus / CL / Talents columns.
+   (c) Class-skill detection adds Fly and Heal, because "flying" and "healing" appear elsewhere in
+       the doc.
+6. Built-in and SRD-generated buff suggestions still use the old "Name:|<^...>|$" syntax. The
+   Macaroni 1.2 engine rejects that (no leading sigil, and "$" is now reserved). Applying one will
+   probably show a sigil/reserved-symbol error.
+7. Health checks are green: npm test 59 pass / 1 skip, macaroni tests 12/12 (these are NOT in
+   npm test), tsc clean, vite build OK. sheet-engine: 22/22 tests, tsc clean.
+8. Repo debris: dist\, dist-standalone\ and public\ hold three copies of a 1.3 MB standalone HTML.
+   Plus a git-bundle backup, three pasted DevTools dumps (two identical), an empty "New folder",
+   a .aistudio leftover, bun.lock next to package-lock.json, and tmp-tsc.ps1.
+
+
+======================================================================
+1. CURRENT STATE OVERVIEW
+======================================================================
+What it is
+- "Pathfinder 1e Modular Workspace": a React 19 + Vite 8 + Tailwind 4 single-page app with an
+  Express 4 server. It is an auto-calculating PF1 sheet (four sheet tabs) with a custom macro
+  language ("Macaroni", v1.2 plus Part 2 rules) and many tools: Class Architect ("Add Class"),
+  Point Buy, Buff Box, Dice, Deck, XDX, Macro Debug, Loadout, CMB, Journal, Image browser, and the
+  AI Companion / Complete Sheet / Apple Eye. AI calls go server-side to OpenAI (gpt-4o-mini, then
+  gpt-4o as fallback).
+
+Which folder is live
+- APP is the live codebase. gitstatus.txt: on main, up to date with origin/main. The only
+  uncommitted change is "pfautosheet changes 11-18.txt".
+- Newest code: src\engine\aiService.ts and macaroni\* (11-19). Newest docs: docs\program-map\*
+  (11-21 7:34 AM).
+
+Architecture
+- APP\server.ts sets up Express on port 3000 (hardcoded). It loads .env then .env.local
+  (server\env.ts) and mounts server\routes.ts:
+    GET  /api/openai/status
+    POST /api/openai/generate | /lookup | /complete-sheet  (same handlers also on /api/gemini/*)
+    POST /api/sot/fetch-readonly-page  (fetches any http(s) URL the client sends)
+  In development, Vite runs as middleware. In production (NODE_ENV=production) it serves dist\.
+- Browser side: src\main.tsx -> StorageProvider -> CharacterProvider -> App.tsx.
+  Character state is kept in three places:
+    a) React state
+    b) localStorage key pf1e_character_data_v1, rewritten on every edit
+    c) optionally, a File System Access folder tree: <picked folder>\AIgamesheet\pfmusers\
+       {player}\{character}\character.json, plus a Crash\ slot
+- Installer path (installer\*.ps1) is separate. Start-PF1MW.ps1 serves a prebuilt standalone HTML
+  on 127.0.0.1:38173 and does NOT run server.ts, so there are no /api routes and no AI there.
+
+How to run the test server (from APP, in PowerShell)
+  npm install            (or: npm ci)
+  npm run dev            -> http://localhost:3000
+  - "dev" and "start" are the same command: node --experimental-strip-types server.ts
+  - Needs Node 22.6 or newer for --experimental-strip-types. Check with: node -v
+  - Needs OPENAI_API_KEY in APP\.env.local for AI features. The file exists and contains that key.
+    The app works without it, just with no AI. Check with
+    http://localhost:3000/api/openai/status, which should show "configured": true.
+  - Port 3000 is hardcoded. If something else is on 3000 (or a second copy is running), the server
+    crashes with EADDRINUSE. It does NOT pick another port, even though the README suggests it will.
+  - Handy URL switches from the code: ?stub=1 (in-memory fake storage with sample characters) and
+    ?readonly=1.
+Other scripts: npm test | npm run lint (tsc) | npm run build | npm run build:standalone |
+  npm run dist:runtime (PowerShell packager) | npm run clean (uses "rm -rf", which won't work in
+  Windows cmd).
+
+What I verified on my side (Linux, Node 24.22, using your package-lock)
+- npm test: 60 tests, 59 pass, 1 skip (a Windows-only test), 0 fail.
+- npx tsx --test src\engine\macaroni\macaroni.test.ts: 12/12 pass. This file is NOT part of
+  "npm test".
+- npm run lint (tsc 7.0.2): clean. npm run build: OK, with a warning that the 1.2 MB JS chunk is
+  over 500 kB, and a warning that vite.config.ts uses __dirname.
+- npm run dev: served the page (200) and /api/openai/status responded.
+- Production mode: "/" works, but deep links like /foo return 404. The catch-all route '*all' is
+  Express 5 syntax; on Express 4 it only matches paths ending in "all" (/install returned 200).
+  Minor, since the app uses query strings rather than paths.
+
+
+======================================================================
+2. FILE INGESTION - HOW FILES GET IN, AND WHERE IT BREAKS
+======================================================================
+There are four ingestion paths. All of them run in the browser. None runs on the server.
+
+2A. SRD / SOT documents (.srd.json, .html, .txt, .md)
+  Entry points:
+   - AI Companion -> "Load SRD files" (accept=.json,.txt,.html,.md, multi-file)
+     -> APP\src\components\tools\AICompanionModal.tsx handleImportHostSrdFiles (about line 763)
+     -> APP\src\engine\sotEngine.ts parseImportedSrdFile()
+   - Complete Sheet quick paste -> CompleteSheetChatWindow.tsx handleSaveQuickSot (pasted text only)
+   - Weblink snapshot -> POST /api/sot/fetch-readonly-page (server strips tags, caps at 30,000 chars)
+  Format expected for .srd.json: the app's own export format (exportSrdDocFileToHost):
+     { "format":"PF1E_SOT_READONLY_SRD_V1", "exportedAt":..., "srdDocument": {
+         id, title, category, htmlContent, plainText, isOverride, isReadOnly, tags,
+         updatedAt, incidentalLinks[], securityAudit{}, hostSavedKey } }
+   I checked this against APP\save tree test\armorist.srd.json and it matches exactly:
+   title "armorist", htmlContent 198,025 chars, plainText 42,080 chars, 142 incidentalLinks.
+   The parser also accepts a bare object with title plus plainText or htmlContent.
+  What happens to it:
+   1) sanitizeSrdDocument(): regex strip of scripts, iframes, forms, on* handlers and webhook URLs.
+      <a> links become inert <span>s and are collected into incidentalLinks.
+   2) saveSrdDocToHostDeviceStorage(): localStorage keys pf1e_host_srd_doc_<id> and
+      pf1e_host_srd_index_v1.
+   3) It is also pushed into character.sotCatalogue.overridePages, so it lives INSIDE the
+      character: in localStorage pf1e_character_data_v1 and in the saved character.json.
+   4) extractMacaroniSuggestionsFromSrd() runs regex patterns over the text and emits buff and
+      macro suggestions.
+  Failure modes and gaps
+   - "format" is never checked. Any JSON with title plus text is accepted as an SRD.
+   - A JSON file in some OTHER shape is NOT rejected. It silently falls through to "raw text", and
+     the whole JSON string becomes the document's plain text. A structured file like
+     {className, levels:[...]} would end up as one big text blob, with the category guessed from
+     keywords. I could NOT inspect the pf1mod *.srd.json files (silvermind, technician, war priest,
+     spheres of might, tinker sphere, divinitech pilot, suit pilot, gm house rules...). If they
+     were exported by the app they will load fine. If they were hand-made or AI-made in another
+     shape, they will load as text blobs. CHECK ONE before the run: it should start with
+     "format":"PF1E_SOT_READONLY_SRD_V1".
+   - No size limit and no quota handling. Each SRD is stored twice in localStorage, and browsers
+     usually cap localStorage at roughly 5 MB per site. When it fills up:
+       * saveSrdDocToHostDeviceStorage catches the error and returns '' (silent), but the UI still
+         says "saved separately on host device!".
+       * The character autosave in CharacterContext.tsx (line 180) has "ignore quota errors", so
+         the sheet stops persisting with no warning.
+     With 198 KB of HTML per SRD, a handful of class SRDs plus portrait images (stored as data
+     URLs) will get there.
+   - The folder save rejects character.json above 5 MiB (fsAdapter.ts MAX_FILE_BYTES, error
+     FILE_TOO_LARGE). SRDs and images embedded in the character count toward that.
+   - Every edit runs JSON.stringify on the whole character, SRD HTML included. Expect typing lag
+     once a few SRDs are loaded.
+   - Duplicates: re-importing the same .srd.json replaces it (same id). Pasting the same text
+     again creates a new copy.
+   - SRD originals never go into the save tree. fsAdapter only writes SRD\README.txt.
+   - Hosts: HOST_SRD_* is per-browser localStorage, so Chrome and Edge, or port 3000 and the
+     installer's 38173, each see a different set.
+
+2B. Class data from an SRD -> Add Class (ClassArchitectModal, which is the one actually mounted)
+   APP\src\engine\sotEngine.ts extractClassFromSrdDoc(), plus
+   parseSrdSkillsAndProficiencies() in APP\src\engine\aiService.ts (about line 2347).
+   I ran the same regexes on armorist.srd.json. Results:
+   - Hit Die d10 found. "4 + Int" found. 20 progression rows matched.
+   - BUG: the class-name regex /Table\s*:\s*([A-Z][A-Za-z\s'-]{2,25})/i lets \s eat newlines and
+     tabs. The name comes out as "The Armorist\n\nLevel\tBase A". This only happens when the class
+     name field is blank or "New Class". Typing the name first avoids it.
+   - BUG: the "Special" column cleanup only strips plain trailing numbers. Spherecaster tables
+     have "+0  +0 (1)  0 (+2)" style columns, so Special keeps them, for example
+     "Bound equipment (+1), casting, spell pool, summon equipment\t+0\t+0 (1)\t0 (+2)".
+   - Class skills are matched against the WHOLE document, not just the Class Skills line. For
+     armorist that adds Fly and Heal (from "flying" and "healing"): 15 matched vs 13 real.
+   - Hit dice: only d6/d8/d10/d12. Skill ranks: only 2/4/6/8 + Int. Homebrew like 3+Int or 5+Int
+     won't be detected and defaults to 4.
+   - If no table rows parse, it SYNTHESIZES a 1-20 grid from guessed BAB and save rates. It looks
+     real, but it is invented.
+   - Proficiency fallback: "Simple weapons, light armor." is used when nothing is found.
+   - Hand-pasted grids (parseClassProgressionGrid, tabs or | or spaces) are covered by tests.
+   - The old AddClassModal's "Populate from SRD" was gated by an AI blind-spot permission and fell
+     back to sotDocs[0] (the wrong document) when no name matched. That modal is orphaned now, but
+     check whether ClassArchitect's buttons behave the same way.
+
+2C. Character sheet JSON (*_pf1e_sheet.json, loadouts, folder saves)
+   - Sidebar Import: APP\src\utils\sheetExporters.ts importCharacterJSONFile requires
+     parsed.name AND parsed.abilities to be truthy, then runs normalizeCharacterState().
+     * A sheet with an EMPTY name ("") is rejected as "Invalid character sheet format", including
+       a blank new character exported before you name it. PREDICTION: you will hit this if you
+       export mid-creation and re-import.
+     * A save-tree character.json (envelope: format / schemaVersion / sha256 / characterId / data)
+       is rejected the same way. The sheet is under "data". Use Connect/Load for those, not Import.
+   - Loadout ("Frankenstein") tool: LoadoutModal.tsx reads .json, auto-detects sections, and lets
+     you merge them. CSV import is noted in the README as having issues.
+   - Folder tree: APP\src\storage\fsAdapter.ts parseEnvelope() is strict. Format and schema
+     version must match, sha256 must verify, at most 5 MiB, at most 64 levels deep, at most
+     100k values. Keys that look like secrets (key, token, *apikey, *secret*, *password*, env...)
+     are DROPPED silently on save and load. Normal sheet fields are safe (macroKey etc. don't
+     match), but a custom object property literally named "key" or "token" would vanish.
+   - normalizeCharacter() (APP\src\storage\characterState.ts) fills missing fields from a BLANK
+     sheet. Old sheets load, but unknown fields pass through untouched.
+   - Sample files: APP\default_sheet.json is LIVE (the Valerius demo used by "Reset to Iconic
+     Demo"). Its xdxMacros use pre-1.2 syntax ("d20+#bab+#str ...", with no sigil).
+     APP\New_Adventurer_pf1e_sheet.json and APP\save tree test\Valerius_the_Fireborn_pf1e_sheet.json
+     are raw (non-envelope) sheets that nothing reads. The pf1mod Hanzo/Kirin/test_character
+     _pf1e_sheet.json files are presumably the same raw format (not verified).
+
+2D. Images: data URLs stored in the character and in localStorage pf1e_image_library_v1. They
+    count toward the same quota and the 5 MiB limits.
+
+Hardcoded things to know
+- Port 3000 (server.ts), port 38173 (installer). Folder names AIgamesheet / pfmusers / Crash /
+  character.json / active.json (fsAdapter.ts lines 14-18).
+- Model list gpt-4o-mini then gpt-4o (server\openai.ts), unless OPENAI_MODEL is set.
+- A Windows path for the old skeleton is hardcoded in
+  APP\docs\copilot-character-engine-handoff\README.md line 40. It is a doc, not code.
+
+LAZY\sheet-engine vs APP ingestion (the "is it the new engine?" question)
+- It is a Node-only (fs + cheerio + MiniSearch) deterministic indexer plus a step-by-step build
+  state machine. It is designed to replace server\sotContext.ts and the full-SOT prompt
+  (integration\sotContextAdapter.ts). It has never been wired in. APP has no reference to it.
+- It reads .html/.htm/.md/.txt ONLY (ingest.ts SUPPORTED_EXT). I tested it on a folder containing
+  armorist.srd.json plus the same SRD saved as .html. The .srd.json was skipped silently. The HTML
+  became 114 sections and 2 tables, and estimated tokens dropped from 49,517 to 11,187 (-77%).
+  links=0, because APP's sanitizer had already turned the <a> links into spans.
+- Its README describes the CURRENT sotContext.ts as "keyword excerpts from the last 4 messages,
+  12k cap". The real APP\server\sotContext.ts sends every page's full plainText with no cap. It was
+  written against a different or older version of that file, so the integration notes need
+  refreshing.
+- To merge it, you would need: an /api endpoint that runs ingest server-side (SRDs currently live
+  in browser localStorage), a .srd.json -> HTML unwrap step, and an alignment pass (TS 5 + vitest
+  vs APP's TS 7 + node:test).
+- Verdict: a component to merge into APP's server layer, not a replacement app. Keep it.
+
+
+======================================================================
+3. LIKELY FUTURE OBSTACLES / RISKS
+======================================================================
+- Token cost and rejections: Complete Sheet sends the full text of all SOT docs, plus history,
+  every turn (aiService.ts about line 3034 sends all overridePages; sotContext.ts has no cap).
+  armorist alone is about 42k chars (roughly 10k tokens). Five to ten homebrew SRDs gets close to
+  gpt-4o-mini's context window, and falling back to gpt-4o makes rate limits worse. This is
+  SKEL\the problem.txt, still open.
+- Storage ceilings: localStorage quota (silent), the 5 MiB character.json limit, and SRDs stored
+  twice. This gets worse as you add the pf1mod data set.
+- Startup trust order (from docs\SAVE_STATE_DIAGNOSIS.md, confirmed still true by
+  docs\program-map\05): localStorage paints first, a Crash snapshot with a different checksum wins
+  over the named save, and saveCharacter doesn't refresh Crash.
+- Macro syntax drift: Macaroni 1.2 / Part 2 rejects leading #, $, >> and ^. Still emitting the old
+  "Name:|<^...>|$" syntax:
+    sotEngine.ts line 510 (SRD-derived AC buffs)
+    aiService.ts lines 195, 219, 425-849 (built-in feat and spell suggestions: Dodge, Haste,
+      Mage Armor...)
+  The Valerius demo xdxMacros have no sigil. The README "Tools" section still teaches
+  "#objectname or {objectname}".
+- Duplicate class tools: ClassArchitectModal (mounted) and AddClassModal (orphaned) each have
+  their own copy of the SRD-populate logic. Fixes made to one won't reach the other.
+- /api/sot/fetch-readonly-page fetches any URL with no allowlist, and /api has no auth. Fine on
+  localhost; a risk if it's ever hosted.
+- Installer and packager mismatch (per docs\PROGRAM_MAP.md): Package-PF1MW.ps1 includes files
+  that Install-PF1MW.ps1 rejects, and Install-PF1MW-Local.ps1 skips files that Start-PF1MW.ps1
+  needs. The installed app has no AI because there is no server.
+- Naming leftovers that confuse agents: package name "react-example", /api/gemini/* calling
+  OpenAI, metadata.json still saying "SERVER_SIDE_GEMINI_API", the README saying Gemini errors
+  may appear.
+- Tests: no coverage for pf1eMath, multiclassCalculator, career math, React, or the SRD class
+  extractor. The macaroni tests exist but aren't in "npm test".
+- Node: dev relies on --experimental-strip-types (Node 22.6 or newer). The release CI uses
+  Node 22, so check that your PC matches.
+
+
+======================================================================
+4. TEST CHECKLIST FOR THIS AFTERNOON'S CHARACTER-CREATION RUN
+======================================================================
+Before you start
+[ ] node -v (22.6 or newer). Run npm run dev from APP. Open http://localhost:3000/api/openai/status
+    and confirm configured:true.
+[ ] DevTools open (F12) on the Console and Application -> Local Storage tabs. Watch these keys:
+    pf1e_character_data_v1, pf1e_host_srd_index_v1, pf1e_host_srd_doc_*.
+[ ] Decide: fresh browser profile or clear localStorage, so old state doesn't paint first.
+
+Creation flow (with predictions)
+[ ] New Sheet -> "Blank Slate". Expect base-10 scores and empty lists.
+[ ] Leave the name blank, use Export JSON, then Import it.
+    PREDICTION: "Invalid character sheet format" (empty name fails the check).
+[ ] Point Buy: set a budget and apply. Check ability mods, then re-open and confirm it persisted.
+[ ] Load an SRD: AI Companion -> Load SRD files -> one pf1mod *.srd.json.
+    Watch: does it show the real title and readable text, or a JSON blob? (That tells you which
+    format pf1mod uses.)
+    Watch: the size of pf1e_character_data_v1 after loading. Load several and see if the notice
+    still says "saved" when storage is actually full.
+[ ] Add Class (opens Class Architect) -> Populate from SOT, using armorist or another class SRD.
+    PREDICTION 1: if the class name is blank or "New Class", the name comes out as
+      "The Armorist / Level / Base A" junk.
+    PREDICTION 2: the Special column carries trailing numbers on spherecaster tables.
+    PREDICTION 3: extra class skills, Fly and Heal for armorist. Also when you apply the class to
+      the sheet (ClassArchitectModal.tsx around line 416), "(arcana)" gets stripped from
+      "Knowledge (arcana)", so EVERY Knowledge skill may get marked as a class skill.
+    Check: HD, skill ranks, BAB/saves rows. If there was no table, are they synthesized?
+[ ] Add a second class (multiclass or gestalt). The class box shows "Samurai 7 / Armiger 5" (single
+    slash in the code, not "//"). hpBreakdown.hitDiceSize only takes the FIRST class's HD. Check
+    HP math, and check #LevelA / #LevelB / HDA / HDB in Macro Debug. The evaluator reads
+    character.classes[n].
+[ ] Hit-die macro: type <<[{LevelA}*[{HDmath}+{CON}+{hdbonus}+{bhp}]] (your 11-18 example) and
+    see whether it resolves.
+[ ] Action Directory: confirm class abilities sync after Add Class (syncCareerAbilitiesToDirectory
+    is called), plus Add Action formats, Alts with dog-ear, and Make tab.
+[ ] Buff Box / DSL: apply one of the built-in suggestions (Dodge, Mage Armor, Haste) or an
+    SRD-derived "(Buff Box)" suggestion.
+    PREDICTION: error "Invalid macro sigil" or 'Reserved symbol "$"'.
+[ ] XDX: run one of the Valerius demo macros after "Reset to Iconic Demo". They have no sigil, so
+    they may error, depending on whether XDX goes through executeMacaroni (it imports it).
+[ ] Currency: the Auto Change button on the coins (11-18 item E1). 111.11 gp should become
+    11 pp, 1 gp, 1 sp, 1 cp. The button should be highlighted when coins don't equal gp.
+[ ] Complete Sheet / Tap Test (needs the API key): type "tap test" with 0 SOT docs, then 1, then
+    3 or more. Watch the server console and response time.
+    PREDICTION: with several large SRDs, OpenAI errors (context or rate limit), or slow and costly
+    turns.
+[ ] Save: Connect a folder (empty test folder). Then Save, close the tab, reopen. Does it restore
+    the named save or the Crash copy? Rename the character and save again, and check which one
+    loads after a restart.
+[ ] Note any typing lag after SRDs are loaded (whole-character stringify on every edit).
+
+Things to write down while testing
+- The exact text of any error banner, the Console errors, which button you clicked, and the
+  localStorage sizes before and after.
+
+
+======================================================================
+5. INCOMPLETE / INCOMPATIBLE / ORPHANED / LEFTOVER ARTIFACTS
+======================================================================
+Code
+- APP\src\components\tools\AddClassModal.tsx (82 KB, 11-11): ORPHANED. Nothing imports it. Class
+  Architect replaced it as "Add Class" (App.tsx line 433). Its parseClassProgressionGrid is
+  duplicated.
+- APP\src\components\sheet\SheetPage2SkillsGear.tsx: never imported. The live page 2 is
+  SheetPage2ActionsSkills.
+- APP\src\components\sheet\SheetPage3SpellsBio.tsx: imported, but per PROGRAM_MAP only mounted as
+  a conditions strip that nothing toggles. The live page 3 is SheetPage3BioStorage.
+- APP\src\components\tools\ImageBrowserModal.tsx, GlyphPicker.tsx, DSLBibleDrawer.tsx,
+  APP\src\storage\seedTree.ts: no importers found (my grep).
+- APP\src\components\tools\QuickHPBar.tsx: imported, but per PROGRAM_MAP never opened.
+- Gemini leftovers: /api/gemini/* aliases (server\routes.ts), getSessionApiKey (a no-op in
+  aiService.ts), metadata.json "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API", the README Gemini note,
+  package name "react-example".
+- server.ts route app.get('*all') is Express 5 syntax on Express 4.22, so production deep links
+  return 404.
+- vite.config.ts uses __dirname (Vite warns this will break under its native config loader).
+- package.json "clean" uses rm -rf, which fails in Windows cmd.
+- macaroni.test.ts isn't in the "npm test" script.
+- Old macro syntax still emitted by sotEngine.ts and aiService.ts suggestions (see section 3).
+- LAZY\sheet-engine: a working, tested prototype that isn't integrated. Its integration notes
+  describe a version of sotContext.ts that isn't the current one.
+
+Build output and binary artifacts
+- APP\dist\ (11-18 build; also contains a stale 11-07 pathfinder1e_standalone.html),
+  APP\dist-standalone\ (index.html 11-07, plus an older 11-05 pathfinder1e_standalone.html),
+  APP\public\pathfinder1e_standalone.html (11-07). That's three or more copies of a ~1.3 MB
+  standalone build, and all of them are older than the 11-18/11-19 code, so the HTML exporter
+  ships an OLD app version. dist\ and dist-standalone\ are gitignored; public\ is not.
+  Rebuild with npm run build:standalone.
+- APP\character-sheet-icons\ duplicates APP\public\character-sheet-icons\ (also copied into
+  dist*). The packager reads public\.
+- APP\public\assets\aistudio\* (grapple PDF, Determine_Success txt, 7 PNGs, community sheet):
+  AI Studio-era assets, copied into dist*.
+- APP\sot-ai-complete-sheet.bundle (1.8 MB): a git bundle of commit c11df37 (PR #2 merge, 11-05).
+  Old backup.
+- APP\pathfinder-1e-modular-workspace.zip (about 53 MB per PROGRAM_MAP; excluded from my copy):
+  an old snapshot.
+- APP\bun.lock (11-02) next to package-lock.json. npm is what's actually used.
+- APP\tmp-tsc.ps1: a temp type-check helper, the same as npm run lint.
+- APP\New folder\ (empty). APP\save tree test\ (armorist.srd.json, Valerius sheet, empty aush\
+  folder). It's a manual test fixture and no test reads it, but keep armorist as a sample.
+- APP\.aistudio\artifacts\brain\...\implementation_plan.md and its .tempmediaStorage PNG: AI Studio
+  leftovers (Macaroni buff plan from 11-02).
+- APP\New_Adventurer_pf1e_sheet.json: a sample, not loaded by code.
+- APP\.env.local: exists and holds OPENAI_API_KEY (gitignored by ".env*"). Value not copied here.
+  APP\.env.example keys: OPENAI_API_KEY (placeholder), OPENAI_MODEL (commented), APP_URL.
+- Data duplicates: C:\Users\Austin\Documents\pf1mod and
+  C:\Users\Austin\Documents\PROJECTS\pf1mod are two copies of the homebrew *.srd.json set plus the
+  Hanzo/Kirin/test_character sheets. Pick one canonical folder before ingestion work.
+- SKEL\sheet-engine: empty in my copy (see Scope). LAZY\sheet-engine is the surviving copy.
+
+
+======================================================================
+6. READMES / ROADMAPS / SCRATCHPADS / NOTES - VERDICTS
+======================================================================
+(Do not delete. "Archive" = move to a notes or archive folder outside the repo root.)
+
+APP root
+- README.md (11-19): run steps, tool list, release/installer. Still needed. Needs an update: the
+  macro syntax section is old, it still mentions Gemini, and it says Add Class but the tool is now
+  Class Architect.
+- ROADMAP-11-18.md (11-18): A1-E1 task breakdown. Its own header says "these changes are complete
+  disregard this md". The code has Auto Change, the dog-ear Alts and Make tab. SUPERSEDED, safe
+  to archive.
+- pfautosheet changes 11-18.txt (edited 11-21, uncommitted): your raw spec for the 11-18 changes
+  (pemdas, << display, steppers, action formats, coins). Mostly implemented. Still needed until you
+  confirm each item in the test, then archive. Commit or move it so git status is clean.
+- AI_THEORY_AND_ROADMAP.md (10-31): Gemini-era vision doc. Superseded, safe to archive.
+- CHANGELOG_FOR_ANTIGRAVITY.md (10-31): handoff manifest for changes up to 10-31. Superseded, safe
+  to archive.
+- HOSTING_AND_SHARING.md (10-31): standalone HTML and Netlify hosting guide. Partly stale (the
+  standalone has no AI). Keep only if you plan to share via standalone HTML; otherwise archive.
+- Attached Element Context from Integrated.txt / ...Integrated2.txt / ...Integrated3.txt (11-11):
+  DevTools element dumps from localhost:3000 (2 and 3 are byte-identical). Scratch. Safe to
+  archive.
+- metadata.json: AI Studio app manifest. Leftover, harmless.
+
+APP\docs
+- PROGRAM_MAP.md plus program-map\01-05 (11-21): code-traced map. Still needed, the best
+  orientation doc. Note: it says Class Architect is "not mounted", which is wrong now (it is the
+  Add Class modal), and it lists 49 tests (now 60). Refresh those lines.
+- SAVE_STATE_DIAGNOSIS.md (11-12): diagnosis of the startup and crash problems. Still needed (the
+  bugs are still open).
+- CODEX_SAVE_PATH_WORKFLOW.md (11-12): implementation brief for the save fix. Still needed until
+  the save path is fixed. Partly done (Connect landed).
+- STORAGE_TREE.md (11-12): folder layout. Still needed, accurate.
+- copilot-character-engine-handoff\README.md plus 01-sot-ingest-layer.md,
+  02-nonlinear-build-graph.md, 03-bounded-sot-retrieval.md (11-11): the plan for the local
+  ingest -> build graph -> bounded retrieval work. Still needed; this is the open "ingestion"
+  roadmap. Overlaps with LAZY\sheet-engine\README.md. Merge the two into the new Roadmaplate.
+
+APP\.aistudio
+- artifacts\brain\...\implementation_plan.md (11-02): the old Macaroni buff and cropper plan.
+  Superseded, safe to archive.
+
+LAZY
+- Macaroni Overhaul Guide, Part 2.txt (11-21 copy): the Part 2 macro spec (reserved symbols,
+  arrays, scope, safety). Still needed as the macro spec, and it's already implemented and tested
+  in macaroni.test.ts. "Part 1" was not in the copy; find it and keep the two together, ideally in
+  APP\docs.
+- character_sheets\00-READ-ME.md plus 01-06 *.md (11-07): level-5 Alt Control / Kill Switch
+  character packets. Campaign content, not app docs. Keep, outside the app.
+- character_sheets\*.txt (11-21: Silvermind, Divinitech Pilot, Inventions, Independent Invention,
+  Technical Insights, Suit Pilots, Warpriest roles/proficiencies, Starting Wealth): homebrew
+  source text. Still needed as raw SOT material, and good test inputs for ingestion (.txt is
+  accepted by both the APP importer and sheet-engine).
+- sheet-engine\README.md (11-11): the engine's design and integration notes. Still needed, but
+  update its "Plugging into Complete Sheet" section for the current sotContext.ts.
+
+SKEL (C:\Users\Austin\Documents\test folder\pf1 agent skeleton)
+- the problem.txt (11-11): problem statement (full SOT per turn, token blowup). Still accurate;
+  fold it into the roadmap, then archive.
+- 1.Send no rules text for structured.txt (11-11): design principles (structured data, step
+  retrieval, tools, caching). Fold into the roadmap, then archive.
+- Your six ideas all hold up, with so.txt (11-11): advice reply on tables, markdown and indexing.
+  Superseded by the sheet-engine README. Safe to archive.
+- urmac on the creation skeleton.txt (11-11): urmac's engine recommendation and two-agent split.
+  Superseded by the sheet-engine README. Safe to archive.
+
+
+======================================================================
+7. SUGGESTED BUCKETS FOR THE ROADMAPLATE (draft for later, nothing sent)
+======================================================================
+Backend / repetitive (Codex / Copilot):
+  - Move the old "Name:|<^...>|$" suggestions to 1.2 syntax.
+  - Fix the extractClassFromSrdDoc name, Special-column and skill-scope bugs, and add tests using
+    armorist.srd.json.
+  - Add macaroni.test.ts to npm test.
+  - Validate the .srd.json shape and reject unknown JSON with a message.
+  - Remove the orphaned files once confirmed.
+UI (Antigravity):
+  - Show quota and size warnings on SRD load and save.
+  - Make the import error explain envelope vs raw files and blank names.
+  - Show which doc Populate actually used.
+  - Refresh the README tool text.
+Connection layer (AFK pilot):
+  - Server-side SOT ingest endpoint using LAZY\sheet-engine.
+  - Bounded retrieval instead of full-SOT prompts.
+  - Fix the Express catch-all, add a port fallback, add a fetch-readonly-page allowlist.
+  - Align the installer and packager.

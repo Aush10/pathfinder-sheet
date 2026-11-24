@@ -1,0 +1,12 @@
+Change log: Complete Sheet SOT context reduction
+Replaced sending every SOT override’s full text with query-focused excerpts, selected using terms from up to the four most recent player messages.
+Kept a compact index of loaded SOT documents, so the model can distinguish a loaded document from one that is absent.
+Added size limits: SOT context up to 12,000 characters; chat history up to 8 messages / 4,000 characters.
+Avoided sending the latest player message twice.
+Updated the prompt to clarify that an omitted excerpt does not mean a rule is absent from a loaded SOT document.
+Added tests for relevant-document selection and size limits.
+Validation: SOT context tests passed; TypeScript check passed.
+
+Files changed: sotContext.ts, routes.ts, prompts.ts, aiService.ts, and new sotContext.test.ts.
+
+I haven’t undone anything. The pre-existing change in AICompanionModal.tsx was not part of this work.

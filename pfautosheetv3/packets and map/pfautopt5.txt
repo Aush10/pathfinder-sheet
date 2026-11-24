@@ -1,0 +1,213 @@
+explorer issues crashed 
+
+local env updated 
+
+
+
+1: srds manually input need to be saved one at a time?> save SOT as a group
+
+2: maybe SOT should be sperate from AI companion tool, to be easier to access 
+
+new folder connection made 
+- the previous crash save "control and its srds are still active but the stats are reset 
+
+explored files, note readme in player srd says they are "untrusted" i assume this distinguishes them from the "locked in read only" srds visible in the app 
+
+cant find where its being saved hope its not in the project, storage issues rip 
+
+download still goes straight to downloads rather than to appropriate subfolder indicated by the attached folder system 
+
+add class has copied a large amount into proficiencies including the class table 
+
+sync user SOT closes itself too quickly 
+
+
+add class seems to work 
+but could probably be improved, the main issue is that the carreer tab is clunky theres only 2 possible grids and two possible modes 
+
+what it should be is a table with direct input that updates the sheet info, 
+
+suggestion 
+
+get rid of career tab and modal options
+instead, players have a single Character Matrix that can be filled manually as class 1 is now, but, instructions will encourage users to allow it to autofill 
+where class 2 grid is now they will have a default career Indexer can add a "track" column as many as they want, by default column 1 is a sequence 1-20 and column 2 is empty waiting for a user index to be added
+career index tells the Matrix  at each level what user indexes to read from to populate each row and by default that value is 0
+meaning, do not auto populate any cells 
+
+if a user populates the matrix themselves and applies it it acts as it would now (class 1 fills the sheet)
+
+(this would be the same location and style as class 1 and class2 there will also be an empty 3rd grid tab to the right of where career tab is(where + add Class  button is now) 
+
+clicking that empty tab will do two things 1: create a new user input class grid, 2: create a new empty grid tab to the right, 
+
+  (note currently only 2 subtabs can exist) when add class is applied to sheet the gestalt grid is what is read and added,
+
+the first time a class grid (aka user input index created, column 2 of the career index populated with its name, 
+
+1|fighter
+2|fighter
+3|fighter
+4|fighter
+
+the matrix counts the number of like items in track a and counts them to determine what row from the class index to add, class (user indexes) determine whats filled
+
+in the example above 
+telling the character matrix at each level auto populate the contents of the fighter index into the matrix if they enter a second index like wizard it will not populate
+instead they can go to the career index tab and alter it 
+
+go into column 2 erase fighter and type wizard in the levels where they want to take wizard, 
+
+level | track A
+1 | fighter
+2 | fighter
+3 | wizard
+4 | wizard
+
+the reading here is 
+level 1 populated fighter (count fighter =1)
+level 2 pop fighter 2
+level 3 pop wizard 1 (the wizard count is 1) 
+level 4 pop wizard 2
+
+note: typing is better than using a drop down here
+but, to insure players they did somthing correctly we can use colorstates for the cells green means there is a value found at the indicated address ie if you type fighter and the matrix finds a values for fighter at that level its green 
+otherwise figher would return a red cell state and if you did not have an index for say.. magus, magus would return read as well 
+
+gestalt 
+the matrix will except several kinds of gestalt tampering
+
+you can enter the class index and alter it directly obviously 
+but,
+adding a second value to a cell in column two seperated by a column separated by a comma
+will tell the matrix to add BOTH values for that level if the columns in the indexes are like the same it will combine the column and add both values appended with a comma 
+if it is a number value like BAB or a save bonus the dominant value is the first 1 and the other values are dropped 
+
+you can also make a third column in the career index
+populate it with with second class 
+matrix treats it the same except that it will take the higher of like values when filling the matrix 
+
+user and ai input grids on subtabs stop at tabs 2 and up (theres a max of 2 now, adding more than 2 deletes and replaces the last one, players may have any number of inactive or active classes 
+
+tampering shortcuts 
+the headers spills a column
+the header (where it says track 1 for example) can be changed to a column, by using =  for example the career index has track a automatically filled but track b does not. if you wanted gestalt fighter wizard rather than type wizard 20 times where it says track b in the header type =wizard and all the cells in that track will fill as wizard 
+
+sequences if instead of = you can fill a column with +1 or -1 (+2, -4 so on) and the column will fill with that value starting at the value
+ie 
++1
+1
+2
+3
+4
+
+up to the number of rows that already exist or 20 if none exis
+ts 
+
+adding > will tell it how many to fill of that type 
++1>3
+1
+2
+3
+0 
+finally ! can tell it to make a pattern separated by that many rows 
+
++1!2
+1
+0
+2
+0
+
+color states will be yellow if there is a syntax error in a header fill or if the result would go above 40 rows (preventing loop fills) 
+
+tagging values for the matrix 
+
+when using gestalts like fighter,wizard fighter,*wizard will tell the matrix wizards values are dominant and it will only add the values that fighter does include that wizard doesn't,
+user will know this is working if the cell state remains green
+
+class index tamper notation
+adding a number after a class name 
+fighter4 for example will tell the matrix that is the count for that item 
+
+wizard 
+wizard
+fighter3
+
+in this example the 3rd level of fighter is added at level 3 even though the count would be 1 (it does not retroactively fill rows 1 and 2
+
+fighter+bab tells the matrix you want the bab from fighter on a given level even if you otherwise would not have it
+
+Fighter-bab
+tells the matrix you do not want the bab for that level to populate
+
+fighter=bab tells it you only want the bab for that level 
+
+fighter=bab+special tells it only use bab and special columns (identified by headers)
+fighter-bab-special then tells it neither of those columns
+
+finally 
+for spells this can be confusing so 
+
+
+for clarity going forward the saved user grids i will call instead of modal options like multiclass alternative alternative mult etc, 
+user input grids by default have sequence on the left most column 1-20 by default, 
+
+ gestalt grid generated 1 row at a time based on what matches that rows value in the user input tables
+ it that entire row into a virtual array combines like columns 
+ 
+
+user index templates 
+not all player indexes are a class grid 
+
+edit index subtool
+right click the index tab and youll see an option "edit index" 
+click it and you make a new virtual index and a pop up window
+in the widow you see the options clear index which retruns it to all 0 values 
+cleanup tool; remove replace, will take away one type of value from the index or replace it with another
+template tool (see below) 
+row 0, creates a 0 level row on a an index, the 0 level is added to the sheet but does not appear on the matrix this is particularly useful for adding race to the sheet without building a new module a race can be thought of as a 0 level class, 
+rowcol; lets you change the order of rows and columns and insert rows and columns mark them as frozen (by default the leftmost row is frozen) or hide them so they do not appear on the matrix but are still added to the sheet 
+auto fill an autofill will do the same thing as spilling headers but its a manual operation pick a row or col and input the fill instruction
+append, treat on index as an extension of another index, this is made visible by the appended tab being partially being concealed behind the tab that will be called, 
+so if the career index says fighter4, and wizard is appended to fighter, the matrix reads both fighter and wizard 
+assign, this is used forthe apply to sheet to recognize when an ability is being called, if using the ai comp this will be done automatically 
+assign lets you highlight a single value on that index that is not a number, and a assign it to a block of text from the TOS 
+auto assign all, is a shortcut for this tool 
+that will assign all the highlighted values the text block immediately following them in the Tos index
+bind, will find any similar values in the index (like extra feat, repeated 10 times in fighter, or monk ac +3 monk ac +4) and bind them to 1 ability which will update rather than creating new 
+ability each time you can then  bind (take highest) or bind (count total) 
+
+templates work in progress come back later 
+
+adding abilities, currently when you click apply to sheet all abilites are added to the sheet as 
+actions and resources, as actions, thats fine but theres no way to change them to a different type once their made so,
+1: next to and abilities value in the index typing <rec>, or <act>, or <spell> will change it, you can also type <feat> to add it to the feats section instead, 
+2: make that editable in the actions and resources area
+
+Race
+we can make a simple race function in the biography and narrative module 
+
+scratchpad, doesn't work is bad and ugly, give it a searchbar and make the interface for apple eye to look up items from anywhere on the sheet
+
+
+tap test failed, looping on name over and over, tap test succeeds when "roll stats" is clicked side note get rid of the build slayer input filler 
+
+grid adapter had some success but 
+it cannot add columns and tends to alter cells by adding an ability and typing [archetype] next to it 
+
+highlighted to me that grids once created cant be adapted very well 
+
+macroni is working! 
+
+
+items are still being read from crash
+
+
+total value of coinage should be = current GP its currently = GP+bank savings 
+the coinage and wealth slate should have a drop down to select which container its in
+
+
+slayer class artifact continues to appear it the the auto fills and the add class,. 
+
+
+storage .json would not load error code said it was locked (from the loadout tool)

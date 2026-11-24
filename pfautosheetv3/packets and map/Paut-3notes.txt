@@ -1,0 +1,407 @@
+PAUT-3 NOTES - internals side of pfautopt5 (playtest 11-22)
+Written by PAut-3, Sun Nov 22 2026, about 5:30 PM CT
+Matches: C:\Users\Austin\Documents\notes 2\pfautopt5.txt
+Code basis: copy of APP taken at 1 PM today. The only commit since then touched a notes txt, so the
+code below is current.
+
+Short names
+  APP  = C:\Users\Austin\Documents\PROJECTS\pathfinder-1e-modular-workspace
+  LAZY = C:\Users\Austin\Documents\lazy as fuck\lazyafpf1builds
+Labels: CONFIRMED = I read the code path or ran it on real data. LIKELY = the code strongly
+suggests it but I didn't reproduce it. GUESS = a plausible explanation that still needs a check.
+
+----------------------------------------------------------------------
+PREDICTION SCORECARD (P1-P8 from botjot.txt)
+----------------------------------------------------------------------
+P1 wrong-shape SRD loads as one blob ........ UNTESTED. Your notes don't say whether the pf1mod
+                                              files came in as text blobs.
+P2 storage-full errors swallowed ............ UNTESTED directly. Related symptoms did show up
+                                              (crash save state, "locked" file), see below.
+P3 class name bug (blank / New Class) ....... UNTESTED. You didn't report the class name.
+P4 Special column swallows extra columns .... PARTLY CONFIRMED, and worse than predicted. Add Class
+                                              copied the whole class table into proficiencies
+                                              (see #5).
+P5 stray Fly/Heal class skills .............. UNTESTED (not mentioned).
+P6 old-syntax buffs rejected ................ UNTESTED. You said "macroni is working!", which
+                                              means the 1.2 engine works. The old-syntax
+                                              suggestions weren't exercised.
+P7 Complete Sheet sends full SOT text ....... CONFIRMED in code, and the 11-21 change log
+                                              contradicts it. Resolved below.
+P8 blank-name export can't re-import ........ UNTESTED.
+
+----------------------------------------------------------------------
+THE SOT CONTEXT CONTRADICTION (change log 11-21 vs audit)
+----------------------------------------------------------------------
+The note "Change log Complete Sheet SOT conte.txt" says Complete Sheet now sends query-focused
+excerpts from a new sotContext.ts / sotContext.test.ts, with a 12k-char SOT cap and an
+8-message / 4k chat cap.
+What the code on main actually has:
+- APP\server\sotContext.ts exists, but it's dated 11-11 3:36 PM and contains only formatters.
+  formatCompleteSheetOverridePages() joins "p.plainText || p.htmlContent" for EVERY page, with no
+  cap and no query filtering.
+- There is no sotContext.test.ts anywhere in APP\server or APP\src.
+- APP\server\routes.ts handleCompleteSheet (about lines 130-180) inlines ALL override pages and
+  the FULL conversation history (it maps every message). No 8-message or 4k cap.
+- APP\src\engine\aiService.ts line ~3034 posts sot.overridePages (all of them, whole objects
+  including htmlContent) and the full messageHistory.
+- gitlog.txt has no commit that matches that change.
+Verdict: the change described in the log is NOT on main. My GUESS is that it was done on a branch
+or in an agent session that never got merged or pushed. LAZY\sheet-engine\README.md also describes
+a sotContext.ts with "keyword excerpts, last 4 messages, 12k cap", which fits that idea.
+Action: search GitHub branches and PRs on Aush10/pathfinder-sheet, and any Copilot/Codex
+worktrees, for sotContext.test.ts. If nothing turns up, the work needs redoing. So P7 is still open.
+
+----------------------------------------------------------------------
+OBSERVATION-BY-OBSERVATION
+----------------------------------------------------------------------
+
+#1 "srds manually input need to be saved one at a time -> save SOT as a group"
+   CONFIRMED. AICompanionModal.tsx handleSaveOverridePage saves the single page in the editor, and
+   CompleteSheetChatWindow.tsx handleSaveQuickSot saves one pasted page. Only file import
+   (handleImportHostSrdFiles) takes several files at once. There is no batch paste.
+
+#2 "SOT should be separate from AI companion"
+   Clarification: the SOT catalogue UI lives inside APP\src\components\tools\AICompanionModal.tsx
+   (a 134 KB file). Class Architect and Complete Sheet each read the same data
+   (character.sotCatalogue) through their own copies of the code. Pulling it out into a
+   SOTPanel component is a clean UI split, and the data model doesn't need to change.
+
+#3 Explorer crashed. Previous crash save "control" and its SRDs still active, but stats reset.
+   What happens underneath:
+   - Crash autosave runs about 1 second after EVERY edit
+     (APP\src\storage\useAutosave.ts -> fsAdapter.ts autosaveCrash -> saveLayout ->
+     writeCharacterTree). Each pass rewrites about 13 files under
+     <folder>\AIgamesheet\pfmusers\Crash\: images\manifest.json, DSL\*, notebook\journal.json,
+     tools\state.json, Modules\state.json, SRD\README.txt, AI\README.txt, AI\read_only\ (deleted
+     and rebuilt), index.csv, printable-sheet.html and character.json. Every file goes through
+     writeSafely: write .tmp, read back, back up the old copy, write, read back, delete .tmp, trim
+     backups. Nothing stops the next autosave from starting while the previous one is still
+     running.
+     LIKELY: a constant stream of creates and deletes in a folder Explorer has open can make
+     Explorer hang or crash. GUESS for the crash itself; the file churn is CONFIRMED.
+   - SRDs survive across characters for two reasons (CONFIRMED):
+     (a) Each SRD is also stored in browser localStorage (pf1e_host_srd_doc_<id>,
+         sotEngine.ts saveSrdDocToHostDeviceStorage). New Sheet doesn't clear those keys.
+     (b) ClassArchitectModal.tsx sotDocs (around line 249) MERGES loadAllHostDeviceSrdDocs() into
+         every character's list, and "Sync Host SRDs" pulls in every host SRD from any character.
+     So "control"'s SRDs show up no matter which sheet is open.
+   - Why stats reset but the name and SRDs stayed: GUESS. Two candidate paths:
+     (a) Connect on an EMPTY new folder (connectFolder.ts) crash-saves whatever is on screen at
+         that moment. If the screen had a blank sheet carrying the old name, that becomes the crash.
+     (b) normalizeCharacter (APP\src\storage\characterState.ts) fills missing fields from
+         createBlankCharacter(), so a partial crash file would load with 10s in every ability.
+     To tell which: open <folder>\AIgamesheet\pfmusers\Crash\character.json and look at
+     data.abilities.
+
+#4 "explored files, readme in player SRD says 'untrusted'" vs "locked read-only" SRDs in the app
+   CONFIRMED. These are two different things:
+   - <folder>\AIgamesheet\pfmusers\<player>\<character>\SRD\README.txt is written by
+     fsAdapter.ts writeCharacterTree with the text "Reserved for locally saved SRD references.
+     Files here are treated as untrusted user data." It's a placeholder. The app never writes SRD
+     files into that folder and never reads it back. "Untrusted" is a security word: if a file
+     ever appears there, the app shouldn't treat it as instructions.
+   - "Read-only" in the app means an SRD page that went through sanitizeSrdDocument (sotEngine.ts):
+     scripts, iframes and webhooks stripped, links made inert, isReadOnly: true, so you can't edit
+     it in place.
+   - Neither label means a separate set of files. Right now there are no SRD files on disk at all
+     (see #5).
+
+#5 "cant find where its being saved, hope its not in the project"
+   It is NOT in the project folder. The server never writes SRDs to disk. Exact locations:
+   (a) Browser localStorage for http://localhost:3000, separate per browser. Canary and Edge each
+       have their own. Keys:
+         pf1e_host_srd_index_v1        list of SRD ids
+         pf1e_host_srd_doc_<id>        one per SRD, the full page with htmlContent
+         pf1e_character_data_v1        the live character, which ALSO contains every SRD in
+                                       sotCatalogue.overridePages
+       On disk, Chrome-family browsers keep this inside the browser profile under
+       ...\User Data\<Profile>\Local Storage\leveldb (not human-readable). To see it: DevTools
+       (F12) -> Application -> Local Storage -> http://localhost:3000.
+   (b) Inside character.json in your picked folder, because the SRDs are part of the character
+       object: <folder>\AIgamesheet\pfmusers\<player>\<character>\character.json under
+       data.sotCatalogue.overridePages, and the same in ...\pfmusers\Crash\character.json.
+       Backups: ...\backups\character.json.<timestamp>.bak (up to 10 per file).
+   (c) Nowhere else. The SRD\ subfolder only has README.txt. A downloaded copy only exists if you
+       click the per-SRD "save as file", which goes to Downloads.
+   Storage risk: armorist is about 240 KB per copy. Each SRD is counted twice in localStorage, and
+   character.json is capped at 5 MiB (fsAdapter MAX_FILE_BYTES).
+
+#6 "download still goes straight to Downloads, not the attached folder"
+   CONFIRMED. Every export uses an <a download> link:
+   - sheetExporters.ts exportCharacterJSON / exportCharacterCSV / HTML export
+   - sotEngine.ts exportSrdDocFileToHost
+   - LoadoutModal.tsx (around line 217)
+   None of them use the connected folder handle or showSaveFilePicker. The browser decides where
+   the file goes (Downloads). Fix: route exports through the fsAdapter folder handle (for example
+   <character>\exports\) when connected, and fall back to a download otherwise.
+   Extra risk (LIKELY): exportCharacterJSON builds a data: URL. With SRDs embedded, big characters
+   can go past Chrome's data-URL size limits. Use a Blob URL instead.
+
+#7 "add class copied a large amount into proficiencies including the class table"
+   CONFIRMED by running it on armorist.srd.json.
+   - sotEngine.ts extractClassFromSrdDoc first tries a regex on the "Weapon and Armor Proficiency"
+     section. Its lazy {20,600} match needs a "\nWord:" or "\nTable:" within 600 characters. On
+     armorist it finds none, so the match is null.
+   - It then falls back to aiService.ts parseSrdSkillsAndProficiencies(text), run on the WHOLE
+     document. That function splits the text into sentences on . ! ? and keeps any sentence that
+     contains words like armor, weapons, simple, martial or shields. The class table has no
+     periods, so it counts as one giant "sentence", and it contains "Armor training", so it's kept.
+   - Result on armorist: proficiencies = 31,040 characters from 167 sentences, including the
+     1st-20th table rows.
+   - ClassArchitectModal.tsx handleAddKit (around line 390) then pushes
+     "[Class Proficiencies] <that text>" into featsAndAbilities.
+   Fix: run proficiency extraction on the proficiency section only, stopping at the next heading,
+   and cap its length.
+
+#8 "sync user SOT closes itself too quickly"
+   CONFIRMED. In AICompanionModal.tsx the SOT editor is
+   <details open={Boolean(editingPageId || pageSavedNotice)}> (around line 1850).
+   handleSyncFromHostDeviceStorage sets pageSavedNotice and clears it after 3.5 seconds with
+   setTimeout. When the notice clears, the panel collapses. It also calls setPageSavedNotice inside
+   a setState updater, which is a React anti-pattern.
+   Fix: control the open state separately and make the notice persistent or dismissable.
+
+#9 "add class seems to work but career tab is clunky, only 2 grids and 2 modes"
+   CONFIRMED on the limits:
+   - CareerLevelEntry (APP\src\types\character.ts line 512) holds only primaryClassId plus ONE
+     optional gestaltClassId. That's two tracks at most.
+   - CareerProgressionData.mode is 'standard' | 'multiclass' | 'gestalt'.
+   - Levels are capped at 20 (ClassArchitectModal.tsx line 304).
+   Related real bug (CONFIRMED): handleAddNewClass (around line 342) uses id = "class" + (count+1).
+   After you delete a middle grid, the next new grid gets an id that already exists and
+   OVERWRITES that grid. GUESS: this is the "adding more than 2 deletes and replaces the last one"
+   you saw.
+
+#10 Tap test looped on name. Works when "roll stats" is clicked. Remove the "build slayer" filler.
+   Mechanics (CONFIRMED): CompleteSheetChatWindow.tsx runTapTest advances a step only when the
+   turn returns without tapTestNeedsInput. aiService.ts (around line 3127) sets tapTestNeedsInput
+   if the model asks ANY question, any write is rejected, OR nothing at all was applied. A pause
+   resumes at the SAME step ("Continue the tap test with name, race, and alignment...").
+   LIKELY cause of the loop: on step 1 the model replies with a question, or writes
+   name/race/alignment in a shape the identity writer ignores. applyScalarIdentity only takes
+   values.name/race/alignment as non-empty strings. Either way nothing applies, the run pauses,
+   Continue re-sends step 1, and it loops.
+   The character summary sent to the model says "Name: Unnamed", which invites a "what's the
+   name?" question.
+   GUESS on why "Roll 20pt Stats" helps: it sends a normal turn with forceRandom, which seems to
+   unstick the conversation. Check the server console for the raw JSON on a looping turn.
+   "Build slayer" filler: a hardcoded quick-prompt chip in CompleteSheetChatWindow.tsx (about lines
+   826-830): "Let's build an agile Slayer using my loaded Slayer SRD document!", labelled
+   "Build Slayer from SOT". There's a Stygian Slayer archetype chip next to it (about line 842).
+
+#11 "slayer class artifact keeps showing in autofill and add class" - SOURCE FOUND (CONFIRMED)
+   APP\src\engine\aiService.ts DEFAULT_SOT_CATALOGUE (about lines 89-225) ships a demo SOT:
+   - a page "Full Class SRD: Slayer (Hybrid Ranger/Rogue Browser Dump)" (line ~155) with tags
+     Slayer / Studied Target / Sneak Attack
+   - Slayer macaroni suggestions: Studied Target, Slayer Ability DC
+   - d20pfsrd weblinks
+   It gets used whenever character.sotCatalogue is missing:
+     aiService.ts line ~232 and ~2896:  character.sotCatalogue || DEFAULT_SOT_CATALOGUE
+     (so Complete Sheet SENDS the Slayer page to the AI)
+     ClassArchitectModal.tsx ~250 / AddClassModal.tsx ~226:  ...overridePages ||
+     DEFAULT_SOT_CATALOGUE.overridePages
+   createBlankCharacter has no sotCatalogue, and normalizeCharacter only sets one if the source
+   had one. So every New Sheet gets the Slayer demo until you load your own SOT.
+   Other Slayer leftovers: stubAdapter.ts ("Slayer 9"), the server\prompts.ts example
+   ("className": "Slayer"), placeholders in ClassArchitect/AICompanion, and the hardcoded
+   "Arcane Duelist (Bard Fencer)" fallback in adaptArchetypeIntoGrid.
+   Fix: give blank characters sotCatalogue {weblinks:[], overridePages:[], macaroniSuggestions:[]}
+   and delete or relabel the demo data.
+
+#12 Grid adapter adds "[archetype]" text and can't add columns
+   CONFIRMED. aiService.ts adaptArchetypeIntoGrid -> applyArchetypeSwapsToRows (around line 2600)
+   appends `[Archetype] <gained>` to row.special on purpose. The grid row type is fixed:
+   ClassGridRow = {level, bab, babString?, fort, ref, will, special} (character.ts line 458). There
+   is nowhere to put a new column, so adapters and parsers squeeze everything into "special".
+   That's also why spherecaster columns end up there (P4).
+   The non-AI fallback also uses regex "replaces X" / "at Nth level" and a hardcoded Bard Fencer
+   example. This is the core data-model limit your Character Matrix proposal fixes.
+
+#13 "macroni is working!"
+   Consistent with the tests (macaroni.test.ts 12/12). Watch out: the Scratchpad AI uses
+   ">>#AI$", ">>AI$" and ">>#ai!" directives (aiService.ts executeScratchpadAIMacro around line
+   2171). Those are exactly the symbols Macaroni Part 2 reserves. They are separate parsers today,
+   but they'll collide if the scratchpad ever routes through Macaroni.
+
+#14 "items are still being read from crash"
+   CONFIRMED by design. characterState.ts restoreSheetFromStorage prefers the Crash copy whenever
+   its checksum differs from the named save. Crash autosaves on every edit (#3), and a deliberate
+   Save does NOT refresh Crash (fsAdapter saveCharacter). So after almost any session the Crash
+   copy differs and wins on the next Connect or restart. The Crash slot also keeps the previous
+   crash's characterId (saveLayout reuses existing?.characterId), so a different character's crash
+   can win. This is the open issue in docs\SAVE_STATE_DIAGNOSIS.md.
+   Fix: refresh or clear Crash on deliberate Save, only prefer Crash if it is NEWER and the SAME
+   characterId, and ask the user instead of silently replacing.
+
+#15 "total coinage should = current GP; it's currently GP + bank"
+   CONFIRMED. APP\src\engine\currencyUtils.ts reconcileCurrency(currency, downtimeCapital,
+   includeBank = true): targetGp = includeBank ? currentGp + bankGp : currentGp.
+   - SheetPage3BioStorage.tsx line ~191 calls reconcileCurrency(character.currency, downtime,
+     true), so bank is hardcoded in.
+   - StorageInventoryModule.tsx line ~529 has a checkbox, includeBankInChange, defaulting to true.
+   Note: your 11-18 spec asked for "currentGP + Bank savings", so this is a spec change, not a bug.
+   New ask: a container dropdown on the coinage/wealth slate. Currency is one flat
+   character.currency {pp,gp,sp,cp} today, with no per-container field.
+
+#16 "storage .json would not load, error said it was locked (from the loadout tool)"
+   The "locked" text comes from fsAdapter.ts toFailure: NoModificationAllowedError or
+   InvalidStateError -> FILE_UNAVAILABLE "The save file is locked or unavailable. Close other apps
+   using it and try again." The header shows it via SaveButton's global storage-error listener.
+   LoadoutModal.tsx itself has NO storage code. It reads a picked file with FileReader and has no
+   onerror handler.
+   LIKELY sequence: you applied a loadout -> setCharacter -> crash autosave fires (#3) while
+   another autosave or Explorer still holds Crash\character.json or its .tmp -> the browser
+   throws InvalidStateError or NoModificationAllowedError -> "locked".
+   Also: if you fed the loadout tool a save-tree character.json, it's an envelope
+   ({format, sha256, data:{...}}), so section detection finds little or nothing.
+   Fix: one serialized autosave queue with an in-flight guard, longer debounce, and skip the
+   projection rewrites on crash saves. Give the loadout tool envelope support and an error message.
+
+#17 Scratchpad "doesn't work, bad and ugly; add search bar and Apple Eye lookups from anywhere"
+   The scratchpad is a textarea in SheetPage3BioStorage.tsx (BOX 1, around line 254). Running it
+   only does anything if a line ends with >>#AI$, >>AI$ or >>#ai! (executeScratchpadAIMacro).
+   Otherwise you get a "Tip:" message, which probably reads as "doesn't work". It is also gated
+   by allowedModules.scratchpad. There is no search. Apple Eye lookups live in individual field
+   components (AppleEyeIcon, 8 importers), not as a global service.
+
+#18 Race (row 0 / simple race function in bio)
+   There's no race module today. race is a string field, plus abilities.*.raceMod. Row 0 in the
+   matrix would need to write raceMod, size, speed, languages and racial traits.
+
+----------------------------------------------------------------------
+NEW REQUIREMENT - INGESTION SHOULD PRODUCE FOUR OUTPUTS (Austin, 5:20 PM)
+----------------------------------------------------------------------
+When a sheet or SRD is ingested it should produce:
+  (1) a TABLE (structured, e.g. class progression grids)
+  (2) a LIST OF LINKS
+  (3) a COMPACT MARKDOWN, text only
+  (4) an INDEX for AI lookups, made of keywords that appear frequently or prominently
+How that maps to today's code:
+  (1) Table
+      APP today: only class grids, by regex (sotEngine.ts extractClassFromSrdDoc,
+      parseClassProgressionGrid). Fixed 7-column ClassGridRow, so extra columns are lost into
+      "special". Other tables (spells per day, talents, items) are not extracted.
+      LAZY\sheet-engine: src\ingest\tables.ts. Any <table>, with rowspan/colspan expanded and
+      multi-row headers joined -> tables.json (caption, columns, rows, raw cells). On armorist HTML
+      it found 2 tables.
+  (2) Links
+      APP today: sanitizeSrdDocument collects incidentalLinks (142 on armorist), but it also turns
+      every <a> in htmlContent into a <span>, so link positions are lost.
+      LAZY: links.json (text, href, canonical-resolved, section_id). It got 0 links on armorist
+      because I fed it APP's already-sanitized HTML. It must ingest the ORIGINAL HTML, or rebuild
+      links from incidentalLinks.
+  (3) Compact markdown
+      APP today: plainText (tags stripped, tables as tabs, not markdown, not de-duplicated).
+      LAZY: Turndown markdown, split into heading-aware sections (sections.jsonl), with tables
+      replaced by "[Table: caption; table_id=...]" placeholders. Measured on armorist: about 49.5k
+      estimated tokens -> about 11.2k (-77%).
+  (4) Keyword index
+      APP today: none. Macaroni suggestions are not an index, and the whole SOT goes to the model.
+      LAZY: src\ingest\keywords.ts adds keywords per section from heading, defined terms
+      (<strong>/<b>/<dt>/<dfn>), table headers, frequent terms, a field dictionary and synonyms ->
+      keywords.json. Plus a MiniSearch BM25 index (index.json) and a table of contents (toc.json).
+      This is close to "frequently or prominently" already.
+  Gaps to close:
+   - sheet-engine skips .json, so .srd.json needs an unwrap step (srdDocument.htmlContent ->
+     .html), and sheets (character.json / _pf1e_sheet.json) need their own small extractor.
+   - sheet-engine is Node-only (fs, cheerio), so it runs server-side, but SRDs currently live in
+     browser storage. Something has to carry them over.
+   - Where outputs live (PROPOSAL, nothing like it exists yet): the save tree's unused SRD folder,
+     e.g. <character>\SRD\<doc>\table.json, links.json, text.md, index.json.
+   - Complete Sheet / Apple Eye / Class Architect then read from (4) and pull only the matching
+     (3) sections and (1) rows. That is the real fix for P7.
+  Work-split buckets:
+   - Codex/Copilot (backend, repetitive): port and extend the four-output pipeline, add the
+     .srd.json unwrap and the sheet extractor, write fixtures and tests on armorist plus the pf1mod
+     files, add per-output schemas.
+   - AFK pilot (connection layer): POST /api/sot/ingest endpoint, persisting outputs to the save
+     tree via the folder handle, a migration from localStorage, bounded retrieval wired into
+     /api/openai/complete-sheet and lookup.
+   - Antigravity (UI): a SOT panel showing the four outputs per doc (table viewer, link list,
+     markdown preview, keyword chips) and batch save.
+
+----------------------------------------------------------------------
+CHARACTER MATRIX / CAREER INDEX / USER INDEX OVERHAUL - CLARIFICATIONS AND PREDICTIONS
+----------------------------------------------------------------------
+What it replaces (current components):
+- ClassArchitectModal.tsx career tab: careerData (CareerProgressionData: mode
+  standard/multiclass/gestalt, levels[] of CareerLevelEntry with primary plus 1 gestalt),
+  handleAdd/Remove/UpdateCareerLevel, handleSyncCareerToSheet ->
+  characterIntegration.ts applyCareerProgressionToCharacter -> multiclassCalculator.ts
+  calculateCareerProgression.
+- Class 1 / class 2 grid subtabs: character.customClassGrids (a record of CustomClassGrid with
+  ClassGridRow[] rows), handleAddNewClass / handleDeleteClass (with the id-collision bug above),
+  and the "+ Add Class" tab position.
+- The mode toggles (multiclass / gestalt / variant multiclassing) become notation in the Career
+  Index (commas, a second track column, * dominance).
+- handleAddKit's HD/HP/skills/proficiencies writes become "Apply matrix to sheet".
+- Orphaned AddClassModal.tsx should be deleted, not ported.
+Data-model implications:
+- The grid has to become generic: {columns: [{id, header, type: number|text|ability-list,
+  frozen?, hidden?}], rows: Record<colId, value>[], row0?}. ClassGridRow's fixed fields can't
+  hold arbitrary columns. Existing customClassGrids need a migration (level/bab/fort/ref/will/
+  special -> named columns).
+- Career Index = {tracks: [{header, cells: string[]}]}. Each cell is a parsed token list
+  (className, explicit count, +col/-col/=col filters, * dominance, comma gestalt).
+- The matrix is DERIVED. It should be recomputed from the Career Index plus user indexes, not
+  stored as truth, or the two will drift. Applying to the sheet is a separate explicit action.
+- "Same columns combine" needs a column-identity rule (header normalization: "Base Attack Bonus"
+  = "BAB"). Numeric merge rules per column type: gestalt within a cell takes the FIRST value as
+  dominant; a second track takes the HIGHER value. The text in the spec says exactly that.
+- Ability tags <act>/<rec>/<spell>/<feat> map onto characterActions types, resourceTrackers,
+  spells and characterFeats. Today abilities synced via syncCareerAbilitiesToDirectory come in as
+  actions/resources with no way to change type afterward. The "make it editable" ask touches
+  ActionDirectoryModule.tsx.
+- Row 0 (race) writes outside the level sequence (raceMod, traits) and is not shown on the matrix.
+- assign / auto-assign link an index cell to a text block in the SOT, which needs the ingestion
+  index (four outputs above) to have stable section ids. sheet-engine's section_id is a fit.
+- append = an index extension (reads both). bind = de-duplicate repeated values into one ability,
+  with take-highest or count-total.
+Risks and predictions:
+- The header fill syntax (=x, +n, -n, +n>k, +n!k) is a small language. It needs a real
+  tokenizer, tests and a defined error state. Edge cases: "+1>3!2" combos, negative starts, fills
+  on a column whose row count changes, and "=fighter" in a column that also has manual edits
+  (overwrite or skip?). Yellow state for syntax errors is in the spec.
+- 40-row cap: the spec says yellow if a fill would exceed 40 rows. Today's career is hard-capped
+  at 20 levels. Decide whether the matrix itself allows 21-40 (epic) or 40 is only a runaway
+  guard.
+- Color states: green = a value was found at that address, red = no index or no row for that
+  count, yellow = syntax error or over cap. Prediction: tokens like "fighter4" vs a class literally
+  named "Fighter4", and case/spacing ("Fighter" vs "fighter "), will cause false reds unless names
+  are normalized.
+- Count semantics: "fighter4" sets the count for that row without back-filling rows 1-3. Later
+  plain "fighter" rows: do they continue at 5 or count only plain entries? The spec doesn't say,
+  so this needs a decision.
+- +bab/-bab/=bab+special filters depend on header names. If a user renames a header, filters
+  silently stop matching, so headers need stable ids.
+- * dominance (fighter,*wizard): wizard wins and fighter adds only the columns wizard lacks. The
+  cell should stay green when this resolves.
+- Spells: you flagged them as confusing and the spec stops there. Spells-per-day columns are
+  numeric arrays per spell level, which the merge rules don't cover yet.
+- Templates: marked work in progress in the spec. Leave them out of the first roadmap phase.
+- Performance: recomputing a 20-40 row matrix on every keystroke is fine. Writing it to disk on
+  every keystroke is not (see #3), so debounce the apply.
+
+----------------------------------------------------------------------
+STEPPER REMAKE (from "stepper remake.txt")
+----------------------------------------------------------------------
+- The turn stepper slate is ALREADY hidden with CSS: .pf1-hidden-turn-stepper {display:none}
+  in APP\src\index.css, applied in QuickModularTools.tsx line ~172. The comment in
+  SheetPage1Core.tsx line ~578 says so. visibleModules.levelStepper exists as a flag
+  (characterIntegration.ts line 111), but my grep found no component that reads it. So the "level
+  stepper slate" you see is probably the career/level UI inside Class Architect or the sheet.
+  Confirm in the browser which element it is. Hiding with a class or flag keeps the code, as you
+  asked.
+- XPaths: I resolved them statically, not in a browser, so treat this as a GUESS.
+  - //*[@id="root"]/div/div[2]/aside/div[3]/div[1]/button[1]/div/div[1]: in BlueprintSidebar.tsx,
+    aside div[3] is the Toolbox section, div[1] is the tools grid, and button[1] is the DECK
+    button (label "Deck"), not a stepper. The DOM may differ when rendered (layout or theme), so
+    re-copy the XPath or use the button's label text before an agent hides the wrong thing.
+  - The main/... XPath needs a rendered DOM to resolve. Ask the implementing agent to confirm it
+    with DevTools.
+  - The stepper TOOL modal (StepperTool.tsx) is opened only through AICompanionModal's
+    onOpenStepper (App.tsx line ~481).
+- Scrollbars: only .pf1-blue-scrollbar exists (index.css: #2563eb thumb, transparent track, 8px,
+  pill shape), and only ActionDirectoryModule uses it. Everything else uses the browser default.
+  Make a theme-aware scrollbar (CSS variables per theme: parchment / blueprint / mythweavers /
+  print) and apply it globally.

@@ -1,0 +1,174 @@
+type 0: character concepts. Appearance. biography. history. race. origin. personality. behavior. characteristics.
+setting. 
+keywords: Race, Origin, background, lore, history; make note of persona type, store for late
+persona examples: brave, naive, wise, novice, strong
+prompt for gender, prompt for hair and eye color.
+
+1: find house rules if any are provided look for homebrew, elephant in the room, 3rd party resources 
+
+Identify gestalt y/n, identify 
+
+b: identify backstory, identify relationships, identify description
+
+type 1: Identify class type: half bab, mid bab, full bab, caster vs non caster
+go to full class srd 1 and determine primary ability scores
+default to dex, wis, con if none are listed
+
+determine point buy level 
+Low Fantasy 10
+Standard Fantasy 15
+High Fantasy 20
+Epic Fantasy 25
+Custom any number of point buy can be applied 
+Rolled arrays: randomly assign a values between 4 and 18 or run [4d6] for each
+
+Stop
+
+
+
+B: identify race/origin if available in the srd go to race/origin srd otherwise prompt for race srd
+race includes appearance, race include racial ability score bonuses and penalties add to ability scores
+race includes racial traits add to class abilities and resource pools
+race includes base speed
+race may include racial bonus to skills 
+
+stop
+
+appearance 
+general appearance
+height
+eye color 
+hair color 
+stop
+
+Note: See the Linguistics skill for more information pertaining to Languages.
+
+3) Choose a Class
+
+full class srd 1, if multiple find 1
+if gestalt/multiclass find fullclass srd 1 
+add class grid 
+stop 
+add kit 
+define archetype, add to career 
+stop
+
+define srd class 2
+add class grid stop 
+define class 2 archetype 
+add to carreer. 
+stop 
+determine gestalt/multiclass
+
+determine 3rd party material 
+    4 Winds Fantasy Gaming
+    Adamant Entertainment
+    Alessandro Passera
+    Alluria Publishing
+    Amora Games
+    Anja Svare Productions
+    Ascension Games, LLC
+    Bloodstone Press
+    Classes - Azoth Games
+    Classes - SHM Publishing
+    d20pfsrd.com Publishing
+    Dreamscarred Press
+    Drop Dead Studios
+    Far Distant Future Publishing
+    Fat Goblin Games
+    Flaming Crab Games
+    Forest Guardian Press
+    Forrestfire Studios
+    Frog God Games
+    Gun Metal Games
+    GUNGNIR Gamedev
+    ICOSA Entertainment, LLC
+    Interjection Games
+    Kobold Press/Open Design
+    Legendary Games
+    Little Red Goblin Games
+    Lost Spheres Publishing
+    Louis Porter Jr. Design
+    Magic Skull Games
+    Michael Mars
+    Name's Games - Archetypes
+    Necromancer's of the Northwest
+    Optimal Shenanigans Games
+    Orphaned Bookworm Productions
+    Paizo Fans United
+    Purple Duck Games
+    Radiance House
+    Rite Publishing
+    Rogue Genius Games
+    Samurai Sheepdog
+    Sean K. Reynolds Games
+    Storm Bunny Studios
+    Studio M-
+    The Knotty-Works
+    Total Party Kill Games
+    Tripod Machine
+    Wordcasting Entertainment
+    Zenith Games
+    Zombie Sky Press
+
+Request 3pp 3rd party material be added to the srd 
+stop
+
+5) Allocate Skill Ranks
+
+Determine the number of skill ranks from class. (added to class kit automatically) determine any extra skill points prescribed by classes, add them 
+search skill points from race notes, class notes 
+add them, stop 
+
+identify class skills block (should be added automatically with class kit verify then move on 
+
+prompt player to allocate skills.
+add skill points to class skills first unless prompted otherwise. 
+add skills points to perfered skills 
+until total skillpoints are used 
+
+stop6) Choose Feats
+
+    All characters begin with 1 feat.
+check race for keyword bonus feat 
+check class 1 for keyword bonus feat
+check class 2 for keyword bonus feat 
+sync feats 
+add total bonus feats 
+stop prompt player for input 
+defined input player make a list of potential feats and add it to the sot along with descriptions or details or links 
+
+direct players to input feats using apple eye
+
+stop
+
+7) Determine Starting Hit Points (HP)
+(added with kit, double check that HD size matches with class kit)
+
+A character starts with maximum hit points at 1st level 
+determine if hd are rolled, average, or max
+note bonus hp from other sources search for keyword HP,
+Bonus HP, health points, hit dice, HD
+
+stop
+
+8) Get Equipped
+keywords starting wealth, weapons, equipment, gear
+prompt player if they would like a starting pack if yes add pack
+prompt player for starting wealth
+distribute wealth in the coin slots until amount matches starting wealth 
+
+
+9) confirm saving throws match class determine BAB matches class 
+
+stop
+
+11) Other (Starting Spells)
+If your character is a wizard (or any class that uses spellbooks)  player will need to pick spells direct them to use apple eye for easiest inputs
+identify spells per day (class grid)
+add to resources
+identify spells known (class grid) actions
+
+stop 
+
+identify 3rd party material if any continue from there or end build 
