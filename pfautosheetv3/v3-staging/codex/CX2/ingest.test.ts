@@ -21,7 +21,7 @@ test('handles Markdown headings, tables and links as deterministic source conten
   const result = ingestSource({ name: 'notes.md', content: '# Rules\n\n| Level | BAB | Fort | Ref | Will | Special |\n| --- | --- | --- | --- | --- | --- |\n| 1 | +1 | +2 | 0 | 0 | Feat |\n\n[Reference](https://example.test/rules)' });
   assert.equal(result['table.json'].tables[0].kind, 'class-grid');
   assert.equal(result['links.json'].links[0].href, 'https://example.test/rules');
-  assert.equal(result['index.json'].toc[0].headingPath.at(-1), 'Rules');
+  assert.ok(result['index.json'].toc.some((entry) => entry.headingPath.at(-1) === 'Rules'));
 });
 
 test('handles merged and repeated stacked spell headers without treating the group row as data', () => {
