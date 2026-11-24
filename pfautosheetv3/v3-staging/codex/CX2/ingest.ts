@@ -226,9 +226,13 @@ export function ingestSource(source: SourceDocument): IngestOutputs {
   const boundaries = [...normalized.html.matchAll(headingRegex)];
   const sections: IngestSection[] = [];
   const links: IngestLink[] = [];
-  const sectionsHtml = boundaries.length ? boundaries.map((heading, index) => ({
-    level: Number(heading[1]), heading: space(heading[2]) || 'Untitled', html: normalized.html.slice(heading.index! + heading[0].length, boundaries[index + 1]?.index ?? normalized.html.length), order: index,
-  })) : [{ level: 1, heading: normalized.title, html: normalized.html, order: 0 }];
+  // The preamble often carries Class Skills, HD, and proficiency fields, so it is a real section.
+  const sectionsHtml = boundaries.length ? [
+    { level: 1, heading: normalized.title, html: normalized.html.slice(0, boundaries[0]!.index), order: -1 },
+    ...boundaries.map((heading, index) => ({
+      level: Number(heading[1]), heading: space(heading[2]) || 'Untitled', html: normalized.html.slice(heading.index! + heading[0].length, boundaries[index + 1]?.index ?? normalized.html.length), order: index,
+    })),
+  ] : [{ level: 1, heading: normalized.title, html: normalized.html, order: 0 }];
   const headingPath: string[] = [];
   for (const item of sectionsHtml) {
     headingPath.length = item.level - 1; headingPath[item.level - 1] = item.heading;
