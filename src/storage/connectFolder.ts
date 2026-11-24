@@ -1,5 +1,5 @@
 import type { PF1Character } from '../types/character';
-import { restoreSheetFromStorage } from './characterState';
+import { restoreSheetFromStorage, type PendingCrashSnapshot } from './characterState';
 import type { StorageAdapter, StorageResult } from './types';
 
 export interface FolderConnection {
@@ -7,7 +7,9 @@ export interface FolderConnection {
   action: 'saved' | 'recovery' | 'loaded' | 'connected';
   character?: PF1Character;
   recoveredFromCrash?: boolean;
+  pendingCrash?: PendingCrashSnapshot;
   savedAt?: string;
+  characterId?: string;
 }
 
 /** Connect from a user gesture, restore existing data, or populate a fresh tree. */
@@ -24,7 +26,7 @@ export async function connectSheetToFolder(
   const active = await adapter.getActiveCharacter();
   if (!active.ok) return active;
 
-  if (crash.character || active.activeCharacter) {
+  if (active.activeCharacter) {
     const restored = await restoreSheetFromStorage(adapter);
     if (!restored.character) {
       return {
@@ -41,7 +43,17 @@ export async function connectSheetToFolder(
       action: 'loaded',
       character: restored.character,
       recoveredFromCrash: restored.recoveredFromCrash,
+      pendingCrash: restored.pendingCrash,
+      characterId: restored.characterId,
     };
+  }
+
+  // A leftover Crash snapshot from a previous Save is not an active character.
+  // Drop it before inspecting the collection so Connect cannot treat the tree as empty
+  // or silently restore Crash when the user still needs to pick a saved sheet.
+  if (crash.character) {
+    const dismissed = await adapter.dismissCrash();
+    if (!dismissed.ok) return dismissed;
   }
 
   // A missing active.json is not proof that a folder has no saved characters.

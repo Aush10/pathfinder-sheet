@@ -29,6 +29,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import {
@@ -50,7 +51,6 @@ import {
   applyCustomBuffsWithInventorySync,
   applyPointBuyToCharacter,
   applySelectedImageToCharacter,
-  createBlankCharacter,
   loadInitialCharacterState,
   loadInitialLayoutState,
   normalizeCharacterState,
@@ -64,7 +64,11 @@ import {
   importCharacterJSONFile,
 } from '../utils/sheetExporters';
 import { emitStorageToastError, useStorage } from '../storage/StorageContext';
-import { restoreSheetFromStorage } from '../storage/characterState';
+import {
+  blankCharacterWithEmptySot,
+  restoreSheetFromStorage,
+} from '../storage/characterState';
+import { setActiveHostSrdOwner } from '../engine/sotEngine';
 import { AutosaveState, useAutosave } from '../storage/useAutosave';
 
 export interface CharacterContextValue {
@@ -150,22 +154,45 @@ export const CharacterProvider: React.FC<CharacterProviderProps> = ({
   const [layout, setLayout] = useState<WorkspaceLayout>(() => loadInitialLayoutState());
   const [showCrashRecoveredBanner, setShowCrashRecoveredBanner] = useState(false);
   const [isExportingHTML, setIsExportingHTML] = useState(false);
+  const sessionSrdOwnerRef = useRef(
+    typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `session-${Date.now()}`
+  );
 
-  // Debounced Crash Autosave (~1 second after character changes)
+  // Debounced Crash Autosave (serialized queue, 2.5s debounce)
   const autosaveState = useAutosave(character, !effectiveReadOnly);
 
-  // On startup, restore crash recovery or the last deliberately saved character from folder storage
+  useEffect(() => {
+    setActiveHostSrdOwner(sessionSrdOwnerRef.current);
+  }, []);
+
+  // On startup, restore the named save. Ask before applying a newer same-character crash.
   useEffect(() => {
     if (effectiveReadOnly) return;
     let mounted = true;
     restoreSheetFromStorage(storage)
       .then((restored) => {
         if (!mounted || !restored.character) return;
-        setCharacter(syncOddLevelFeats(restored.character));
-        setShowCrashRecoveredBanner(restored.recoveredFromCrash);
+        if (restored.characterId) sessionSrdOwnerRef.current = restored.characterId;
+        setActiveHostSrdOwner(sessionSrdOwnerRef.current);
+        let next = restored.character;
+        if (restored.pendingCrash && typeof window !== 'undefined') {
+          const accept = window.confirm(
+            'A newer crash autosave exists for this character. Restore the crash snapshot instead of the last Save?',
+          );
+          if (accept) {
+            next = restored.pendingCrash.character;
+            setShowCrashRecoveredBanner(true);
+          } else {
+            setShowCrashRecoveredBanner(false);
+            void storage.dismissCrash();
+          }
+        } else {
+          setShowCrashRecoveredBanner(restored.recoveredFromCrash);
+        }
+        setCharacter(syncOddLevelFeats(next));
       })
       .catch(() => {
-        // ignore startup restore errors
+        emitStorageToastError('The saved folder could not be restored. The on-screen sheet was left unchanged.');
       });
     return () => {
       mounted = false;
@@ -177,12 +204,17 @@ export const CharacterProvider: React.FC<CharacterProviderProps> = ({
     setCharacter((prev) => syncOddLevelFeats(prev));
   }, [character.level]);
 
-  // Persist character to localStorage (pf1e_character_data_v1)
+  // Persist character to localStorage as a volatile session cache only.
   useEffect(() => {
     try {
       localStorage.setItem(LOCAL_STORAGE_CHARACTER_KEY, JSON.stringify(character));
-    } catch {
-      // ignore quota errors
+    } catch (error) {
+      const quota = error instanceof DOMException && error.name === 'QuotaExceededError';
+      emitStorageToastError(
+        quota
+          ? 'Browser session storage is full. The AIgamesheet folder is still the durable copy. Free origin storage or reconnect the folder.'
+          : 'Could not write the session cache. The AIgamesheet folder is still the durable copy.',
+      );
     }
   }, [character]);
 
@@ -190,8 +222,13 @@ export const CharacterProvider: React.FC<CharacterProviderProps> = ({
   useEffect(() => {
     try {
       localStorage.setItem(LOCAL_STORAGE_LAYOUT_KEY, JSON.stringify(layout));
-    } catch {
-      // ignore quota errors
+    } catch (error) {
+      const quota = error instanceof DOMException && error.name === 'QuotaExceededError';
+      emitStorageToastError(
+        quota
+          ? 'Browser session storage is full. Workspace layout was not cached. The AIgamesheet folder is still the durable copy.'
+          : 'Could not write the workspace layout session cache.',
+      );
     }
   }, [layout]);
 
@@ -267,7 +304,11 @@ export const CharacterProvider: React.FC<CharacterProviderProps> = ({
   );
 
   const resetToBlankSheet = useCallback(() => {
-    setCharacter(createBlankCharacter());
+    sessionSrdOwnerRef.current =
+      typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `session-${Date.now()}`;
+    setActiveHostSrdOwner(sessionSrdOwnerRef.current);
+    setShowCrashRecoveredBanner(false);
+    setCharacter(blankCharacterWithEmptySot());
   }, []);
 
   const resetToDefaultSheet = useCallback(() => {
@@ -310,7 +351,15 @@ export const CharacterProvider: React.FC<CharacterProviderProps> = ({
 
   const dismissCrashRecoveredBanner = useCallback(() => {
     setShowCrashRecoveredBanner(false);
-    void storage.dismissCrash();
+    void storage.dismissCrash().then(() =>
+      restoreSheetFromStorage(storage).then((restored) => {
+        if (restored.character) {
+          if (restored.characterId) sessionSrdOwnerRef.current = restored.characterId;
+          setActiveHostSrdOwner(sessionSrdOwnerRef.current);
+          setCharacter(syncOddLevelFeats(restored.character));
+        }
+      }),
+    );
   }, [storage]);
 
   const contextValue = useMemo<CharacterContextValue>(

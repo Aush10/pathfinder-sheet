@@ -15,8 +15,91 @@ import {
 } from '../types/character';
 import { parseSrdSkillsAndProficiencies } from './aiService';
 
-const HOST_SRD_INDEX_KEY = 'pf1e_host_srd_index_v1';
-const HOST_SRD_DOC_PREFIX = 'pf1e_host_srd_doc_';
+/** Legacy unscoped keys. AF2 migrates these once; AF1 no longer reads them as authority. */
+export const LEGACY_GLOBAL_HOST_SRD_INDEX_KEY = 'pf1e_host_srd_index_v1';
+export const LEGACY_GLOBAL_HOST_SRD_DOC_PREFIX = 'pf1e_host_srd_doc_';
+const HOST_SRD_DOC_PREFIX = LEGACY_GLOBAL_HOST_SRD_DOC_PREFIX;
+const HOST_SRD_OWNER_SESSION_KEY = 'pf1e_host_srd_active_owner_v1';
+
+export const EMPTY_SOT_CATALOGUE = {
+  weblinks: [] as SOTWeblinkItem[],
+  overridePages: [] as SOTRichTextPage[],
+  macaroniSuggestions: [] as SOTMacaroniSuggestion[],
+};
+
+let activeHostSrdOwner: string | null = null;
+
+function emitHostSrdError(message: string): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent('pf1e:storage-error', { detail: { error: message } }));
+}
+
+function hasLocalStorage(): boolean {
+  return typeof localStorage !== 'undefined';
+}
+
+function ownerKeyPart(characterId: string): string {
+  return characterId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+}
+
+function indexKeyFor(characterId: string): string {
+  return `pf1e_host_srd_index_${ownerKeyPart(characterId)}_v1`;
+}
+
+function docKeyFor(characterId: string, docId: string): string {
+  return `${HOST_SRD_DOC_PREFIX}${ownerKeyPart(characterId)}_${docId}`;
+}
+
+export function setActiveHostSrdOwner(characterId: string | null): void {
+  activeHostSrdOwner = characterId && characterId.trim() ? characterId.trim() : null;
+  if (!hasLocalStorage()) return;
+  try {
+    if (activeHostSrdOwner) localStorage.setItem(HOST_SRD_OWNER_SESSION_KEY, activeHostSrdOwner);
+    else localStorage.removeItem(HOST_SRD_OWNER_SESSION_KEY);
+  } catch (error) {
+    const quota = error instanceof DOMException && error.name === 'QuotaExceededError';
+    emitHostSrdError(
+      quota
+        ? 'Browser session storage is full. The AIgamesheet folder is still the durable copy. Free origin storage and try again.'
+        : 'Could not remember the active character for host SRD storage.',
+    );
+  }
+}
+
+export function getActiveHostSrdOwner(): string | null {
+  if (activeHostSrdOwner) return activeHostSrdOwner;
+  if (!hasLocalStorage()) return null;
+  try {
+    const stored = localStorage.getItem(HOST_SRD_OWNER_SESSION_KEY);
+    activeHostSrdOwner = stored && stored.trim() ? stored.trim() : null;
+    return activeHostSrdOwner;
+  } catch {
+    return null;
+  }
+}
+
+function parseHostSrdDoc(raw: string | null): SOTRichTextPage | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as SOTRichTextPage;
+    if (parsed && parsed.id && parsed.title) return { ...parsed, isReadOnly: true };
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function readIdIndex(indexKey: string): string[] {
+  if (!hasLocalStorage()) return [];
+  const existingIndexRaw = localStorage.getItem(indexKey);
+  if (!existingIndexRaw) return [];
+  try {
+    const ids = JSON.parse(existingIndexRaw);
+    return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
+  } catch {
+    return [];
+  }
+}
 
 // ============================================================================
 // 1. SOT SECURITY SANITIZER & READ-ONLY QUARANTINE
@@ -184,43 +267,42 @@ export function sanitizeSrdDocument(
 // 2. HOST-DEVICE SEPARATE STORAGE FOR MULTIPLE SRD DOCS
 // ============================================================================
 
-export function saveSrdDocToHostDeviceStorage(doc: SOTRichTextPage): string {
+export function saveSrdDocForCharacter(characterId: string, doc: SOTRichTextPage): string {
+  if (!characterId.trim()) return '';
+  if (!hasLocalStorage()) return '';
   try {
-    const hostKey = `${HOST_SRD_DOC_PREFIX}${doc.id}`;
+    const hostKey = docKeyFor(characterId, doc.id);
     const docWithKey: SOTRichTextPage = {
       ...doc,
       isReadOnly: true,
       hostSavedKey: hostKey,
     };
     localStorage.setItem(hostKey, JSON.stringify(docWithKey));
-
-    const existingIndexRaw = localStorage.getItem(HOST_SRD_INDEX_KEY);
-    const existingIds: string[] = existingIndexRaw ? JSON.parse(existingIndexRaw) : [];
+    const existingIds = readIdIndex(indexKeyFor(characterId));
     if (!existingIds.includes(doc.id)) {
       existingIds.unshift(doc.id);
-      localStorage.setItem(HOST_SRD_INDEX_KEY, JSON.stringify(existingIds));
+      localStorage.setItem(indexKeyFor(characterId), JSON.stringify(existingIds));
     }
     return hostKey;
-  } catch (err) {
-    console.warn('Could not save SRD doc to host storage:', err);
+  } catch (error) {
+    const quota = error instanceof DOMException && error.name === 'QuotaExceededError';
+    emitHostSrdError(
+      quota
+        ? 'Browser session storage is full. SRD text was not cached in origin storage. Use the connected AIgamesheet folder as the durable copy.'
+        : 'Could not save this SRD to host storage.',
+    );
     return '';
   }
 }
 
-export function loadAllHostDeviceSrdDocs(): SOTRichTextPage[] {
+/** Per-character host-SRD loader for AG3 and Add Class. Never mixes another character's docs. */
+export function loadHostSrdDocsForCharacter(characterId: string): SOTRichTextPage[] {
+  if (!characterId.trim() || !hasLocalStorage()) return [];
   try {
-    const existingIndexRaw = localStorage.getItem(HOST_SRD_INDEX_KEY);
-    if (!existingIndexRaw) return [];
-    const ids: string[] = JSON.parse(existingIndexRaw);
     const docs: SOTRichTextPage[] = [];
-    for (const id of ids) {
-      const raw = localStorage.getItem(`${HOST_SRD_DOC_PREFIX}${id}`);
-      if (raw) {
-        const parsed = JSON.parse(raw) as SOTRichTextPage;
-        if (parsed && parsed.id && parsed.title) {
-          docs.push({ ...parsed, isReadOnly: true });
-        }
-      }
+    for (const id of readIdIndex(indexKeyFor(characterId))) {
+      const parsed = parseHostSrdDoc(localStorage.getItem(docKeyFor(characterId, id)));
+      if (parsed) docs.push(parsed);
     }
     return docs;
   } catch {
@@ -228,20 +310,92 @@ export function loadAllHostDeviceSrdDocs(): SOTRichTextPage[] {
   }
 }
 
-export function removeSrdDocFromHostDeviceStorage(id: string): void {
+export function loadHostSrdDocForCharacter(characterId: string, docId: string): SOTRichTextPage | null {
+  if (!characterId.trim() || !docId.trim() || !hasLocalStorage()) return null;
   try {
-    localStorage.removeItem(`${HOST_SRD_DOC_PREFIX}${id}`);
-    const existingIndexRaw = localStorage.getItem(HOST_SRD_INDEX_KEY);
-    if (existingIndexRaw) {
-      const ids: string[] = JSON.parse(existingIndexRaw);
-      localStorage.setItem(
-        HOST_SRD_INDEX_KEY,
-        JSON.stringify(ids.filter((item) => item !== id))
-      );
-    }
+    return parseHostSrdDoc(localStorage.getItem(docKeyFor(characterId, docId)));
   } catch {
-    // ignore storage errors
+    return null;
   }
+}
+
+export function saveSrdDocToHostDeviceStorage(doc: SOTRichTextPage): string {
+  const owner = getActiveHostSrdOwner();
+  if (!owner) {
+    emitHostSrdError('No active character is selected for host SRD storage. Save or load a sheet first.');
+    return '';
+  }
+  return saveSrdDocForCharacter(owner, doc);
+}
+
+export function loadAllHostDeviceSrdDocs(): SOTRichTextPage[] {
+  const owner = getActiveHostSrdOwner();
+  if (!owner) return [];
+  return loadHostSrdDocsForCharacter(owner);
+}
+
+export function removeSrdDocFromHostDeviceStorage(id: string): void {
+  const owner = getActiveHostSrdOwner();
+  if (!owner || !hasLocalStorage()) return;
+  try {
+    localStorage.removeItem(docKeyFor(owner, id));
+    localStorage.setItem(
+      indexKeyFor(owner),
+      JSON.stringify(readIdIndex(indexKeyFor(owner)).filter((item) => item !== id)),
+    );
+  } catch {
+    emitHostSrdError('Could not remove this SRD from host storage.');
+  }
+}
+
+export function referenceSrdPagesForStorage<T extends { sotCatalogue?: { weblinks: SOTWeblinkItem[]; overridePages: SOTRichTextPage[]; macaroniSuggestions?: SOTMacaroniSuggestion[] } }>(
+  character: T,
+  characterId: string,
+): T {
+  const pages = character.sotCatalogue?.overridePages;
+  if (!pages?.length || !hasLocalStorage()) return character;
+  const nextPages = pages.map((page) => {
+    const hasBody = Boolean(page.htmlContent || page.plainText);
+    if (!hasBody) return page;
+    const hostKey = saveSrdDocForCharacter(characterId, page);
+    if (!hostKey) return page;
+    return { ...page, htmlContent: '', plainText: '', hostSavedKey: hostKey };
+  });
+  return {
+    ...character,
+    sotCatalogue: {
+      weblinks: character.sotCatalogue?.weblinks ?? [],
+      overridePages: nextPages,
+      macaroniSuggestions: character.sotCatalogue?.macaroniSuggestions ?? [],
+    },
+  };
+}
+
+export function rehydrateSrdPagesFromHost<T extends { sotCatalogue?: { weblinks: SOTWeblinkItem[]; overridePages: SOTRichTextPage[]; macaroniSuggestions?: SOTMacaroniSuggestion[] } }>(
+  character: T,
+  characterId: string,
+): T {
+  const pages = character.sotCatalogue?.overridePages;
+  if (!pages?.length || !characterId) return character;
+  const hosted = new Map(loadHostSrdDocsForCharacter(characterId).map((doc) => [doc.id, doc]));
+  const nextPages = pages.map((page) => {
+    const full = hosted.get(page.id);
+    if (!full) return page;
+    return {
+      ...page,
+      htmlContent: full.htmlContent || page.htmlContent,
+      plainText: full.plainText || page.plainText,
+      hostSavedKey: full.hostSavedKey || page.hostSavedKey,
+    };
+  });
+  return {
+    ...character,
+    sotCatalogue: {
+      weblinks: character.sotCatalogue?.weblinks ?? [],
+      overridePages: nextPages,
+      macaroniSuggestions: character.sotCatalogue?.macaroniSuggestions ?? [],
+    },
+  };
 }
 
 export function exportSrdDocFileToHost(doc: SOTRichTextPage): void {
