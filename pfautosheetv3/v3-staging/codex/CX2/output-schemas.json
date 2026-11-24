@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "PF1E_SOT_INGEST_V1",
+  "description": "CX2 staging contracts. AF2 persists these four artifacts under <character>/SRD/<doc>/.",
+  "artifacts": {
+    "table.json": {
+      "type": "object",
+      "required": ["schemaVersion", "documentId", "tables"],
+      "properties": {
+        "schemaVersion": { "const": "PF1E_SOT_INGEST_V1" },
+        "documentId": { "type": "string" },
+        "tables": { "type": "array", "items": { "type": "object", "required": ["id", "sectionId", "headers", "headerMap", "cells", "headerGrid", "rows", "notes", "kind", "documentOrder"] } }
+      }
+    },
+    "links.json": {
+      "type": "object",
+      "required": ["schemaVersion", "documentId", "links"],
+      "properties": { "links": { "type": "array" } }
+    },
+    "text.md": { "type": "string" },
+    "index.json": {
+      "type": "object",
+      "required": ["schemaVersion", "document", "sections", "toc", "keywords", "termIndex"],
+      "properties": { "sections": { "type": "array" }, "termIndex": { "type": "object" } }
+    }
+  }
+}
