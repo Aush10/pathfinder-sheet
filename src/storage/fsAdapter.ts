@@ -1033,6 +1033,8 @@ export interface PersistSrdIngestParams {
   handle?: FsDirectoryHandleLike;
   handleStore?: DirectoryHandleStore;
   artifactStore?: SrdArtifactStore;
+  /** Required to replace an existing artifact folder after caller confirmation. */
+  overwrite?: boolean;
   now?: () => Date;
 }
 
@@ -1076,13 +1078,23 @@ function createIndexedDbSrdArtifactStore(): SrdArtifactStore {
   };
 }
 
-export function srdDocFolderName(title: string, documentId: string): string {
-  const fromTitle = sanitizePathSegment(title);
-  if (fromTitle && !RESERVED_SRD_DOC_FOLDER_NAMES.has(fromTitle.toLowerCase())) return fromTitle;
+export function srdDocFolderName(_title: string, documentId: string): string {
   const fromId = sanitizePathSegment(documentId.replace(/[^a-zA-Z0-9_-]+/g, '-'))
     ?? sanitizePathSegment(`doc-${documentId.replace(/[^a-zA-Z0-9]/g, '').slice(-16)}`);
   assert(fromId && !RESERVED_SRD_DOC_FOLDER_NAMES.has(fromId.toLowerCase()), 'INVALID_NAME', 'SRD document folder name is invalid.');
   return fromId;
+}
+
+function assertSrdArtifactTargetAvailable(
+  existing: StoredSrdArtifactRecord | undefined,
+  docFolder: string,
+  overwrite: boolean | undefined,
+): void {
+  if (!existing || overwrite) return;
+  throw new StorageFault(
+    'SRD_ARTIFACT_EXISTS',
+    `This file already exists in your Source of Truth at "SRD/${docFolder}". Do you want to overwrite it?`,
+  );
 }
 
 function documentIdFromArtifacts(artifacts: SrdIngestArtifacts): string {
@@ -1182,7 +1194,19 @@ export async function persistSrdIngestArtifacts(
     const handle = await resolveSelectedHandle(params);
     if (handle && params.player && params.characterName) {
       const layout = await characterLayoutFromRoot(handle, params.player, params.characterName);
-      const docDir = await getInternalDirectory(layout.srd, docFolder, true);
+      let existingDir: FsDirectoryHandleLike | undefined;
+      try {
+        existingDir = await getInternalDirectory(layout.srd, docFolder, false);
+      } catch (error) {
+        if (!(error instanceof StorageFault) || error.code !== 'NOT_FOUND') throw error;
+      }
+      if (existingDir && !params.overwrite) {
+        throw new StorageFault(
+          'SRD_ARTIFACT_EXISTS',
+          `This file already exists in your Source of Truth at "SRD/${docFolder}". Do you want to overwrite it?`,
+        );
+      }
+      const docDir = existingDir ?? await getInternalDirectory(layout.srd, docFolder, true);
       await writeSafely(docDir, 'table.json', serialized['table.json'], layout.backups, `${docFolder}-table.json`);
       await writeSafely(docDir, 'links.json', serialized['links.json'], layout.backups, `${docFolder}-links.json`);
       await writeSafely(docDir, 'text.md', serialized['text.md'], layout.backups, `${docFolder}-text.md`);
@@ -1198,6 +1222,11 @@ export async function persistSrdIngestArtifacts(
     }
 
     const store = params.artifactStore ?? createIndexedDbSrdArtifactStore();
+    assertSrdArtifactTargetAvailable(
+      await store.get(srdArtifactStoreKey(params.characterId, docFolder)),
+      docFolder,
+      params.overwrite,
+    );
     await store.set(srdArtifactStoreKey(params.characterId, docFolder), record);
     return {
       ok: true,

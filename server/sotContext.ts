@@ -159,6 +159,11 @@ function tableCellBlob(table: Record<string, unknown>): string {
     .join(' ');
 }
 
+function boundedLabel(value: string, fallback: string, maxLength: number): string {
+  const label = value || fallback;
+  return label.length > maxLength ? `${label.slice(0, Math.max(0, maxLength - 1))}…` : label;
+}
+
 function formatTableRows(table: Record<string, unknown>, tokens: string[]): string {
   const kind = asString(table.kind) || 'lookup-table';
   const headers = Array.isArray(table.headers) ? table.headers.map((cell) => untrustedPlainText(cell) || asString(cell)) : [];
@@ -187,8 +192,8 @@ function blocksFromIngest(
   tokens: string[],
   orderBase: number,
 ): RankedBlock[] {
-  const title = asString(document.title) || asString((ingest.index.document as { title?: string } | undefined)?.title) || 'Untitled';
-  const docId = asString(document.id) || asString((ingest.index.document as { id?: string } | undefined)?.id) || title;
+  const title = boundedLabel(asString(document.title) || asString((ingest.index.document as { title?: string } | undefined)?.title), 'Untitled', 240);
+  const docId = boundedLabel(asString(document.id) || asString((ingest.index.document as { id?: string } | undefined)?.id), title, 120);
   const sections = Array.isArray(ingest.index.sections) ? ingest.index.sections : [];
   const termIndex = isRecord(ingest.index.termIndex) ? ingest.index.termIndex : {};
   const tablesById = new Map<string, Record<string, unknown>>();
@@ -234,7 +239,7 @@ function blocksFromIngest(
       id: sectionId,
       score: score || (tokens.length ? 0 : 0.1),
       order: orderBase + index,
-      text: `[SOT DOC "${title}" | ${asString(document.category) || 'General Rule'} | id=${docId}]\n${body}`,
+      text: `[SOT DOC "${title}" | ${boundedLabel(asString(document.category), 'General Rule', 80)} | id=${docId}]\n${body}`,
     });
   });
   return blocks;
@@ -262,8 +267,8 @@ function excerptWindows(excerpt: string, windowSize = 1500): string[] {
 }
 
 function blocksFromExcerpt(document: Record<string, unknown>, tokens: string[], orderBase: number): RankedBlock[] {
-  const title = asString(document.title) || 'Untitled';
-  const docId = asString(document.id) || title;
+  const title = boundedLabel(asString(document.title), 'Untitled', 240);
+  const docId = boundedLabel(asString(document.id), title, 120);
   const excerpt = untrustedPlainText(document.excerpt)
     || untrustedPlainText(document.plainText)
     || untrustedPlainText(document.htmlContent);
@@ -274,16 +279,50 @@ function blocksFromExcerpt(document: Record<string, unknown>, tokens: string[], 
       id: `${docId}:excerpt-${index}`,
       score: score || (tokens.length ? 0 : 0.1),
       order: orderBase + index,
-      text: `[SOT DOC "${title}" | ${asString(document.category) || 'General Rule'} | id=${docId}]\n${chunk}`,
+      text: `[SOT DOC "${title}" | ${boundedLabel(asString(document.category), 'General Rule', 80)} | id=${docId}]\n${chunk}`,
     };
   });
 }
 
 function catalogueLine(document: Record<string, unknown>, index: number): string {
-  const title = asString(document.title) || `Document ${index + 1}`;
-  const category = asString(document.category) || 'General Rule';
-  const id = asString(document.id);
+  const title = boundedLabel(asString(document.title), `Document ${index + 1}`, 240);
+  const category = boundedLabel(asString(document.category), 'General Rule', 80);
+  const id = boundedLabel(asString(document.id), '', 120);
   return `- "${title}" [${category}]${id ? ` id=${id}` : ''}`;
+}
+
+function hasTruncatedDocumentMetadata(document: Record<string, unknown>): boolean {
+  return asString(document.title).length > 240
+    || asString(document.category).length > 80
+    || asString(document.id).length > 120;
+}
+
+function boundedCatalogue(documents: Record<string, unknown>[], budget: number): { text: string; truncated: boolean } {
+  const header = 'Loaded SOT documents (catalogue only; an omitted excerpt does not mean the rule is absent from a loaded document):';
+  if (budget <= 0) return { text: '', truncated: documents.length > 0 };
+  if (header.length >= budget) return { text: header.slice(0, budget), truncated: true };
+
+  const parts = [header];
+  let used = header.length;
+  let truncated = false;
+  for (let index = 0; index < documents.length; index += 1) {
+    const line = catalogueLine(documents[index], index);
+    const addition = `\n${line}`;
+    if (used + addition.length > budget) {
+      truncated = true;
+      break;
+    }
+    parts.push(line);
+    used += addition.length;
+  }
+  return { text: parts.join('\n'), truncated };
+}
+
+function boundedText(text: string, budget: number): { text: string; truncated: boolean } {
+  if (budget <= 0) return { text: '', truncated: text.length > 0 };
+  return text.length > budget
+    ? { text: text.slice(0, budget), truncated: true }
+    : { text, truncated: false };
 }
 
 function packBlocks(blocks: RankedBlock[], budget: number): { text: string; selectedSectionIds: string[]; truncated: boolean } {
@@ -325,17 +364,15 @@ export function selectBoundedSotContext(args: {
   const userMessages = (args.conversation || []).filter((message) => message.role === 'user').slice(-4).map((message) => message.text);
   const tokens = tokenizeQuery([args.query || '', ...userMessages].join(' '));
 
-  const catalogue = [
-    'Loaded SOT documents (catalogue only; an omitted excerpt does not mean the rule is absent from a loaded document):',
-    ...documents.map((document, index) => catalogueLine(document, index)),
-  ].join('\n');
-
   if (tokens.length === 0) {
     const mode: BoundedSotResult['mode'] = documents.some((document) => ingestFrom(document)) ? 'ingest' : 'excerpt';
+    const noQueryNotice = 'No query terms yet. Catalogue lists loaded documents; excerpts will appear when the player asks about them.';
+    const catalogue = boundedCatalogue(documents, Math.max(0, budget - noQueryNotice.length - 2));
+    const result = boundedText(`${catalogue.text}\n\n${noQueryNotice}`, budget);
     return {
-      text: `${catalogue}\n\nNo query terms yet. Catalogue lists loaded documents; excerpts will appear when the player asks about them.`,
+      text: result.text,
       selectedSectionIds: [],
-      truncated: false,
+      truncated: catalogue.truncated || documents.some(hasTruncatedDocumentMetadata) || result.truncated,
       mode,
     };
   }
@@ -354,15 +391,19 @@ export function selectBoundedSotContext(args: {
     blocks.push(...blocksFromExcerpt(document, tokens, index * 1000));
   });
 
-  const packed = packBlocks(blocks, Math.max(0, budget - catalogue.length - 2));
+  const noMatchNotice = 'No excerpt matched this query. Loaded documents still exist; do not invent rules for them.';
+  // Keep query evidence useful even when document titles are unusually long.
+  const catalogue = boundedCatalogue(documents, Math.max(0, Math.min(3_000, budget - noMatchNotice.length - 2)));
+  const packed = packBlocks(blocks, Math.max(0, budget - catalogue.text.length - 2));
   const evidence = packed.text
-    ? `${catalogue}\n\n${packed.text}`
-    : `${catalogue}\n\nNo excerpt matched this query. Loaded documents still exist; do not invent rules for them.`;
+    ? `${catalogue.text}\n\n${packed.text}`
+    : `${catalogue.text}\n\n${noMatchNotice}`;
+  const result = boundedText(evidence, budget);
   const mode: BoundedSotResult['mode'] = sawIngest && sawExcerpt ? 'mixed' : sawIngest ? 'ingest' : 'excerpt';
   return {
-    text: evidence,
+    text: result.text,
     selectedSectionIds: packed.selectedSectionIds,
-    truncated: packed.truncated || evidence.length > budget,
+    truncated: catalogue.truncated || documents.some(hasTruncatedDocumentMetadata) || packed.truncated || result.truncated,
     mode,
   };
 }
