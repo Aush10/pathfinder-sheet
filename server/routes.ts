@@ -16,10 +16,91 @@ import {
 } from './sotContext.ts';
 import { ingestFromRequestBody } from './ingest/http.ts';
 
+export const DEFAULT_SERVER_PORT = 3000;
+
+const READONLY_SOT_ALLOWED_HOSTS = [
+  'd20pfsrd.com',
+  'aonprd.com',
+  'paizo.com',
+  'spheresofpower.wikidot.com',
+] as const;
+
 function errorMessage(err: unknown, fallback: string): string {
   return err && typeof err === 'object' && 'message' in err && typeof (err as { message: unknown }).message === 'string'
     ? (err as { message: string }).message
     : fallback;
+}
+
+/** PORT env with a 3000 fallback (B18). Invalid values also fall back. */
+export function resolveServerPort(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.PORT;
+  if (raw == null || String(raw).trim() === '') return DEFAULT_SERVER_PORT;
+  const parsed = Number.parseInt(String(raw).trim(), 10);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) return DEFAULT_SERVER_PORT;
+  return parsed;
+}
+
+export function formatPortInUseMessage(port: number): string {
+  return `Port ${port} is already in use. Set PORT to a free port (for example PORT=3001) and restart.`;
+}
+
+function hostnameMatchesAllowlist(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/\.$/, '');
+  if (!host || host === 'localhost' || host.endsWith('.localhost')) return false;
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host) || host.includes(':')) return false;
+  return READONLY_SOT_ALLOWED_HOSTS.some((allowed) => host === allowed || host.endsWith(`.${allowed}`));
+}
+
+export function isReadonlySotHostAllowed(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+    return hostnameMatchesAllowlist(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
+export function inspectReadonlySotFetchUrl(
+  raw: unknown,
+): { ok: true; url: string } | { ok: false; status: number; error: string } {
+  if (!raw || typeof raw !== 'string' || !/^https?:\/\//i.test(raw.trim())) {
+    return { ok: false, status: 400, error: 'Valid HTTP/HTTPS URL is required.' };
+  }
+  const targetUrl = raw.trim();
+  if (/discord(?:app)?\.com\/api\/webhooks|hooks\.slack\.com|webhook/i.test(targetUrl)) {
+    return {
+      ok: false,
+      status: 403,
+      error: 'Blocked by SOT Security Guard: Webhook URLs are forbidden.',
+    };
+  }
+  if (!isReadonlySotHostAllowed(targetUrl)) {
+    return {
+      ok: false,
+      status: 403,
+      error: 'Blocked by SOT Security Guard: Host is not on the read-only SOT allowlist.',
+    };
+  }
+  return { ok: true, url: targetUrl };
+}
+
+/** Express 4 SPA fallback for production deep links (B17). Skip /api so missing API routes stay 404. */
+export function shouldServeSpaFallback(method: string, path: string): boolean {
+  const verb = method.toUpperCase();
+  if (verb !== 'GET' && verb !== 'HEAD') return false;
+  return !path.startsWith('/api');
+}
+
+export function registerProductionSpaFallback(
+  app: Express,
+  sendIndex: (req: Request, res: Response) => void,
+): void {
+  // Express 4 catch-all. `*all` is Express 5 syntax and 404s every deep link on 4.21.
+  app.get('*', (req, res, next) => {
+    if (!shouldServeSpaFallback(req.method, req.path)) return next();
+    sendIndex(req, res);
+  });
 }
 
 /** Dev-only tap-test trace. Never logs API keys or env. */
@@ -226,32 +307,51 @@ async function handleSotIngest(req: Request, res: Response) {
 
 async function handleSotFetchReadonlyPage(req: Request, res: Response) {
   try {
-    const { url } = req.body || {};
-    if (!url || typeof url !== 'string' || !/^https?:\/\//i.test(url.trim())) {
-      return res.status(400).json({ error: 'Valid HTTP/HTTPS URL is required.' });
-    }
-
-    const targetUrl = url.trim();
-    if (/discord(?:app)?\.com\/api\/webhooks|hooks\.slack\.com|webhook/i.test(targetUrl)) {
-      return res.status(403).json({
-        error: 'Blocked by SOT Security Guard: Webhook URLs are forbidden.',
-      });
+    const inspected = inspectReadonlySotFetchUrl(req.body?.url);
+    if (!inspected.ok) {
+      return res.status(inspected.status).json({ error: inspected.error });
     }
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 7000);
 
-    const response = await fetch(targetUrl, {
-      method: 'GET',
-      headers: {
-        'User-Agent': 'PF1e-Sheet-ReadOnly-SOT-Reader/1.0',
-        Accept: 'text/html,text/plain;q=0.9',
-      },
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
+    let targetUrl = inspected.url;
+    let upstream: globalThis.Response | undefined;
+    try {
+      for (let hop = 0; hop < 3; hop += 1) {
+        const hopCheck = inspectReadonlySotFetchUrl(targetUrl);
+        if (!hopCheck.ok) {
+          return res.status(hopCheck.status).json({ error: hopCheck.error });
+        }
+        upstream = await fetch(hopCheck.url, {
+          method: 'GET',
+          headers: {
+            'User-Agent': 'PF1e-Sheet-ReadOnly-SOT-Reader/1.0',
+            Accept: 'text/html,text/plain;q=0.9',
+          },
+          redirect: 'manual',
+          signal: controller.signal,
+        });
+        if (upstream.status >= 300 && upstream.status < 400) {
+          const location = upstream.headers.get('location');
+          if (!location) break;
+          try {
+            targetUrl = new URL(location, hopCheck.url).href;
+            continue;
+          } catch {
+            break;
+          }
+        }
+        break;
+      }
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (!upstream || upstream.status >= 300) {
+      return res.status(502).json({ error: 'Could not fetch single-page read-only snapshot.' });
+    }
 
-    const rawHtml = (await response.text()).slice(0, 250000);
+    const rawHtml = (await upstream.text()).slice(0, 250000);
 
     const incidentalLinks: Array<{ url: string; label: string; isWebhookOrSuspicious?: boolean }> = [];
     const seenUrls = new Set<string>();
@@ -325,10 +425,6 @@ export function registerApiRoutes(app: Express): void {
   app.post('/api/openai/generate', handleOpenAIGenerate);
   app.post('/api/openai/lookup', handleOpenAILookup);
   app.post('/api/openai/complete-sheet', handleCompleteSheet);
-  // Compatibility aliases for clients loaded before the OpenAI route rename.
-  app.post('/api/gemini/generate', handleOpenAIGenerate);
-  app.post('/api/gemini/lookup', handleOpenAILookup);
-  app.post('/api/gemini/complete-sheet', handleCompleteSheet);
   app.post('/api/sot/fetch-readonly-page', handleSotFetchReadonlyPage);
   app.post('/api/sot/ingest', handleSotIngest);
 }

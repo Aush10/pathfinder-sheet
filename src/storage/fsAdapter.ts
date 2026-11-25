@@ -22,6 +22,7 @@ export const STORAGE_USERS_NAME = 'pfmusers';
 export const STORAGE_CRASH_NAME = 'Crash';
 export const CHARACTER_FILE_NAME = 'character.json';
 export const ACTIVE_FILE_NAME = 'active.json';
+export const CHARACTER_EXPORTS_FOLDER = 'exports';
 const RESERVED_CHARACTER_FOLDER_NAMES = ['settings', 'dsl', 'backups'];
 
 const CHARACTER_FORMAT = 'pf1e-character';
@@ -121,6 +122,7 @@ interface CharacterLayout {
   tools: FsDirectoryHandleLike;
   modules: FsDirectoryHandleLike;
   backups: FsDirectoryHandleLike;
+  exports: FsDirectoryHandleLike;
 }
 
 class StorageFault extends Error {
@@ -493,7 +495,8 @@ async function ensureCharacterLayout(root: FsDirectoryHandleLike): Promise<Chara
   const tools = await getInternalDirectory(root, 'tools', true);
   const modules = await getInternalDirectory(root, 'Modules', true);
   const backups = await getInternalDirectory(root, 'backups', true);
-  return { root, images, dslMacros, dslStepper, dslXdx, srd, ai, aiReadOnly, notebook, tools, modules, backups };
+  const exportsDir = await getInternalDirectory(root, CHARACTER_EXPORTS_FOLDER, true);
+  return { root, images, dslMacros, dslStepper, dslXdx, srd, ai, aiReadOnly, notebook, tools, modules, backups, exports: exportsDir };
 }
 
 async function ensureBaseTree(selectedRoot: FsDirectoryHandleLike): Promise<{
@@ -1319,6 +1322,80 @@ export async function ingestAndPersistSrdDocument(params: {
     });
     if (!persisted.ok) return persisted;
     return { ...persisted, title: ingested.title };
+  } catch (error) {
+    return toFailure(error);
+  }
+}
+
+export type WriteCharacterExportReceipt =
+  | { stored: 'folder'; relativePath: string; fileName: string }
+  | { stored: 'skipped' };
+
+function defaultExportHandleStore(): DirectoryHandleStore | undefined {
+  if (typeof indexedDB === 'undefined') return undefined;
+  return createIndexedDbHandleStore();
+}
+
+async function resolveExportCharacterLayout(params: {
+  player?: string;
+  characterName?: string;
+  handle?: FsDirectoryHandleLike;
+  handleStore?: DirectoryHandleStore;
+}): Promise<CharacterLayout | undefined> {
+  const handle = await resolveSelectedHandle({
+    handle: params.handle,
+    handleStore: params.handleStore ?? defaultExportHandleStore(),
+  });
+  if (!handle) return undefined;
+
+  let player = params.player?.trim();
+  let characterName = params.characterName?.trim();
+  if (!player || !characterName) {
+    const tree = await ensureBaseTree(handle);
+    const text = await readTextIfPresent(tree.managedRoot, ACTIVE_FILE_NAME);
+    if (text) {
+      try {
+        const envelope = await parseEnvelope(text, PROJECTION_FORMAT, DEFAULT_SCHEMA_VERSION);
+        const active = parseActiveCharacter(envelope.data);
+        if (active) {
+          player = player || active.player;
+          characterName = characterName || active.name;
+        }
+      } catch {
+        // Active pointer is optional for exports; skip to Blob fallback.
+      }
+    }
+  }
+  if (!player || !characterName) return undefined;
+  return characterLayoutFromRoot(handle, player, characterName);
+}
+
+/** Writes a downloadable export into `<character>/exports/` when a folder is connected. */
+export async function writeCharacterExportFile(params: {
+  fileName: string;
+  contents: string;
+  player?: string;
+  characterName?: string;
+  handle?: FsDirectoryHandleLike;
+  handleStore?: DirectoryHandleStore;
+}): Promise<StorageResult<WriteCharacterExportReceipt>> {
+  try {
+    assert(typeof params.contents === 'string', 'INVALID_DATA', 'Export contents must be text.');
+    assertFileSize(params.contents);
+    const leaf = params.fileName.split(/[/\\]/).pop() ?? '';
+    const fileName = sanitizePathSegment(leaf);
+    assert(fileName, 'INVALID_NAME', 'Export file name is invalid.');
+
+    const layout = await resolveExportCharacterLayout(params);
+    if (!layout) return { ok: true, stored: 'skipped' };
+
+    await writeSafely(layout.exports, fileName, params.contents, layout.backups, `exports-${fileName}`);
+    return {
+      ok: true,
+      stored: 'folder',
+      relativePath: `${CHARACTER_EXPORTS_FOLDER}/${fileName}`,
+      fileName,
+    };
   } catch (error) {
     return toFailure(error);
   }

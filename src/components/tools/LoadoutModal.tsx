@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { PF1Character, LoadoutSectionKey } from '../../types/character';
 import { useCharacter } from '../../context/CharacterContext';
+import { exportFileBaseName, unwrapImportedJsonPayload, writeOrDownloadExport } from '../../utils/sheetExporters';
 
 interface LoadoutModalProps {
   isOpen: boolean;
@@ -209,14 +210,12 @@ export const LoadoutModal: React.FC<LoadoutModalProps> = ({
   };
 
   const handleDownloadExport = () => {
-    const blob = new Blob([exportJsonString], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
     const activeSecNames = SECTIONS.filter((s) => selectedExportSections[s.key]).map((s) => s.key).join('_');
-    a.download = `${character.name.toLowerCase().replace(/\s+/g, '_')}_loadout_${activeSecNames.substring(0, 25) || 'all'}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const fileName = `${exportFileBaseName(character.name)}_loadout_${activeSecNames.substring(0, 25) || 'all'}.json`;
+    void writeOrDownloadExport(fileName, exportJsonString, 'application/json;charset=utf-8', {
+      characterName: character.name,
+      player: character.player,
+    });
   };
 
   const handleSaveAsPreset = () => {
@@ -252,12 +251,16 @@ export const LoadoutModal: React.FC<LoadoutModalProps> = ({
     setImportJsonText(text);
     setImportStatusMessage(null);
     try {
-      const parsed = JSON.parse(text);
-      setParsedImportData(parsed);
+      const parsed = unwrapImportedJsonPayload(JSON.parse(text));
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('Invalid JSON format.');
+      }
+      const payload = parsed as Record<string, unknown>;
+      setParsedImportData(payload);
 
       // Check if it's a modular loadout (has .sections) or a direct full PF1Character export
       const detected: LoadoutSectionKey[] = [];
-      const sectionsMap = (parsed.sections as Record<string, unknown>) || parsed;
+      const sectionsMap = (payload.sections as Record<string, unknown> | undefined) || payload;
 
       SECTIONS.forEach((s) => {
         if (s.key === 'combatStats' && (sectionsMap.combatStats || sectionsMap.baseAttackBonus !== undefined)) {
@@ -302,10 +305,24 @@ export const LoadoutModal: React.FC<LoadoutModalProps> = ({
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (evt) => {
-      const content = evt.target?.result as string;
+      const content = evt.target?.result;
+      if (typeof content !== 'string') {
+        setParsedImportData(null);
+        setDetectedImportSections([]);
+        setSelectedImportSections({});
+        setImportStatusMessage('Could not read the selected file.');
+        return;
+      }
       handleParseImportJson(content);
     };
+    reader.onerror = () => {
+      setParsedImportData(null);
+      setDetectedImportSections([]);
+      setSelectedImportSections({});
+      setImportStatusMessage('Could not read the selected file.');
+    };
     reader.readAsText(file);
+    e.target.value = '';
   };
 
   // Apply selected imported sections to character
