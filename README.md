@@ -1,9 +1,9 @@
-# PF1 Modular Workspace
+# PF1 Autosheet
 
 Local-first character-sheet workspace for Pathfinder 1e. The app combines live
 combat calculations, actions and resources, equipment and downtime, print
 output, save-tree persistence, a Character Matrix, SOT ingest, and the Macaroni
-1.2 macro engine.
+xdx macro engine.
 
 ## Run locally
 
@@ -33,7 +33,7 @@ status without returning credentials.
 - JSON, CSV, printable-sheet, and standalone HTML export
 - Connected-folder saves, crash recovery, and import validation
 
-## Macaroni 1.2
+## Macroni 1.2
 
 Every XDX or Macro Debug expression starts with a sigil:
 
