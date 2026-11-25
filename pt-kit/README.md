@@ -68,7 +68,9 @@ If you want Complete Sheet / lookup:
 
 1. Copy `.env.example` to `.env.local` next to `server.ts`
 2. Put your key on the `OPENAI_API_KEY=` line
-3. Restart the app
+3. Restart the Node server, not just the browser window. For the installed
+   kit, stop its `server.ts` Node process in Task Manager, then relaunch the
+   desktop shortcut. For development, stop and rerun `npm run dev`.
 
 Do not put a key in the zip, in chat, or in a screenshot. The kit never
 packages `.env.local`.
