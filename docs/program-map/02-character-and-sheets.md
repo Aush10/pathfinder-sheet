@@ -61,7 +61,7 @@ Effects (154–196):
 
 Stored fields are what the inputs write. Totals on the sheet (ability mods, AC, saves, attack bonus, skill totals, encumbrance, calculated max HP) come from `derived` and are not written back unless a control copies them (page 1 "reset HP to max" writes the derived max into `hpCurrent` and `hpTotalMax`).
 
-Example, skill ranks: `SheetPage2ActionsSkills` `updateSkill` replaces `character.skills` via `setCharacter`. The displayed bonus adds ability mods, a class-skill +3, and armor check from `derived`. Example, damage: page 1 writes `hpCurrent` directly; `QuickHPBar` would call `updateHP`, but nothing opens that bar (see part 1).
+Example, skill ranks: `SheetPage2ActionsSkills` `updateSkill` replaces `character.skills` via `setCharacter`. The displayed bonus adds ability mods, a class-skill +3, and armor check from `derived`. Example, damage: page 1 writes `hpCurrent` directly.
 
 ## Sheet surfaces
 
@@ -69,14 +69,10 @@ Example, skill ranks: `SheetPage2ActionsSkills` `updateSkill` replaces `characte
 | --- | --- | --- |
 | `SheetPage1Core.tsx` | Yes, page 1 and show-all | Identity (`IdentityLoadFields`), abilities, HP, AC, saves, attacks, weapons, armor, inline buff box, level stepper. Roll buttons call `onRollFormula`. Page 1's buff edits go through `setCharacter` rather than `updateBuffBox`. |
 | `SheetPage2ActionsSkills.tsx` | Yes, page 2 and show-all | Skill matrix (ranks, class skill, misc), actions, resource pools, feats. |
-| `SheetPage2SkillsGear.tsx` | **No imports.** | An older skills-plus-inventory-and-languages page. Dead. |
 | `SheetPage3BioStorage.tsx` | Yes, page 3 and show-all | Scratchpad, bio sections, portraits, downtime capital, companions, and `StorageInventoryModule` (worn/stored/companion, currency, item buffs). It accepts `visibleModules` and does not use that prop. It does not edit `biography.*` or spells. |
-| `SheetPage3SpellsBio.tsx` | Only as the conditions strip | The file also contains the spell matrix, spellbook, flat biography, `ProfileModule`, `NotesModule`, and a stat block, gated by `visibleModules`. The shell passes only `{ conditions: true }`, and that flag is never turned on. Those sections and `ProfileModule` / `NotesModule` do not appear in normal navigation. |
 | `SheetPage4FormulaStudio.tsx` | Yes, tab 4 only | Macaroni objects, UI Make presets, vocabulary, SOT math suggestions. Embeds `MacroQuickGrabPanel`, which evaluates formulas and does not write the character. Omitted from show-all. |
 | `BuffBoxModule.tsx` | Inline on page 1 and as a sidebar modal | Bonus matrix and custom buffs. The modal uses `updateBuffBox`. |
 | `StorageInventoryModule.tsx` | Via page 3 | Inventory. Also opened from item image buttons into the file browser. |
 | `PrintSheet.tsx` | Print view, `?readonly=1`, and the hidden print stylesheet | Read-only combat, actions, and bio from `useCharacter()`, with formula text evaluated for display. The print button calls `window.print()`. |
 | `MacroQuickGrabPanel.tsx` | Page 4 | Read-only formula chips. |
-| `ProfileModule.tsx`, `NotesModule.tsx` | Only inside the unmounted spells page | Avatar/custom fields, and rollup notes. Orphaned with that page. |
-
-`ConditionDebuffBar` is the conditions UI inside `SheetPage3SpellsBio`. It calls `evaluateConditions` and lets the parent write `character.conditions`. Because the parent strip never opens, the bar does not either.
+| `ProfileModule.tsx`, `NotesModule.tsx` | Not mounted from the current shell | Avatar/custom fields and rollup notes remain available for later journal/bio integration. |

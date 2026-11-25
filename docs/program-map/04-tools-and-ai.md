@@ -8,23 +8,18 @@ Mounted from `WorkspaceShell` unless noted. "Writes" means `PF1Character` or `lo
 | --- | --- | --- | --- |
 | `DiceRollerTray` | Sheet roll buttons. Sidebar prop is unused. | Local roll history only | `executeDiceRoll` |
 | `PointBuyModal` | Sidebar | `pointBuyBudget` and ability bases via `applyBaseScores` | `getPointBuyCost` |
-| `QuickHPBar` | Never. State starts false and nothing sets it true (`src/App.tsx` 73). | Would call `updateHP` | — |
 | `BuffBoxModule` modal | Sidebar | `buffBox`, `customBuffs` | `computeBuffBoxTotals`, Macaroni via `projectMacaroniResult` |
 | `StepperTool` | Mounted. `AICompanionModal` receives `onOpenStepper` and never calls it, so the tool does not open from the AI modal. | `stepperRules` | Local stepper parsing |
 | `DeckTool` | Sidebar | `deckState` | In-component shuffle |
 | `XDXTool` | Sidebar | `xdxMacros`, and HP or other fields if a macro's projection says so | `executeMacaroni`, `projectMacaroniResult` |
 | `MacroDebugTool` | Sidebar "Trace". Escape does not close it. | Whole character from `projectMacaroniResult` | Same |
 | `LoadoutModal` | Sidebar | Merges sections of the character. Presets in `localStorage` `pf1e_user_loadouts`. | `exportCSV` |
-| `AddClassModal` | Sidebar and page 1 | `customClassGrids`, `careerData`, then `applyCareerProgressionToCharacter` | `parseSrdSkillsAndProficiencies`, `adaptArchetypeIntoGrid` (server generate), `extractClassFromSrdDoc` |
-| `ClassArchitectModal` | **Not imported by the app.** Tests import its parsers. | Same career fields, if it were mounted | Same family as Add Class |
+| `ClassArchitectModal` | Sidebar and page 1 as Add Class | `customClassGrids`, `careerData`, then `applyCareerProgressionToCharacter` | Classified ingest, `parseSrdSkillsAndProficiencies`, SOT extraction, and the Character Matrix |
 | `CMBTool` | Sidebar and page 1 | `conditions.grappled` / `pinned` | Derived stats; rolls go to the dice tray |
 | `NewSheetModal` | Header and sidebar | `resetToBlankSheet` or `resetToDefaultSheet` | `exportJSON` as a backup |
 | `ImageFileBrowserModal` | Header, sidebar, sheet image buttons | The modal stores up to 30 data URLs in `pf1e_image_library_v1`. The character URL is written by `applyImageSelection` in `App.tsx` 460. | FileReader and `canvas.toDataURL('image/png')` |
-| `ImageBrowserModal` | **No imports.** Older preset-and-URL picker. | — | — |
 | `JournalModal` | Sidebar | `journal`, scratchpad, `rollupNotes` | `generateJournalEntryInVoice` (server), `generatePencilSketch` (local canvas) |
 | `AICompanionModal` | Sidebar, and from Add Class / Journal | See below | See below |
-| `GlyphPicker` | **No imports.** Glyph choices are inlined in `ImageFileBrowserModal`. | — | — |
-| `DSLBibleDrawer` | **No imports.** | Would be a read-only formula sandbox | `evaluateFormula`, `computeDerivedCharacterStats` |
 | `FloatingAlertCard`, `InteractiveQueryModal` | Macaroni window events | None; the query callback returns the choice to the macro runner | — |
 | `FieldCallTooltip` | Sheet pages | Copies a `#CALL` token | — |
 | `AppleEyeIcon` | AI, Add Class, Complete Sheet | None | — |
@@ -69,7 +64,6 @@ Registered in `server/routes.ts` 286–298. There is no session or bearer check.
 | `POST /api/openai/generate` | `prompt` (required), `systemInstruction`, `responseMimeType`, `urls` | `{ text }` | At most 20 URLs are appended to the prompt (`routes.ts` 31–34). If URLs are present the handler sets `config.tools = [{ urlContext: {} }]`. `generateContentWithFallback` never reads `tools` or `responseMimeType`; it only sends chat `messages` (`openai.ts`). |
 | `POST /api/openai/lookup` | `query`, `category`, `modifiers`, `sotOverridePages`, `sotWeblinks`, `characterSummary` | `{ text, sourceUrls }` | System prompt `LOOKUP_SYSTEM_INSTRUCTION` (`prompts.ts`). Full SOT text via `formatOverridePages`. |
 | `POST /api/openai/complete-sheet` | conversation, summary, SOT pages, weblinks, `allowedFields`, `tapTest` | `{ rawText }` | System prompt from `buildCompleteSheetSystemInstruction`, including `formatBlindSpots` and `formatCompleteSheetOverridePages`. |
-| `POST /api/gemini/generate`, `/lookup`, `/complete-sheet` | same as the OpenAI routes | same | Aliases to the OpenAI handlers (`routes.ts` 295–297). `server/gemini.ts` is gone. |
 | `POST /api/sot/fetch-readonly-page` | `{ url }` | sanitized HTML/text and an audit | Requires `http:` or `https:`. Rejects strings that look like webhooks. 7s timeout. Caps HTML and text length. Strips script, iframe, style, nav, and footer. **No host allowlist**: the server GETs the URL the browser sends (`routes.ts` handler `handleSotFetchReadonlyPage`). |
 
 `server/openai.ts` POSTs `https://api.openai.com/v1/chat/completions`. Model order is `OPENAI_MODEL` if set, then `gpt-4o-mini`, then `gpt-4o` (1–6). A failed model is retried on the next name. Tests in `server/openai.test.ts` lock this to the OpenAI host (a key error does not switch providers).

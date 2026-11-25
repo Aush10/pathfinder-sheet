@@ -38,7 +38,11 @@ Callers: page 1, `BuffBoxModule`, page 4, `XDXTool`, `MacroDebugTool`.
 
 `calculateCareerProgression` (`src/engine/multiclassCalculator.ts` 141–513) walks `careerData.levels` or synthesizes levels from `character.level` and `customClassGrids`. It handles gestalt (max HD / BAB that level), fractional BAB and saves, first-level max HP versus average, skill points, archetype feature swaps, and a fixed VMC schedule (`VMC_SCHEDULES`).
 
-`applyCareerProgressionToCharacter` (`characterIntegration.ts` 239–388) writes level, the class list, BAB, save bases, HP, hit dice, class skills, and the feat list. `AddClassModal` and the unmounted `ClassArchitectModal` call the calculator. The context helper `syncCareerToSheet` calls the apply function. `resolveIntegratedCharacterView` also runs the calculator so `careerSummary` stays current.
+`applyCareerProgressionToCharacter` writes level, the class list, BAB, save
+bases, HP, hit dice, class skills, and the feat list. `ClassArchitectModal`,
+which is the mounted Add Class tool, calls the calculator. The context helper
+`syncCareerToSheet` calls the apply function. `resolveIntegratedCharacterView`
+also runs the calculator so `careerSummary` stays current.
 
 `POPULAR_ARCHETYPES` is exported and not imported anywhere else.
 
@@ -75,7 +79,9 @@ Callers: page 1, `BuffBoxModule`, page 4, `XDXTool`, `MacroDebugTool`.
 - `parseImportedSrdFile` accepts the JSON envelope or raw HTML/text.
 - `extractClassFromSrdDoc` pulls class name, hit die, skill points, proficiencies, and a 1–20 grid from a table or a synthesized chassis, plus `extractMacaroniSuggestionsFromSrd` (sentence scan, not a model).
 
-`AddClassModal`, `ClassArchitectModal`, `AICompanionModal`, and page 4 call these. `parseSrdSkillsAndProficiencies` lives in `aiService.ts` and is used by the class extractor.
+`ClassArchitectModal`, `AICompanionModal`, and page 4 call these.
+`parseSrdSkillsAndProficiencies` lives in `aiService.ts` and is used by the class
+extractor.
 
 ## Tap Test
 

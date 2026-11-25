@@ -14,7 +14,10 @@
 
 Non-production uses Vite `middlewareMode` and `appType: 'spa'`. Production serves `dist/` and falls through `app.get('*all', ...)` to `dist/index.html` (`server.ts` 23–34). `npm run build` writes that `dist/`. `npm run preview` is Vite's own preview server, not `server.ts`, so it does not mount the API.
 
-Vite aliases `@` to the repo root. HMR and file watching turn off when `DISABLE_HMR=true` (`vite.config.ts` 25–30). `index.html` mounts `#root` from `/src/main.tsx` and loads Cinzel, JetBrains Mono, and Plus Jakarta Sans.
+Vite aliases `@` to the repo root with an ESM URL, so the config does not depend
+on CommonJS `__dirname`. HMR and file watching turn off when `DISABLE_HMR=true`;
+otherwise the ignored path includes `pfautosheetv3/`. `index.html` mounts `#root`
+from `/src/main.tsx` and loads Cinzel, JetBrains Mono, and Plus Jakarta Sans.
 
 `.env.example` lists `APP_URL`. No TypeScript file reads it. The variables the server actually reads are `OPENAI_API_KEY`, `OPENAI_MODEL`, `NODE_ENV`, and, for Vite only, `DISABLE_HMR`.
 
@@ -41,9 +44,9 @@ Themes (`204–215`): `parchment` (default), `blueprint`, `mythweavers`, `print`
 | 3 | `SheetPage3BioStorage` |
 | 4 | `SheetPage4FormulaStudio` |
 
-`SheetPage3SpellsBio` renders only while `isConditionsOpen` is true, and only with `visibleModules={{ conditions: true }}` (`286–292`). `BlueprintSidebar` accepts `onOpenConditions` and `onOpenDiceRoller` and never calls them (`67–69` versus the rest of that file). Nothing else sets `isConditionsOpen`, so the conditions strip does not open. Dice still opens from sheet roll buttons through `handleRollFormula` (`172–176`).
-
-`isQuickHPOpen` is only ever set to false (`73`, `128`, `386`). `QuickHPBar` is mounted and unreachable.
+The old conditions-only `SheetPage3SpellsBio` mount and unreachable Quick HP
+modal were removed during CP2 cleanup. Dice still opens from sheet roll buttons
+through `handleRollFormula`.
 
 `QuickModularTools` is rendered by page 1 (`src/components/sheet/SheetPage1Core.tsx` around the turn-stepper module) and then hidden by `.pf1-hidden-turn-stepper { display: none !important; }` in `src/index.css`.
 
