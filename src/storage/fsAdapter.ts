@@ -1,5 +1,10 @@
 import type { PF1Character } from '../types/character';
-import { referenceSrdPagesForStorage, rehydrateSrdPagesFromHost } from '../engine/sotEngine';
+import {
+  LEGACY_GLOBAL_HOST_SRD_DOC_PREFIX,
+  LEGACY_GLOBAL_HOST_SRD_INDEX_KEY,
+  referenceSrdPagesForStorage,
+  rehydrateSrdPagesFromHost,
+} from '../engine/sotEngine';
 import type {
   ActiveCharacterReference,
   LoadedCharacter,
@@ -17,6 +22,7 @@ export const STORAGE_USERS_NAME = 'pfmusers';
 export const STORAGE_CRASH_NAME = 'Crash';
 export const CHARACTER_FILE_NAME = 'character.json';
 export const ACTIVE_FILE_NAME = 'active.json';
+export const CHARACTER_EXPORTS_FOLDER = 'exports';
 const RESERVED_CHARACTER_FOLDER_NAMES = ['settings', 'dsl', 'backups'];
 
 const CHARACTER_FORMAT = 'pf1e-character';
@@ -116,6 +122,7 @@ interface CharacterLayout {
   tools: FsDirectoryHandleLike;
   modules: FsDirectoryHandleLike;
   backups: FsDirectoryHandleLike;
+  exports: FsDirectoryHandleLike;
 }
 
 class StorageFault extends Error {
@@ -355,12 +362,18 @@ function transactionToPromise(transaction: IDBTransaction): Promise<void> {
   });
 }
 
-function openHandleDatabase(): Promise<IDBDatabase> {
+const FOLDER_STORAGE_DB_NAME = 'pf1e-folder-storage';
+const FOLDER_STORAGE_DB_VERSION = 2;
+
+function openFolderStorageDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open('pf1e-folder-storage', 1);
+    const request = indexedDB.open(FOLDER_STORAGE_DB_NAME, FOLDER_STORAGE_DB_VERSION);
     request.onupgradeneeded = () => {
       if (!request.result.objectStoreNames.contains('handles')) {
         request.result.createObjectStore('handles');
+      }
+      if (!request.result.objectStoreNames.contains('srdArtifacts')) {
+        request.result.createObjectStore('srdArtifacts');
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -372,7 +385,7 @@ function createIndexedDbHandleStore(): DirectoryHandleStore {
   return {
     async get(): Promise<FsDirectoryHandleLike | undefined> {
       if (typeof indexedDB === 'undefined') return undefined;
-      const database = await openHandleDatabase();
+      const database = await openFolderStorageDatabase();
       try {
         const transaction = database.transaction('handles', 'readonly');
         const value = await requestToPromise(transaction.objectStore('handles').get('root'));
@@ -384,7 +397,7 @@ function createIndexedDbHandleStore(): DirectoryHandleStore {
     },
     async set(handle: FsDirectoryHandleLike): Promise<void> {
       assert(typeof indexedDB !== 'undefined', 'INDEXED_DB_UNAVAILABLE', 'IndexedDB is required to remember the selected folder.');
-      const database = await openHandleDatabase();
+      const database = await openFolderStorageDatabase();
       try {
         const transaction = database.transaction('handles', 'readwrite');
         transaction.objectStore('handles').put(handle, 'root');
@@ -482,7 +495,8 @@ async function ensureCharacterLayout(root: FsDirectoryHandleLike): Promise<Chara
   const tools = await getInternalDirectory(root, 'tools', true);
   const modules = await getInternalDirectory(root, 'Modules', true);
   const backups = await getInternalDirectory(root, 'backups', true);
-  return { root, images, dslMacros, dslStepper, dslXdx, srd, ai, aiReadOnly, notebook, tools, modules, backups };
+  const exportsDir = await getInternalDirectory(root, CHARACTER_EXPORTS_FOLDER, true);
+  return { root, images, dslMacros, dslStepper, dslXdx, srd, ai, aiReadOnly, notebook, tools, modules, backups, exports: exportsDir };
 }
 
 async function ensureBaseTree(selectedRoot: FsDirectoryHandleLike): Promise<{
@@ -973,6 +987,621 @@ function safeDirectoryNames(
   return names.sort((left, right) => left.localeCompare(right));
 }
 
+export const SRD_INGEST_ARTIFACT_FILES = ['table.json', 'links.json', 'text.md', 'index.json'] as const;
+export type SrdIngestArtifactFile = (typeof SRD_INGEST_ARTIFACT_FILES)[number];
+export const HOST_SRD_INGEST_MIGRATION_KEY = 'pf1e_host_srd_migrated_to_ingest_v1';
+const RESERVED_SRD_DOC_FOLDER_NAMES = new Set(['readme', 'readme.txt', 'backups']);
+const LEGACY_GLOBAL_ARTIFACT_OWNER = 'legacy-global';
+
+export interface SrdIngestArtifacts {
+  'table.json': object;
+  'links.json': object;
+  'text.md': string;
+  'index.json': object;
+}
+
+export type SrdArtifactStorageKind = 'folder' | 'indexeddb';
+
+export interface StoredSrdArtifactRecord {
+  characterId: string;
+  docFolder: string;
+  documentId: string;
+  relativePath: string;
+  artifacts: Record<SrdIngestArtifactFile, string>;
+  storedAt: string;
+}
+
+export interface SrdArtifactStore {
+  get(key: string): Promise<StoredSrdArtifactRecord | undefined>;
+  set(key: string, value: StoredSrdArtifactRecord): Promise<void>;
+}
+
+export interface SrdIngestClient {
+  ingest(source: { name: string; content: string; path?: string }): Promise<{
+    documentId: string;
+    title: string;
+    artifacts: SrdIngestArtifacts;
+  }>;
+}
+
+export interface PersistSrdIngestParams {
+  player?: string;
+  characterName?: string;
+  characterId: string;
+  artifacts: SrdIngestArtifacts;
+  docFolder?: string;
+  handle?: FsDirectoryHandleLike;
+  handleStore?: DirectoryHandleStore;
+  artifactStore?: SrdArtifactStore;
+  now?: () => Date;
+}
+
+export interface PersistSrdIngestReceipt {
+  stored: SrdArtifactStorageKind;
+  relativePath: string;
+  docFolder: string;
+  documentId: string;
+  hostSavedKey: string;
+}
+
+function srdArtifactStoreKey(characterId: string, docFolder: string): string {
+  return `${characterId}/${docFolder}`;
+}
+
+function createIndexedDbSrdArtifactStore(): SrdArtifactStore {
+  return {
+    async get(key: string): Promise<StoredSrdArtifactRecord | undefined> {
+      if (typeof indexedDB === 'undefined') return undefined;
+      const database = await openFolderStorageDatabase();
+      try {
+        const transaction = database.transaction('srdArtifacts', 'readonly');
+        const value = await requestToPromise(transaction.objectStore('srdArtifacts').get(key));
+        await transactionToPromise(transaction);
+        return value as StoredSrdArtifactRecord | undefined;
+      } finally {
+        database.close();
+      }
+    },
+    async set(key: string, value: StoredSrdArtifactRecord): Promise<void> {
+      assert(typeof indexedDB !== 'undefined', 'INDEXED_DB_UNAVAILABLE', 'IndexedDB is required to cache SRD ingest artifacts when no folder is connected.');
+      const database = await openFolderStorageDatabase();
+      try {
+        const transaction = database.transaction('srdArtifacts', 'readwrite');
+        transaction.objectStore('srdArtifacts').put(value, key);
+        await transactionToPromise(transaction);
+      } finally {
+        database.close();
+      }
+    },
+  };
+}
+
+export function srdDocFolderName(title: string, documentId: string): string {
+  const fromTitle = sanitizePathSegment(title);
+  if (fromTitle && !RESERVED_SRD_DOC_FOLDER_NAMES.has(fromTitle.toLowerCase())) return fromTitle;
+  const fromId = sanitizePathSegment(documentId.replace(/[^a-zA-Z0-9_-]+/g, '-'))
+    ?? sanitizePathSegment(`doc-${documentId.replace(/[^a-zA-Z0-9]/g, '').slice(-16)}`);
+  assert(fromId && !RESERVED_SRD_DOC_FOLDER_NAMES.has(fromId.toLowerCase()), 'INVALID_NAME', 'SRD document folder name is invalid.');
+  return fromId;
+}
+
+function documentIdFromArtifacts(artifacts: SrdIngestArtifacts): string {
+  const index = artifacts['index.json'];
+  if (isRecord(index) && isRecord(index.document) && typeof index.document.id === 'string' && index.document.id) {
+    return index.document.id;
+  }
+  const table = artifacts['table.json'];
+  if (isRecord(table) && typeof table.documentId === 'string' && table.documentId) return table.documentId;
+  throw new StorageFault('INVALID_DATA', 'Ingest artifacts are missing a document id.');
+}
+
+function titleFromArtifacts(artifacts: SrdIngestArtifacts): string {
+  const index = artifacts['index.json'];
+  if (isRecord(index) && isRecord(index.document) && typeof index.document.title === 'string' && index.document.title.trim()) {
+    return index.document.title.trim();
+  }
+  return 'Imported document';
+}
+
+function serializedArtifacts(artifacts: SrdIngestArtifacts): Record<SrdIngestArtifactFile, string> {
+  assert(artifacts && typeof artifacts === 'object', 'INVALID_DATA', 'Ingest artifacts are required.');
+  assert(typeof artifacts['text.md'] === 'string', 'INVALID_DATA', 'text.md must be a string.');
+  assert(isRecord(artifacts['table.json']), 'INVALID_DATA', 'table.json must be an object.');
+  assert(isRecord(artifacts['links.json']), 'INVALID_DATA', 'links.json must be an object.');
+  assert(isRecord(artifacts['index.json']), 'INVALID_DATA', 'index.json must be an object.');
+  const table = JSON.stringify(cloneForStorage(artifacts['table.json']), null, 2);
+  const links = JSON.stringify(cloneForStorage(artifacts['links.json']), null, 2);
+  const index = JSON.stringify(cloneForStorage(artifacts['index.json']), null, 2);
+  const text = artifacts['text.md'];
+  assertFileSize(table);
+  assertFileSize(links);
+  assertFileSize(index);
+  assertFileSize(text);
+  return { 'table.json': table, 'links.json': links, 'text.md': text, 'index.json': index };
+}
+
+function parseStoredArtifacts(serialized: Record<SrdIngestArtifactFile, string>): SrdIngestArtifacts {
+  assert(typeof serialized['text.md'] === 'string', 'INVALID_DATA', 'text.md must be a string.');
+  return {
+    'table.json': parseUntrustedJson(serialized['table.json']) as object,
+    'links.json': parseUntrustedJson(serialized['links.json']) as object,
+    'text.md': serialized['text.md'],
+    'index.json': parseUntrustedJson(serialized['index.json']) as object,
+  };
+}
+
+async function resolveSelectedHandle(options: {
+  handle?: FsDirectoryHandleLike;
+  handleStore?: DirectoryHandleStore;
+}): Promise<FsDirectoryHandleLike | undefined> {
+  if (options.handle) {
+    await ensureReadWritePermission(options.handle);
+    return options.handle;
+  }
+  if (!options.handleStore) return undefined;
+  const stored = await options.handleStore.get();
+  if (!stored) return undefined;
+  await ensureReadWritePermission(stored);
+  return stored;
+}
+
+async function characterLayoutFromRoot(
+  selectedRoot: FsDirectoryHandleLike,
+  player: string,
+  characterName: string,
+): Promise<CharacterLayout> {
+  const tree = await ensureBaseTree(selectedRoot);
+  const storedPlayer = await getNamedDirectory(tree.users, player, 'player', true);
+  const storedCharacter = await getNamedDirectory(storedPlayer.directory, characterName, 'character', true);
+  return ensureCharacterLayout(storedCharacter.directory);
+}
+
+export async function persistSrdIngestArtifacts(
+  params: PersistSrdIngestParams,
+): Promise<StorageResult<PersistSrdIngestReceipt>> {
+  try {
+    assert(typeof params.characterId === 'string' && params.characterId.trim(), 'INVALID_CHARACTER', 'A character id is required to persist SRD ingest artifacts.');
+    const serialized = serializedArtifacts(params.artifacts);
+    const documentId = documentIdFromArtifacts(params.artifacts);
+    const requestedFolder = params.docFolder ? sanitizePathSegment(params.docFolder) : null;
+    if (params.docFolder) {
+      assert(requestedFolder && !RESERVED_SRD_DOC_FOLDER_NAMES.has(requestedFolder.toLowerCase()), 'INVALID_NAME', 'SRD document folder name is invalid.');
+    }
+    const docFolder = requestedFolder ?? srdDocFolderName(titleFromArtifacts(params.artifacts), documentId);
+    const storedAt = (params.now ?? (() => new Date()))().toISOString();
+    const relativePath = `SRD/${docFolder}`;
+    const record: StoredSrdArtifactRecord = {
+      characterId: params.characterId,
+      docFolder,
+      documentId,
+      relativePath,
+      artifacts: serialized,
+      storedAt,
+    };
+
+    const handle = await resolveSelectedHandle(params);
+    if (handle && params.player && params.characterName) {
+      const layout = await characterLayoutFromRoot(handle, params.player, params.characterName);
+      const docDir = await getInternalDirectory(layout.srd, docFolder, true);
+      await writeSafely(docDir, 'table.json', serialized['table.json'], layout.backups, `${docFolder}-table.json`);
+      await writeSafely(docDir, 'links.json', serialized['links.json'], layout.backups, `${docFolder}-links.json`);
+      await writeSafely(docDir, 'text.md', serialized['text.md'], layout.backups, `${docFolder}-text.md`);
+      await writeSafely(docDir, 'index.json', serialized['index.json'], layout.backups, `${docFolder}-index.json`);
+      return {
+        ok: true,
+        stored: 'folder',
+        relativePath,
+        docFolder,
+        documentId,
+        hostSavedKey: `folder:${relativePath}`,
+      };
+    }
+
+    const store = params.artifactStore ?? createIndexedDbSrdArtifactStore();
+    await store.set(srdArtifactStoreKey(params.characterId, docFolder), record);
+    return {
+      ok: true,
+      stored: 'indexeddb',
+      relativePath,
+      docFolder,
+      documentId,
+      hostSavedKey: `idb:${params.characterId}/${docFolder}`,
+    };
+  } catch (error) {
+    return toFailure(error);
+  }
+}
+
+export async function loadSrdIngestArtifacts(params: {
+  player?: string;
+  characterName?: string;
+  characterId: string;
+  docFolder: string;
+  handle?: FsDirectoryHandleLike;
+  handleStore?: DirectoryHandleStore;
+  artifactStore?: SrdArtifactStore;
+}): Promise<StorageResult<{ artifacts: SrdIngestArtifacts; stored: SrdArtifactStorageKind; relativePath: string }>> {
+  try {
+    const docFolder = sanitizePathSegment(params.docFolder);
+    assert(docFolder, 'INVALID_NAME', 'SRD document folder name is invalid.');
+    const handle = await resolveSelectedHandle(params);
+    if (handle && params.player && params.characterName) {
+      const layout = await characterLayoutFromRoot(handle, params.player, params.characterName);
+      const docDir = await getInternalDirectory(layout.srd, docFolder, false);
+      const table = await readTextIfPresent(docDir, 'table.json');
+      const links = await readTextIfPresent(docDir, 'links.json');
+      const text = await readTextIfPresent(docDir, 'text.md');
+      const index = await readTextIfPresent(docDir, 'index.json');
+      assert(table && links && text !== null && index, 'NOT_FOUND', 'This SRD document is missing ingest artifacts.');
+      return {
+        ok: true,
+        stored: 'folder',
+        relativePath: `SRD/${docFolder}`,
+        artifacts: parseStoredArtifacts({
+          'table.json': table,
+          'links.json': links,
+          'text.md': text,
+          'index.json': index,
+        }),
+      };
+    }
+    const store = params.artifactStore ?? createIndexedDbSrdArtifactStore();
+    const record = await store.get(srdArtifactStoreKey(params.characterId, docFolder));
+    assert(record, 'NOT_FOUND', 'No ingest artifacts are cached for this SRD document.');
+    return {
+      ok: true,
+      stored: 'indexeddb',
+      relativePath: record.relativePath,
+      artifacts: parseStoredArtifacts(record.artifacts),
+    };
+  } catch (error) {
+    return toFailure(error);
+  }
+}
+
+function createDefaultSrdIngestClient(): SrdIngestClient | null {
+  if (typeof fetch !== 'function') return null;
+  return {
+    async ingest(source) {
+      const response = await fetch('/api/sot/ingest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: source.name,
+          content: source.content,
+          ...(source.path ? { path: source.path } : {}),
+        }),
+      });
+      const payload = await response.json().catch(() => ({ error: 'Ingest returned a non-JSON response.' })) as {
+        error?: unknown;
+        artifacts?: SrdIngestArtifacts;
+        documentId?: unknown;
+        title?: unknown;
+      };
+      if (!response.ok) {
+        const message = typeof payload.error === 'string' ? payload.error : `Ingest failed with status ${response.status}.`;
+        throw new StorageFault(response.status === 413 ? 'FILE_TOO_LARGE' : 'INVALID_DATA', message);
+      }
+      if (!payload.artifacts) {
+        throw new StorageFault('INVALID_DATA', 'Ingest response is missing artifacts.');
+      }
+      const artifacts = payload.artifacts;
+      const documentId = typeof payload.documentId === 'string' ? payload.documentId : documentIdFromArtifacts(artifacts);
+      const title = typeof payload.title === 'string' ? payload.title : titleFromArtifacts(artifacts);
+      return { documentId, title, artifacts };
+    },
+  };
+}
+
+export async function ingestAndPersistSrdDocument(params: {
+  name: string;
+  content: string;
+  path?: string;
+  player?: string;
+  characterName?: string;
+  characterId: string;
+  ingestClient?: SrdIngestClient;
+  handle?: FsDirectoryHandleLike;
+  handleStore?: DirectoryHandleStore;
+  artifactStore?: SrdArtifactStore;
+  now?: () => Date;
+}): Promise<StorageResult<PersistSrdIngestReceipt & { title: string }>> {
+  try {
+    const client = params.ingestClient ?? createDefaultSrdIngestClient();
+    assert(client, 'API_UNSUPPORTED', 'No ingest client is available. POST /api/sot/ingest requires a running server.');
+    const ingested = await client.ingest({ name: params.name, content: params.content, path: params.path });
+    const persisted = await persistSrdIngestArtifacts({
+      player: params.player,
+      characterName: params.characterName,
+      characterId: params.characterId,
+      artifacts: ingested.artifacts,
+      handle: params.handle,
+      handleStore: params.handleStore,
+      artifactStore: params.artifactStore,
+      now: params.now,
+    });
+    if (!persisted.ok) return persisted;
+    return { ...persisted, title: ingested.title };
+  } catch (error) {
+    return toFailure(error);
+  }
+}
+
+export type WriteCharacterExportReceipt =
+  | { stored: 'folder'; relativePath: string; fileName: string }
+  | { stored: 'skipped' };
+
+function defaultExportHandleStore(): DirectoryHandleStore | undefined {
+  if (typeof indexedDB === 'undefined') return undefined;
+  return createIndexedDbHandleStore();
+}
+
+async function resolveExportCharacterLayout(params: {
+  player?: string;
+  characterName?: string;
+  handle?: FsDirectoryHandleLike;
+  handleStore?: DirectoryHandleStore;
+}): Promise<CharacterLayout | undefined> {
+  const handle = await resolveSelectedHandle({
+    handle: params.handle,
+    handleStore: params.handleStore ?? defaultExportHandleStore(),
+  });
+  if (!handle) return undefined;
+
+  let player = params.player?.trim();
+  let characterName = params.characterName?.trim();
+  if (!player || !characterName) {
+    const tree = await ensureBaseTree(handle);
+    const text = await readTextIfPresent(tree.managedRoot, ACTIVE_FILE_NAME);
+    if (text) {
+      try {
+        const envelope = await parseEnvelope(text, PROJECTION_FORMAT, DEFAULT_SCHEMA_VERSION);
+        const active = parseActiveCharacter(envelope.data);
+        if (active) {
+          player = player || active.player;
+          characterName = characterName || active.name;
+        }
+      } catch {
+        // Active pointer is optional for exports; skip to Blob fallback.
+      }
+    }
+  }
+  if (!player || !characterName) return undefined;
+  return characterLayoutFromRoot(handle, player, characterName);
+}
+
+/** Writes a downloadable export into `<character>/exports/` when a folder is connected. */
+export async function writeCharacterExportFile(params: {
+  fileName: string;
+  contents: string;
+  player?: string;
+  characterName?: string;
+  handle?: FsDirectoryHandleLike;
+  handleStore?: DirectoryHandleStore;
+}): Promise<StorageResult<WriteCharacterExportReceipt>> {
+  try {
+    assert(typeof params.contents === 'string', 'INVALID_DATA', 'Export contents must be text.');
+    assertFileSize(params.contents);
+    const leaf = params.fileName.split(/[/\\]/).pop() ?? '';
+    const fileName = sanitizePathSegment(leaf);
+    assert(fileName, 'INVALID_NAME', 'Export file name is invalid.');
+
+    const layout = await resolveExportCharacterLayout(params);
+    if (!layout) return { ok: true, stored: 'skipped' };
+
+    await writeSafely(layout.exports, fileName, params.contents, layout.backups, `exports-${fileName}`);
+    return {
+      ok: true,
+      stored: 'folder',
+      relativePath: `${CHARACTER_EXPORTS_FOLDER}/${fileName}`,
+      fileName,
+    };
+  } catch (error) {
+    return toFailure(error);
+  }
+}
+
+function listLocalStorageKeys(): string[] {
+  if (typeof localStorage === 'undefined') return [];
+  const keys: string[] = [];
+  for (let i = 0; i < localStorage.length; i += 1) {
+    const key = localStorage.key(i);
+    if (key) keys.push(key);
+  }
+  return keys;
+}
+
+export function hostSrdMigrationPending(): boolean {
+  if (typeof localStorage === 'undefined') return false;
+  try {
+    if (localStorage.getItem(HOST_SRD_INGEST_MIGRATION_KEY) === '1') return false;
+    return listLocalStorageKeys().some(
+      (key) => key === LEGACY_GLOBAL_HOST_SRD_INDEX_KEY
+        || key.startsWith(LEGACY_GLOBAL_HOST_SRD_DOC_PREFIX)
+        || /^pf1e_host_srd_index_.+_v1$/.test(key),
+    );
+  } catch {
+    return false;
+  }
+}
+
+function parseHostPage(raw: string | null): { id: string; title: string; htmlContent?: string; plainText?: string } | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { id?: unknown; title?: unknown; htmlContent?: unknown; plainText?: unknown };
+    if (!parsed || typeof parsed !== 'object' || typeof parsed.id !== 'string' || typeof parsed.title !== 'string') return null;
+    return parsed as { id: string; title: string; htmlContent?: string; plainText?: string };
+  } catch {
+    return null;
+  }
+}
+
+function sourceFromHostPage(page: { id: string; title: string; htmlContent?: string; plainText?: string }): { name: string; content: string } | null {
+  const html = typeof page.htmlContent === 'string' ? page.htmlContent : '';
+  const plain = typeof page.plainText === 'string' ? page.plainText : '';
+  const content = html || plain;
+  if (!content.trim()) return null;
+  return { name: `${page.title || page.id}.html`, content };
+}
+
+function stripHostPageRecord(raw: string, hostSavedKey: string): string {
+  const parsed = JSON.parse(raw) as Record<string, unknown>;
+  return JSON.stringify({
+    ...parsed,
+    htmlContent: '',
+    plainText: '',
+    hostSavedKey,
+  });
+}
+
+function readJsonStringArray(key: string): string[] {
+  if (typeof localStorage === 'undefined') return [];
+  const raw = localStorage.getItem(key);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function ownerKeyPart(characterId: string): string {
+  return characterId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+}
+
+export interface MigrateLegacyHostSrdParams {
+  player?: string;
+  characterName?: string;
+  characterId?: string;
+  attachLegacyGlobals?: boolean;
+  ingestClient?: SrdIngestClient;
+  handle?: FsDirectoryHandleLike;
+  handleStore?: DirectoryHandleStore;
+  artifactStore?: SrdArtifactStore;
+  now?: () => Date;
+}
+
+export interface MigrateLegacyHostSrdReceipt {
+  migrated: number;
+  skipped: boolean;
+  stored: Array<{ id: string; stored: SrdArtifactStorageKind; relativePath: string }>;
+}
+
+export async function migrateLegacyHostSrdDocsOnce(
+  params: MigrateLegacyHostSrdParams = {},
+): Promise<StorageResult<MigrateLegacyHostSrdReceipt>> {
+  try {
+    if (typeof localStorage === 'undefined') {
+      return { ok: true, migrated: 0, skipped: true, stored: [] };
+    }
+    if (localStorage.getItem(HOST_SRD_INGEST_MIGRATION_KEY) === '1') {
+      return { ok: true, migrated: 0, skipped: true, stored: [] };
+    }
+    if (!hostSrdMigrationPending()) {
+      localStorage.setItem(HOST_SRD_INGEST_MIGRATION_KEY, '1');
+      return { ok: true, migrated: 0, skipped: true, stored: [] };
+    }
+
+    const client = params.ingestClient ?? createDefaultSrdIngestClient();
+    assert(client, 'API_UNSUPPORTED', 'Host SRD migration needs POST /api/sot/ingest or an injected ingest client.');
+
+    const stored: Array<{ id: string; stored: SrdArtifactStorageKind; relativePath: string }> = [];
+    const processedKeys = new Set<string>();
+    const owners: string[] = [];
+    for (const key of listLocalStorageKeys()) {
+      const match = /^pf1e_host_srd_index_(.+)_v1$/.exec(key);
+      if (match) owners.push(match[1]);
+    }
+
+    const persistPage = async (
+      page: { id: string; title: string; htmlContent?: string; plainText?: string },
+      storageKey: string,
+      ownerCharacterId: string,
+      attachToFolder: boolean,
+      removeKey: boolean,
+    ) => {
+      processedKeys.add(storageKey);
+      const source = sourceFromHostPage(page);
+      let hostSavedKey = '';
+      if (source) {
+        const ingested = await client.ingest(source);
+        const persisted = await persistSrdIngestArtifacts({
+          player: attachToFolder ? params.player : undefined,
+          characterName: attachToFolder ? params.characterName : undefined,
+          characterId: ownerCharacterId,
+          artifacts: ingested.artifacts,
+          handle: attachToFolder ? params.handle : undefined,
+          handleStore: attachToFolder ? params.handleStore : undefined,
+          artifactStore: params.artifactStore,
+          now: params.now,
+        });
+        if (!persisted.ok) {
+          throw new StorageFault(persisted.error.code, persisted.error.message);
+        }
+        hostSavedKey = persisted.hostSavedKey;
+        stored.push({ id: page.id, stored: persisted.stored, relativePath: persisted.relativePath });
+      }
+      if (removeKey) {
+        localStorage.removeItem(storageKey);
+        return;
+      }
+      const raw = localStorage.getItem(storageKey);
+      if (raw) localStorage.setItem(storageKey, stripHostPageRecord(raw, hostSavedKey || 'srd-artifact'));
+    };
+
+    for (const owner of owners) {
+      const indexKey = `pf1e_host_srd_index_${owner}_v1`;
+      const attachToFolder = Boolean(
+        params.characterId
+        && owner === ownerKeyPart(params.characterId)
+        && params.player
+        && params.characterName,
+      );
+      for (const id of readJsonStringArray(indexKey)) {
+        const docKey = `${LEGACY_GLOBAL_HOST_SRD_DOC_PREFIX}${owner}_${id}`;
+        const page = parseHostPage(localStorage.getItem(docKey));
+        if (!page) {
+          processedKeys.add(docKey);
+          continue;
+        }
+        await persistPage(page, docKey, owner, attachToFolder, false);
+      }
+    }
+
+    const attachGlobals = Boolean(params.attachLegacyGlobals && params.player && params.characterName && params.characterId);
+    const globalOwner = attachGlobals && params.characterId ? params.characterId : LEGACY_GLOBAL_ARTIFACT_OWNER;
+    const globalIds = readJsonStringArray(LEGACY_GLOBAL_HOST_SRD_INDEX_KEY);
+    for (const id of globalIds) {
+      const docKey = `${LEGACY_GLOBAL_HOST_SRD_DOC_PREFIX}${id}`;
+      const page = parseHostPage(localStorage.getItem(docKey));
+      if (!page) {
+        processedKeys.add(docKey);
+        continue;
+      }
+      await persistPage(page, docKey, globalOwner, attachGlobals, true);
+    }
+
+    for (const key of listLocalStorageKeys()) {
+      if (!key.startsWith(LEGACY_GLOBAL_HOST_SRD_DOC_PREFIX) || processedKeys.has(key)) continue;
+      const scoped = owners.some((owner) => key.startsWith(`${LEGACY_GLOBAL_HOST_SRD_DOC_PREFIX}${owner}_`));
+      if (scoped) continue;
+      const page = parseHostPage(localStorage.getItem(key));
+      if (!page) {
+        processedKeys.add(key);
+        continue;
+      }
+      await persistPage(page, key, globalOwner, attachGlobals, true);
+    }
+
+    localStorage.removeItem(LEGACY_GLOBAL_HOST_SRD_INDEX_KEY);
+    localStorage.setItem(HOST_SRD_INGEST_MIGRATION_KEY, '1');
+    return { ok: true, migrated: stored.length, skipped: false, stored };
+  } catch (error) {
+    return toFailure(error);
+  }
+}
+
 export function createFsStorageAdapter(options: FsStorageAdapterOptions = {}): StorageAdapter {
   const folderPicker = options.folderPicker ?? getBrowserFolderPicker();
   const handleStore = options.handleStore ?? createIndexedDbHandleStore();
@@ -1075,14 +1704,30 @@ export function createFsStorageAdapter(options: FsStorageAdapterOptions = {}): S
 
   return {
     async pickFolderAndOpen(): Promise<StorageResult<{ rootName: string }>> {
-      let selected: FsDirectoryHandleLike;
       try {
+        if (!rememberedHandle) rememberedHandle = await handleStore.get();
+        if (rememberedHandle) {
+          try {
+            await ensureReadWritePermission(rememberedHandle);
+            const tree = await ensureBaseTree(rememberedHandle);
+            handlePersistenceWarning = undefined;
+            try {
+              await handleStore.set(rememberedHandle);
+            } catch {
+              handlePersistenceWarning = 'Connected for this session. This browser could not remember the folder; reconnect it next time.';
+            }
+            return { ok: true, rootName: tree.managedRoot.name };
+          } catch {
+            rememberedHandle = undefined;
+          }
+        }
         assert(folderPicker, 'API_UNSUPPORTED', 'Folder storage requires Edge or Chrome with the File System Access API.');
-        selected = await folderPicker({ mode: 'readwrite' });
-      } catch (error) {
-        return toFailure(error, 'picker');
-      }
-      try {
+        let selected: FsDirectoryHandleLike;
+        try {
+          selected = await folderPicker({ mode: 'readwrite' });
+        } catch (error) {
+          return toFailure(error, 'picker');
+        }
         await ensureReadWritePermission(selected);
         const tree = await ensureBaseTree(selected);
         rememberedHandle = selected;
@@ -1090,7 +1735,6 @@ export function createFsStorageAdapter(options: FsStorageAdapterOptions = {}): S
         try {
           await handleStore.set(selected);
         } catch {
-          // Remembering a handle is optional; the granted handle still works now.
           handlePersistenceWarning = 'Connected for this session. This browser could not remember the folder; reconnect it next time.';
         }
         return { ok: true, rootName: tree.managedRoot.name };
@@ -1128,7 +1772,22 @@ export function createFsStorageAdapter(options: FsStorageAdapterOptions = {}): S
           // are malformed, do not report a failed save after committing source data.
           await writePlayerData(storedPlayer.directory, storedPlayer.name, character, schemaVersion, appVersion, savedAt);
           const receipt = await saveLayout(layout, character, savedAt, { reuseExistingId: true });
+          const attachLegacyGlobals = lastNamedCharacterId === receipt.characterId;
           lastNamedCharacterId = receipt.characterId;
+          if (hostSrdMigrationPending()) {
+            try {
+              await migrateLegacyHostSrdDocsOnce({
+                player: storedPlayer.name,
+                characterName: storedCharacter.name,
+                characterId: receipt.characterId,
+                attachLegacyGlobals,
+                handle: rememberedHandle,
+                handleStore,
+              });
+            } catch {
+              // Migration is best-effort; the named save already committed.
+            }
+          }
           try {
             await saveLayout(tree.crash, character, savedAt, {
               characterId: receipt.characterId,
@@ -1244,6 +1903,20 @@ export function createFsStorageAdapter(options: FsStorageAdapterOptions = {}): S
         assert(envelope, 'NOT_FOUND', 'This character has no character.json file.');
         const loaded = characterFromEnvelope(envelope);
         lastNamedCharacterId = loaded.characterId;
+        if (hostSrdMigrationPending()) {
+          try {
+            await migrateLegacyHostSrdDocsOnce({
+              player: storedPlayer.name,
+              characterName: storedCharacter.name,
+              characterId: loaded.characterId,
+              attachLegacyGlobals: false,
+              handle: rememberedHandle,
+              handleStore,
+            });
+          } catch {
+            // Migration is best-effort; the loaded character is still returned.
+          }
+        }
         try {
           await rememberActive(tree.managedRoot, {
             player: storedPlayer.name,

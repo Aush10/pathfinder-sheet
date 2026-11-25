@@ -32,13 +32,8 @@ import {
   syncSharedClassState,
   type SheetWriteContext,
 } from './sheetFieldWrites';
-
-// Legacy no-op helpers kept for backward compatibility with existing module imports
-export function getSessionApiKey(): string {
-  return '';
-}
-export function setSessionApiKey(_key: string): void {}
-export function clearSessionApiKey(): void {}
+import { formatSpellTablesForCompleteSheet } from '../storage/characterState';
+import { parseClassSkills, parseProficiencies } from './classExtraction';
 
 export const DEFAULT_AI_MODULE_SETTINGS: AIModuleSettings = {
   isInstalled: true,
@@ -86,7 +81,8 @@ export const DEFAULT_AI_MODULE_SETTINGS: AIModuleSettings = {
   defaultSketchQuality: 'tasteful',
 };
 
-export const DEFAULT_SOT_CATALOGUE: SOTCatalogueData = {
+/** Historical seed content retained only for migration/debugging; it is never a blank-sheet fallback. */
+const LEGACY_DEMO_SOT_CATALOGUE: SOTCatalogueData = {
   weblinks: [
     {
       id: 'sot-link-1',
@@ -222,6 +218,13 @@ export const DEFAULT_SOT_CATALOGUE: SOTCatalogueData = {
       createdAt: 1730000011000,
     },
   ],
+};
+
+/** A new or legacy blank sheet must never silently acquire demo SRDs or web links. */
+export const DEFAULT_SOT_CATALOGUE: SOTCatalogueData = {
+  weblinks: [],
+  overridePages: [],
+  macaroniSuggestions: [],
 };
 
 // Helper to gather active SOT context from character
@@ -937,7 +940,7 @@ export async function lookupRulesWithSOT(
       query: cleanQuery || modifierTerms.join(' '),
       category: categoryFilter,
       modifiers: modifiers || {},
-      sotOverridePages: (sot.overridePages || []).filter((p) => p.isOverride),
+      sotDocuments: compactSotDocumentsForRequest((sot.overridePages || []).filter((p) => p.isOverride)),
       sotWeblinks: (sot.weblinks || []).filter((l) => l.isActive),
       characterSummary: `${character.name || 'Character'} (Lvl ${character.level} ${character.characterClass})`,
     }),
@@ -1173,7 +1176,6 @@ export async function generateJournalEntryInVoice(
   prompt: string,
   voiceSetting: string,
   character: PF1Character,
-  _apiKey?: string
 ): Promise<GeneratedJournalResult> {
   const voice = voiceSetting.trim() || 'Terse, serious, no-nonsense, short sentences, gruff veteran';
 
@@ -1235,7 +1237,6 @@ export interface GeneratedSketchResult {
 export async function generatePencilSketch(
   prompt: string,
   quality: SketchDetailQuality,
-  _apiKey?: string
 ): Promise<GeneratedSketchResult> {
   const proceduralDataUrl = generateProceduralPencilSketch({
     subject: prompt,
@@ -2354,96 +2355,34 @@ export function parseSrdSkillsAndProficiencies(rawInput: string): ParsedSrdClass
     };
   }
 
-  let detectedHitDie: number | undefined;
-  const hdMatch = text.match(/(?:hit\s*die|hd)\s*[:=-]?\s*d(6|8|10|12)/i);
-  if (hdMatch) {
-    detectedHitDie = parseInt(hdMatch[1], 10);
-  }
+  const looksLikeFullSrd = /\bTable\s*:/i.test(text) || text.length > 2000;
+  const labeledSkills = parseClassSkills(text);
+  const skills = labeledSkills.skills.length || looksLikeFullSrd
+    ? labeledSkills
+    : parseClassSkills(`Class Skills: ${text}`);
+  const labeledProf = parseProficiencies(text);
+  const cleanedProficiencies = labeledProf || looksLikeFullSrd
+    ? labeledProf
+    : parseProficiencies(`Weapon and Armor Proficiency: ${text}`);
 
-  let detectedSkillRanksPerLevel: number | undefined;
-  const spMatch = text.match(/(?:skill\s*(?:ranks|points)\s*(?:per\s*level)?\s*[:=-]?\s*)?([2468])\s*\+\s*int/i);
-  if (spMatch) {
-    detectedSkillRanksPerLevel = parseInt(spMatch[1], 10);
-  }
-
-  const lower = text.toLowerCase();
-  const matchedSkills = new Set<string>();
-
-  if (/knowledge\s*\(\s*all\s*\)/i.test(text)) {
-    PF1E_CANONICAL_SKILLS.filter((s) => s.startsWith('Knowledge')).forEach((k) => matchedSkills.add(k));
-  }
-
-  for (const canonical of PF1E_CANONICAL_SKILLS) {
-    const baseName = canonical.toLowerCase();
-    if (lower.includes(baseName)) {
-      matchedSkills.add(canonical);
-    } else if (canonical.startsWith('Knowledge (')) {
-      const subType = canonical.replace(/Knowledge\s*\((.+)\)/i, '$1').toLowerCase();
-      const knowBlockMatch = text.match(/knowledge\s*\(([^)]+)\)/gi);
-      if (knowBlockMatch) {
-        for (const kb of knowBlockMatch) {
-          if (kb.toLowerCase().includes(subType)) {
-            matchedSkills.add(canonical);
-          }
-        }
-      }
+  const cleanedSkillsList = [...skills.skills];
+  if (/knowledge\s*\(\s*all\s*\)/i.test(skills.text || '')) {
+    for (const skill of PF1E_CANONICAL_SKILLS.filter((item) => item.startsWith('Knowledge'))) {
+      if (!cleanedSkillsList.includes(skill)) cleanedSkillsList.push(skill);
     }
   }
 
-  const sentences = text
-    .replace(/\r?\n/g, ' ')
-    .split(/(?<=[.!?])\s+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const hdMatch = text.match(/(?:^|\n)\s*Hit Die\s*:?\s*d(6|8|10|12)\b/im)
+    || text.match(/(?:hit\s*die|hd)\s*[:=-]?\s*d(6|8|10|12)/i);
+  const spMatch = text.match(/(?:^|\n)\s*Skill Ranks?(?: Per Level)?\s*:\s*([0-9]+)\s*\+\s*Int\b/im)
+    || text.match(/skill\s*(?:ranks|points)\s*(?:per\s*level)?\s*[:=-]?\s*([0-9]+)\s*\+\s*int/i);
 
-  const profSentences: string[] = [];
-  let ignoredCount = 0;
-
-  for (const s of sentences) {
-    const sl = s.toLowerCase();
-    if (
-      sl.includes('class skills') ||
-      sl.includes('skill ranks per level') ||
-      sl.includes('arcane spell failure') ||
-      sl.includes('starting wealth')
-    ) {
-      ignoredCount++;
-      continue;
-    }
-
-    if (
-      sl.includes('proficient') ||
-      sl.includes('proficiency') ||
-      sl.includes('weapons') ||
-      sl.includes('armor') ||
-      sl.includes('shields') ||
-      sl.includes('longsword') ||
-      sl.includes('rapier') ||
-      sl.includes('crossbow') ||
-      sl.includes('simple') ||
-      sl.includes('martial')
-    ) {
-      const cleaned = s
-        .replace(/^weapon\s+and\s+armor\s+proficiency\s*:\s*/i, '')
-        .replace(/^A\s+[a-zA-Z\s]+?\s+is\s+proficient\s+with\s+/i, 'Proficient with ')
-        .trim();
-      profSentences.push(cleaned);
-    } else {
-      ignoredCount++;
-    }
-  }
-
-  const cleanedSkillsList = Array.from(matchedSkills);
   return {
     cleanedSkillsList,
     cleanedSkillsText: cleanedSkillsList.join(', '),
-    cleanedProficiencies: profSentences.join(' '),
-    detectedSkillRanksPerLevel,
-    detectedHitDie,
-    ignoredFillerSummary:
-      ignoredCount > 0
-        ? `Filtered ${ignoredCount} non-field rules/flavor sentence(s) automatically.`
-        : undefined,
+    cleanedProficiencies,
+    detectedSkillRanksPerLevel: spMatch ? Number(spMatch[1]) : undefined,
+    detectedHitDie: hdMatch ? Number(hdMatch[1]) : undefined,
   };
 }
 
@@ -2459,7 +2398,6 @@ export async function adaptArchetypeIntoGrid(
   description: string,
   className: string,
   currentRows: ClassGridRow[],
-  _apiKey?: string
 ): Promise<AdaptedArchetypeResult> {
   const cleanDesc = description.trim();
   const existingFeaturesByLevel = currentRows
@@ -2525,19 +2463,6 @@ Return ONLY valid JSON with this structure:
   const titleMatch = cleanDesc.match(/^([A-Za-z0-9\s'-]{3,35})\s*[:–-]/);
   if (titleMatch) {
     archetypeName = titleMatch[1].trim();
-  } else if (/fencer|arcane duelist/i.test(cleanDesc)) {
-    archetypeName = 'Arcane Duelist (Bard Fencer)';
-  }
-
-  if (/fencer|arcane duelist/i.test(cleanDesc)) {
-    lostFeatures.push('Bardic knowledge', 'Versatile performance', 'Well-versed', 'Lore master', 'Jack-of-all-trades');
-    levelAbilities[1] = 'Arcane Strike, Rallying Cry';
-    levelAbilities[2] = 'Combat Casting';
-    levelAbilities[5] = 'Arcane Bond (Weapon)';
-    levelAbilities[6] = 'Bladethirst +1, Disruptive';
-    levelAbilities[10] = 'Spellbreaker, Mass Bladethirst';
-    levelAbilities[14] = 'Penetrating Strike';
-    levelAbilities[18] = 'Greater Penetrating Strike';
   }
 
   const replaceRegex = /replaces?\s+([^.;\n]+?)(?:\s+with\s+|\.|;|$)/gi;
@@ -2613,7 +2538,7 @@ function applyArchetypeSwapsToRows(
 
     const gained = levelAbilities[row.level];
     if (gained && gained.trim()) {
-      keptParts.push(`[Archetype] ${gained.trim()}`);
+      keptParts.push(gained.trim());
     }
 
     return {
@@ -2884,6 +2809,50 @@ export function runCompleteSheetWrites(params: {
   };
 }
 
+/** Identity may intentionally have no change when the model acknowledges an already-valid identity. */
+export function tapTestNeedsInput(
+  tapTest: TapTestTurn,
+  result: {
+    missingSotRequest: unknown;
+    rejectedCount: number;
+    questionCount: number;
+    modelHasQuestion: boolean;
+    appliedCount: number;
+    blockedCount: number;
+  }
+): boolean {
+  const hasExplicitRequest = Boolean(
+    result.missingSotRequest || result.rejectedCount || result.questionCount || result.modelHasQuestion
+  );
+  // Step 0 is identity. A no-op acknowledgement there advances the tap test instead of trapping it.
+  const madeNoProgress = tapTest.step !== 0 && !result.appliedCount && !result.blockedCount;
+  return hasExplicitRequest || madeNoProgress;
+}
+
+export const REQUEST_SOT_EXCERPT_CAP = 4000;
+
+/** Compact SOT pages for Complete Sheet / lookup. Sends doc ids and ingest/excerpts, never full HTML. */
+export function compactSotDocumentsForRequest(pages: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(pages)) return [];
+  return pages.map((page, index) => {
+    const record = page && typeof page === 'object' && !Array.isArray(page)
+      ? (page as Record<string, unknown>)
+      : {};
+    const ingest = record.ingest || record.ingestArtifacts;
+    const plain = typeof record.plainText === 'string' ? record.plainText.trim() : '';
+    const html = typeof record.htmlContent === 'string' ? record.htmlContent : '';
+    const excerptSource = plain || html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const compact: Record<string, unknown> = {
+      id: typeof record.id === 'string' && record.id ? record.id : `sot-${index}`,
+      title: typeof record.title === 'string' && record.title ? record.title : 'Untitled',
+      category: typeof record.category === 'string' && record.category ? record.category : 'General Rule',
+    };
+    if (ingest && typeof ingest === 'object') compact.ingest = ingest;
+    else if (excerptSource) compact.excerpt = excerptSource.slice(0, REQUEST_SOT_EXCERPT_CAP);
+    return compact;
+  });
+}
+
 export async function completeSheetConverse(
   params: CompleteSheetConverseParams
 ): Promise<CompleteSheetConverseResult> {
@@ -2895,9 +2864,10 @@ export async function completeSheetConverse(
   const permissions = character.installedModules?.aiSettings?.allowedFields || DEFAULT_AI_MODULE_SETTINGS.allowedFields;
   const sot = character.sotCatalogue || DEFAULT_SOT_CATALOGUE;
 
-  // Build a concise character snapshot for grounding
-  const characterSummary = `Name: ${character.name || 'Unnamed'}
-Race: ${character.race || 'Human'}
+  // Build a concise character snapshot for grounding. Blank identity stays blank; never invent "Unnamed".
+  const identitySummary = character.name?.trim() ? `Name: ${character.name.trim()}\n` : '';
+  const spellTableSummary = formatSpellTablesForCompleteSheet(character);
+  const characterSummary = `${identitySummary}Race: ${character.race || 'Human'}
 Class: ${character.characterClass || 'Adventurer'} Lvl ${character.level || 1}
 Alignment: ${character.alignment || 'True Neutral'} | Deity: ${character.deity || 'None'}
 Stats: STR ${character.abilities.STR.base}, DEX ${character.abilities.DEX.base}, CON ${character.abilities.CON.base}, INT ${character.abilities.INT.base}, WIS ${character.abilities.WIS.base}, CHA ${character.abilities.CHA.base}
@@ -2905,7 +2875,7 @@ Hit Die: ${character.hitDice || 'd10'} | Max HP: ${character.hpTotalMax} | Curre
 Feats (${(character.characterFeats || []).length}): ${(character.characterFeats || []).map((f) => f.name).join(', ') || 'None'}
 Actions & Resources (${(character.characterActions || []).length}): ${(character.characterActions || []).map((a) => a.name).join(', ') || 'None'}
 Loaded SOT SRD Documents: ${(sot.overridePages || []).map((p) => `"${p.title}" (${p.category})`).join(', ') || 'None'}
-Active SOT Weblinks: ${(sot.weblinks || []).filter((w) => w.isActive).map((w) => w.title).join(', ') || 'None'}`;
+Active SOT Weblinks: ${(sot.weblinks || []).filter((w) => w.isActive).map((w) => w.title).join(', ') || 'None'}${spellTableSummary ? `\n${spellTableSummary}` : ''}`;
 
   const messageHistory = conversation.map((m) => ({ role: m.role, text: m.text }));
   if (messageHistory.at(-1)?.role !== 'user' || messageHistory.at(-1)?.text !== userPrompt) {
@@ -3031,7 +3001,8 @@ Active SOT Weblinks: ${(sot.weblinks || []).filter((w) => w.isActive).map((w) =>
     body: JSON.stringify({
       conversation: messageHistory,
       characterSummary,
-      sotOverridePages: sot.overridePages || [],
+      query: userPrompt,
+      sotDocuments: compactSotDocumentsForRequest(sot.overridePages || []),
       sotWeblinks: sot.weblinks || [],
       allowedFields: permissions,
       ...(tapTest ? { tapTest } : {}),
@@ -3124,7 +3095,14 @@ Active SOT Weblinks: ${(sot.weblinks || []).filter((w) => w.isActive).map((w) =>
     replyMessage,
     appliedActions,
     ...(tapTest ? {
-      tapTestNeedsInput: Boolean(missingSotRequest || writes.rejected.length || writes.questions.length || parsed?.questions?.some((question) => typeof question === 'string' && question.trim()) || (!writes.applied.length && !writes.blocked.length)),
+      tapTestNeedsInput: tapTestNeedsInput(tapTest, {
+        missingSotRequest,
+        rejectedCount: writes.rejected.length,
+        questionCount: writes.questions.length,
+        modelHasQuestion: parsed?.questions?.some((question) => typeof question === 'string' && question.trim()) === true,
+        appliedCount: writes.applied.length,
+        blockedCount: writes.blocked.length,
+      }),
     } : {}),
   };
 }

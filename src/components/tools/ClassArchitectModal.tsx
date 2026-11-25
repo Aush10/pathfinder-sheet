@@ -31,12 +31,12 @@ import {
   adaptArchetypeIntoGrid,
   DEFAULT_AI_MODULE_SETTINGS,
   DEFAULT_SOT_CATALOGUE,
-  getSessionApiKey,
 } from '../../engine/aiService';
 import {
-  extractClassFromSrdDoc,
+  extractClassFromSrdDocWithIngest,
   loadAllHostDeviceSrdDocs,
 } from '../../engine/sotEngine';
+import { persistSpellTablesFromIngest } from '../../storage/characterState';
 import { AppleEyeIcon } from '../common/AppleEyeIcon';
 import { useCharacter, useOptionalCharacter } from '../../context/CharacterContext';
 import { DEFAULT_CHARACTER } from '../../data/defaultCharacter';
@@ -601,11 +601,11 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
   };
 
   // Populate from SOT SRD Document
-  const handlePopulateFromSot = (docId: string) => {
+  const handlePopulateFromSot = async (docId: string) => {
     const doc = sotDocs.find((d) => d.id === docId);
     if (!doc) return;
 
-    const extracted = extractClassFromSrdDoc(doc, currentClass.className);
+    const extracted = await extractClassFromSrdDocWithIngest(doc, currentClass.className);
     const parsedRows =
       extracted.rows.length > 0
         ? extracted.rows
@@ -635,7 +635,7 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
         }
       }
 
-      return {
+      const next = {
         ...prev,
         customClassGrids: {
           ...existingGrids,
@@ -646,12 +646,13 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
           macaroniSuggestions: mergedSuggs,
         },
       };
+      return extracted.tables.length
+        ? persistSpellTablesFromIngest(next, extracted.tables, extracted.documentId)
+        : next;
     });
 
     setIsSotPickerOpen(false);
-    setSuccessMessage(
-      `Populated "${extracted.className}" from SOT "${doc.title}" with d${extracted.hitDie} HD, ${extracted.skillPointsPerLevel} + INT ranks, and ${parsedRows.length} progression rows.`
-    );
+    setSuccessMessage(extracted.summaryMessage);
   };
 
   // AI Archetype Grid Adapter
@@ -663,7 +664,6 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
         archetypeInput,
         currentClass.className,
         currentRows,
-        getSessionApiKey()
       );
 
       const updatedRaw = result.adaptedRows

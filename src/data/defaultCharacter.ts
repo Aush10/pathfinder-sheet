@@ -357,6 +357,11 @@ export function createBlankCharacter(): PF1Character {
       schemaVersion: 1,
       pinnedFacts: [],
     },
+    sotCatalogue: {
+      weblinks: [],
+      overridePages: [],
+      macaroniSuggestions: [],
+    },
     uiMakePresets: [
       {
         tag: 1,

@@ -13,7 +13,7 @@
     "clean": "rm -rf dist dist-standalone server.js",
     "lint": "tsc --noEmit",
     "test:storage": "tsx --test src/storage/fsAdapter.test.ts",
-    "test": "tsx --test src/storage/fsAdapter.test.ts src/engine/sheetFieldWrites.test.ts src/engine/tapTest.test.ts src/engine/actionDirectory.test.ts src/engine/currencyUtils.test.ts src/components/tools/ClassArchitectModal.test.ts server/openai.test.ts server/env.test.ts"
+    "test": "tsx --test src/storage/fsAdapter.test.ts src/storage/spellcasting-persist.test.ts src/engine/sheetFieldWrites.test.ts src/engine/tapTest.test.ts src/engine/actionDirectory.test.ts src/engine/currencyUtils.test.ts src/engine/classExtraction.test.ts src/engine/spellTables.test.ts src/engine/cx4.test.ts src/engine/matrix/matrixEngine.test.ts src/engine/macaroni/macaroni.test.ts src/engine/macaroni/stepperPersistence.test.ts src/components/tools/ClassArchitectModal.test.ts src/utils/sheetExporters.test.ts server/openai.test.ts server/env.test.ts server/sotContext.test.ts server/server-hygiene.test.ts server/ingest/ingest.test.ts"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",

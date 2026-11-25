@@ -1,0 +1,30 @@
+pfautotest4 {
+  "savedAt": "2026-11-24T08:57:10.375Z",
+  "characterId": "5df51714-c165-471f-971f-918283213209",
+  "name": "Control",
+  "player": "aush",
+  "abilities": {
+    "STR": 0,
+    "DEX": 0,
+    "CON": 0,
+    "INT": 0,
+    "WIS": 0,
+    "CHA": 0
+  },
+  "format": "pf1e-character"
+}
+pfmodulartest {
+  "savedAt": "2026-11-16T20:58:30.538Z",
+  "characterId": "c9897be9-2bac-42d8-a7e4-1258e9776613",
+  "name": "Thorne",
+  "player": "",
+  "abilities": {
+    "STR": 15,
+    "DEX": 14,
+    "CON": 12,
+    "INT": 10,
+    "WIS": 8,
+    "CHA": 10
+  },
+  "format": "pf1e-character"
+}

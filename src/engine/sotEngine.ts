@@ -13,7 +13,12 @@ import {
   ClassGridRow,
   MacaroniCategory,
 } from '../types/character';
-import { parseSrdSkillsAndProficiencies } from './aiService';
+import type { IngestTable } from '../../server/ingest/ingest';
+import {
+  extractClassFromClassifiedTables,
+  type ClassColumn,
+  type ExtractedClass,
+} from './classExtraction';
 
 /** Legacy unscoped keys. AF2 migrates these once; AF1 no longer reads them as authority. */
 export const LEGACY_GLOBAL_HOST_SRD_INDEX_KEY = 'pf1e_host_srd_index_v1';
@@ -398,30 +403,40 @@ export function rehydrateSrdPagesFromHost<T extends { sotCatalogue?: { weblinks:
   };
 }
 
-export function exportSrdDocFileToHost(doc: SOTRichTextPage): void {
+function downloadSrdDocBlob(fileName: string, contents: string): void {
+  if (typeof document === 'undefined') return;
+  const blob = new Blob([contents], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+export async function exportSrdDocFileToHost(doc: SOTRichTextPage): Promise<'folder' | 'download'> {
   const safeSlug = doc.title
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_|_$/g, '') || 'srd_document';
-  const payload = {
+  const fileName = `${safeSlug}.srd.json`;
+  const contents = JSON.stringify({
     format: 'PF1E_SOT_READONLY_SRD_V1',
     exportedAt: new Date().toISOString(),
     srdDocument: {
       ...doc,
       isReadOnly: true,
     },
-  };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], {
-    type: 'application/json',
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${safeSlug}.srd.json`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  }, null, 2);
+  try {
+    const { writeOrDownloadExport } = await import('../utils/sheetExporters');
+    return await writeOrDownloadExport(fileName, contents, 'application/json;charset=utf-8');
+  } catch {
+    downloadSrdDocBlob(fileName, contents);
+    return 'download';
+  }
 }
 
 export function parseImportedSrdFile(fileName: string, rawContent: string): SOTRichTextPage {
@@ -685,161 +700,116 @@ export interface ExtractedSrdClassData {
   cleanedSkillsList: string[];
   rawGridText: string;
   rows: ClassGridRow[];
+  columns: ClassColumn[];
+  matrixRows: Array<{ level: number; values: Record<string, string> }>;
   sourceDocTitle: string;
   macaroniSuggestions: SOTMacaroniSuggestion[];
   summaryMessage: string;
 }
 
+function signedInt(value: string): number {
+  const match = /([+-]?\d+)/.exec(value.replace(/,/g, ''));
+  return match ? Number(match[1]) : 0;
+}
+
+function extractedColumnValue(extracted: ExtractedClass, row: ExtractedClass['rows'][number], normalized: string): string {
+  const column = extracted.columns.find((item) => item.id === normalized || item.id.startsWith(`${normalized}_`));
+  return column ? row.values[column.id] || '' : '';
+}
+
+function toLegacyClassGridRows(extracted: ExtractedClass): ClassGridRow[] {
+  return extracted.rows.map((row) => {
+    const babRaw = extractedColumnValue(extracted, row, 'bab');
+    const bab = signedInt(babRaw);
+    return {
+      level: row.level,
+      bab,
+      babString: babRaw.trim() || `+${bab}`,
+      fort: signedInt(extractedColumnValue(extracted, row, 'fort')),
+      ref: signedInt(extractedColumnValue(extracted, row, 'ref')),
+      will: signedInt(extractedColumnValue(extracted, row, 'will')),
+      special: extractedColumnValue(extracted, row, 'special') || '—',
+    };
+  });
+}
+
+export async function ingestClassifiedTablesFromSrdDoc(doc: SOTRichTextPage): Promise<{
+  tables: IngestTable[];
+  documentId?: string;
+  text: string;
+}> {
+  const fallbackText = doc.plainText || doc.htmlContent.replace(/<[^>]+>/g, ' ');
+  const fallback = { tables: [] as IngestTable[], text: fallbackText };
+  const content = doc.htmlContent || doc.plainText || '';
+  if (!content.trim() || typeof fetch !== 'function') return fallback;
+  try {
+    const response = await fetch('/api/sot/ingest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: doc.title || 'srd-document', content }),
+    });
+    const payload = await response.json() as {
+      documentId?: unknown;
+      artifacts?: { 'table.json'?: { tables?: IngestTable[] }; 'text.md'?: unknown };
+    };
+    if (!response.ok) return fallback;
+    const tables = payload.artifacts?.['table.json']?.tables ?? [];
+    const text = typeof payload.artifacts?.['text.md'] === 'string' ? payload.artifacts['text.md'] : fallbackText;
+    const documentId = typeof payload.documentId === 'string' ? payload.documentId : undefined;
+    return { tables, documentId, text };
+  } catch {
+    return fallback;
+  }
+}
+
 /**
- * Parses a full class SRD page (copied from a browser page into SOT) and extracts:
- * - Class Name, Hit Die (d6/d8/d10/d12), Skill Ranks per Level
- * - Weapon & Armor Proficiencies
- * - Canonical PF1e Class Skills
- * - 1–20 Class Progression Grid (Level | BAB | Fort | Ref | Will | Special)
- * - Mathematical Macaroni Suggestions for class abilities
+ * Extracts a class from CX2-classified tables only.
+ * Missing tables or a missing class-grid returns unmatched rows; it never
+ * synthesizes a 1–20 prose grid or falls back to lookup tables.
  */
 export function extractClassFromSrdDoc(
   doc: SOTRichTextPage,
-  targetClassNameHint?: string
+  targetClassNameHint?: string,
+  tables: IngestTable[] = [],
+  plainTextOverride?: string,
 ): ExtractedSrdClassData {
-  const text = doc.plainText || doc.htmlContent.replace(/<[^>]+>/g, ' ');
-  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-
-  // 1. Identify Class Name
-  let inferredClassName =
-    targetClassNameHint?.trim() ||
-    doc.title
-      .replace(/^(?:srd|pathfinder|pf1e|d20pfsrd|aon|class|full class srd)\s*[:—-]?\s*/i, '')
-      .trim();
-
-  const tableClassMatch = text.match(/Table\s*:\s*([A-Z][A-Za-z\s'-]{2,25})/i);
-  if (tableClassMatch && (!targetClassNameHint || targetClassNameHint === 'New Class')) {
-    inferredClassName = tableClassMatch[1].trim();
-  }
-
-  // 2. Parse Skills, Proficiencies, Hit Die, and Skill Ranks via existing SRD recognizer
-  const srdParsed = parseSrdSkillsAndProficiencies(text);
-
-  const hitDie = srdParsed.detectedHitDie || 8;
-  const skillPointsPerLevel = srdParsed.detectedSkillRanksPerLevel || 4;
-
-  // Extract Weapon and Armor Proficiency paragraph specifically if present
-  let proficiencies = srdParsed.cleanedProficiencies;
-  const profSectionMatch = text.match(
-    /Weapon and Armor Proficiency\s*[:—-]?\s*([\s\S]{20,600}?)(?=\n[A-Z][A-Za-z\s]{2,30}:|\nTable:|$)/i
-  );
-  if (profSectionMatch) {
-    proficiencies = profSectionMatch[1].replace(/\s+/g, ' ').trim();
-  }
-
-  // 3. Extract 1–20 Progression Table Rows if pasted in the SRD
-  const rows: ClassGridRow[] = [];
-  for (const line of lines) {
-    const rowMatch = line.match(
-      /^(\d{1,2})(?:st|nd|rd|th)?\s+([+-]?\d+(?:\/[+-]?\d+)*)\s+([+-]?\d+)\s+([+-]?\d+)\s+([+-]?\d+)\s+(.+)$/
-    );
-    if (rowMatch) {
-      const level = parseInt(rowMatch[1], 10);
-      if (level >= 1 && level <= 20 && !rows.some((r) => r.level === level)) {
-        const babStr = rowMatch[2].startsWith('+') ? rowMatch[2] : `+${rowMatch[2]}`;
-        const primaryBab = parseInt(rowMatch[2].match(/\d+/)?.[0] || String(level), 10);
-        const fort = parseInt(rowMatch[3], 10) || 0;
-        const ref = parseInt(rowMatch[4], 10) || 0;
-        const will = parseInt(rowMatch[5], 10) || 0;
-        // Strip trailing spell-per-day columns (e.g. "1 2 — — —") if present
-        const specialClean = rowMatch[6]
-          .replace(/(?:\s+(?:\d+|—|-)){2,10}\s*$/, '')
-          .trim() || '—';
-
-        rows.push({
-          level,
-          bab: primaryBab,
-          babString: babStr,
-          fort,
-          ref,
-          will,
-          special: specialClean,
-        });
-      }
-    }
-  }
-
-  // 4. If the pasted SRD had prose ("At 1st level...", "At 2nd level...") instead of a clean tab-delimited table,
-  // synthesize the 1-20 progression grid from prose level markers + Hit Die BAB/Save chassis!
-  if (rows.length < 5) {
-    const levelFeaturesMap: Record<number, string[]> = {};
-    const levelProseRegex =
-      /(?:At|Beginning at|Starting at)\s+(\d{1,2})(?:st|nd|rd|th)\s+level,\s+([^.\n]+)/gi;
-    let m: RegExpExecArray | null;
-    while ((m = levelProseRegex.exec(text)) !== null) {
-      const lvl = parseInt(m[1], 10);
-      if (lvl >= 1 && lvl <= 20) {
-        const shortFeat = m[2]
-          .replace(/^(?:a|an|the)\s+[a-z]+\s+(?:gains|can|learns|receives)\s+/i, '')
-          .slice(0, 60)
-          .trim();
-        if (!levelFeaturesMap[lvl]) levelFeaturesMap[lvl] = [];
-        if (shortFeat && !levelFeaturesMap[lvl].includes(shortFeat)) {
-          levelFeaturesMap[lvl].push(shortFeat);
-        }
-      }
-    }
-
-    // Determine BAB rate from Hit Die (d10/d12 -> Full, d8 -> 3/4, d6 -> 1/2)
-    const babRate = hitDie >= 10 ? 1 : hitDie === 8 ? 0.75 : 0.5;
-    const goodFort = hitDie >= 10 || /fortitude|alchemist|cleric|druid|inquisitor|magus|monk|warpriest/i.test(text);
-    const goodRef = /reflex|rogue|bard|ranger|slayer|investigator|alchemist|swashbuckler|gunslinger|monk/i.test(text);
-    const goodWill = hitDie === 6 || /will|cleric|druid|bard|inquisitor|investigator|magus|paladin|warpriest|monk/i.test(text);
-
-    rows.length = 0;
-    for (let lvl = 1; lvl <= 20; lvl++) {
-      const bab = Math.floor(lvl * babRate);
-      const iteratives: number[] = [bab];
-      let nextIt = bab - 5;
-      while (nextIt > 0) {
-        iteratives.push(nextIt);
-        nextIt -= 5;
-      }
-      const babString = iteratives.map((b) => `+${b}`).join('/');
-      const fort = goodFort ? 2 + Math.floor(lvl / 2) : Math.floor(lvl / 3);
-      const ref = goodRef ? 2 + Math.floor(lvl / 2) : Math.floor(lvl / 3);
-      const will = goodWill ? 2 + Math.floor(lvl / 2) : Math.floor(lvl / 3);
-      const special =
-        levelFeaturesMap[lvl] && levelFeaturesMap[lvl].length > 0
-          ? levelFeaturesMap[lvl].join(', ')
-          : '—';
-
-      rows.push({
-        level: lvl,
-        bab,
-        babString,
-        fort,
-        ref,
-        will,
-        special,
-      });
-    }
-  }
-
-  rows.sort((a, b) => a.level - b.level);
+  const text = plainTextOverride || doc.plainText || doc.htmlContent.replace(/<[^>]+>/g, ' ');
+  const extracted = extractClassFromClassifiedTables({
+    title: doc.title,
+    plainText: text,
+    tables,
+    classNameHint: targetClassNameHint,
+  });
+  const rows = toLegacyClassGridRows(extracted);
   const rawGridText = rows
     .map((r) => `${r.level}\t${r.babString || `+${r.bab}`}\t+${r.fort}\t+${r.ref}\t+${r.will}\t${r.special}`)
     .join('\n');
-
   const macaroniSuggestions = extractMacaroniSuggestionsFromSrd(doc.id, doc.title, text);
-
   return {
-    matched: rows.length > 0 || srdParsed.cleanedSkillsList.length > 0,
-    className: inferredClassName || 'SRD Class',
-    hitDie,
-    skillPointsPerLevel,
-    proficiencies: proficiencies || 'Simple weapons, light armor.',
-    classSkillsText: srdParsed.cleanedSkillsText,
-    cleanedSkillsList: srdParsed.cleanedSkillsList,
+    matched: extracted.matched,
+    className: extracted.className,
+    hitDie: extracted.hitDie,
+    skillPointsPerLevel: extracted.skillPointsPerLevel,
+    proficiencies: extracted.proficiencies,
+    classSkillsText: extracted.classSkillsText,
+    cleanedSkillsList: extracted.cleanedSkillsList,
     rawGridText,
     rows,
+    columns: extracted.columns,
+    matrixRows: extracted.rows.map((row) => ({ level: row.level, values: { ...row.values } })),
     sourceDocTitle: doc.title,
     macaroniSuggestions,
-    summaryMessage: `Populated "${inferredClassName}" from SOT SRD "${doc.title}" (d${hitDie} HD, ${skillPointsPerLevel}+INT SP, ${srdParsed.cleanedSkillsList.length} class skills, ${rows.length} progression levels, and ${macaroniSuggestions.length} Macaroni math suggestions sent to DSL Studio).`,
+    summaryMessage: extracted.matched
+      ? `${extracted.summaryMessage} ${macaroniSuggestions.length} Macaroni math suggestion(s) sent to DSL Studio.`
+      : extracted.summaryMessage,
   };
+}
+
+export async function extractClassFromSrdDocWithIngest(
+  doc: SOTRichTextPage,
+  targetClassNameHint?: string,
+): Promise<ExtractedSrdClassData & { tables: IngestTable[]; documentId?: string }> {
+  const ingested = await ingestClassifiedTablesFromSrdDoc(doc);
+  const extracted = extractClassFromSrdDoc(doc, targetClassNameHint, ingested.tables, ingested.text);
+  return { ...extracted, tables: ingested.tables, documentId: ingested.documentId };
 }

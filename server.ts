@@ -3,7 +3,12 @@ import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { lockFileMiddleware, registerLockFileMime } from './server/lockFiles.ts';
-import { registerApiRoutes } from './server/routes.ts';
+import {
+  formatPortInUseMessage,
+  registerApiRoutes,
+  registerProductionSpaFallback,
+  resolveServerPort,
+} from './server/routes.ts';
 import { loadServerEnvironment } from './server/env.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -13,10 +18,12 @@ loadServerEnvironment(__dirname);
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = resolveServerPort();
 
   registerLockFileMime(express.static);
   app.use(lockFileMiddleware);
+  // Complete Sheet may send large SOT pages. POST /api/sot/ingest also caps the
+  // source string itself at 5 MiB and never executes request content.
   app.use(express.json({ limit: '10mb' }));
   registerApiRoutes(app);
 
@@ -29,13 +36,20 @@ async function startServer() {
   } else {
     const distPath = path.join(__dirname, 'dist');
     app.use(express.static(distPath));
-    app.get('*all', (_req, res) => {
+    registerProductionSpaFallback(app, (_req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
+  });
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(formatPortInUseMessage(PORT));
+      process.exit(1);
+    }
+    throw err;
   });
 }
 

@@ -31,7 +31,6 @@ import {
   DEFAULT_AI_MODULE_SETTINGS,
   generateJournalEntryInVoice,
   generatePencilSketch,
-  getSessionApiKey,
 } from '../../engine/aiService';
 import {
   evaluateDirectoryMacroValue,
@@ -235,7 +234,6 @@ export const JournalModal: React.FC<JournalModalProps> = ({
         voiceSessionPrompt.trim(),
         combinedVoiceInstruction,
         character,
-        getSessionApiKey()
       );
 
       if (mode === 'append_current' && selectedEntry) {
@@ -291,7 +289,6 @@ export const JournalModal: React.FC<JournalModalProps> = ({
       const res = await generatePencilSketch(
         fullSubject,
         sketchQuality,
-        getSessionApiKey()
       );
 
       const newImage: JournalImage = {

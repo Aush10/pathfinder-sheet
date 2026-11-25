@@ -1,6 +1,72 @@
 import { PF1Character, WorkspaceLayout } from '../types/character';
 import { DerivedCombatStats } from '../engine/pf1eMath';
 import { normalizeCharacterState } from '../engine/characterIntegration';
+import { writeCharacterExportFile } from '../storage/fsAdapter';
+
+const CHARACTER_ENVELOPE_FORMAT = 'pf1e-character';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+export function exportFileBaseName(characterName: string | undefined | null): string {
+  const raw = String(characterName ?? '')
+    .trim()
+    .replace(/\s+/g, '_')
+    .replace(/[^a-zA-Z0-9_-]/g, '_');
+  return raw || 'Character';
+}
+
+/** Save-tree envelopes (`format: pf1e-character` + `data`) unwrap to the inner character or loadout. */
+export function unwrapImportedJsonPayload(parsed: unknown): unknown {
+  if (!isRecord(parsed)) return parsed;
+  if (parsed.format === CHARACTER_ENVELOPE_FORMAT && isRecord(parsed.data)) {
+    return parsed.data;
+  }
+  return parsed;
+}
+
+export function isImportableCharacter(value: unknown): value is Partial<PF1Character> {
+  return isRecord(value) && isRecord(value.abilities);
+}
+
+export function parseImportedCharacterJson(text: string): PF1Character {
+  const parsed = JSON.parse(text) as unknown;
+  const data = unwrapImportedJsonPayload(parsed);
+  if (!isImportableCharacter(data)) {
+    throw new Error('Invalid character sheet format.');
+  }
+  return normalizeCharacterState(data);
+}
+
+export function downloadBlob(contents: BlobPart, fileName: string, mimeType: string): void {
+  const blob = contents instanceof Blob ? contents : new Blob([contents], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const downloadAnchor = document.createElement('a');
+  downloadAnchor.href = url;
+  downloadAnchor.download = fileName;
+  document.body.appendChild(downloadAnchor);
+  downloadAnchor.click();
+  downloadAnchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+export async function writeOrDownloadExport(
+  fileName: string,
+  contents: string,
+  mimeType: string,
+  options?: { player?: string; characterName?: string },
+): Promise<'folder' | 'download'> {
+  const result = await writeCharacterExportFile({
+    fileName,
+    contents,
+    player: options?.player,
+    characterName: options?.characterName,
+  });
+  if (result.ok && result.stored === 'folder') return 'folder';
+  downloadBlob(contents, fileName, mimeType);
+  return 'download';
+}
 
 /**
  * Exports a single-file standalone HTML bundle with injected window.__INITIAL_CHARACTER__
@@ -10,6 +76,7 @@ export async function exportStandaloneHTMLBundle(
   character: PF1Character,
   layout: WorkspaceLayout
 ): Promise<void> {
+  const fileName = `${exportFileBaseName(character.name)}_pf1e_sheet.html`;
   try {
     let htmlText = '';
     try {
@@ -51,48 +118,37 @@ export async function exportStandaloneHTMLBundle(
       }
     }
 
-    const blob = new Blob([htmlText], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.href = url;
-    downloadAnchor.download = `${(character.name || 'Pathfinder1e_Character').replace(/[^a-zA-Z0-9_-]/g, '_')}_pf1e_sheet.html`;
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
-    URL.revokeObjectURL(url);
+    await writeOrDownloadExport(fileName, htmlText, 'text/html;charset=utf-8', {
+      characterName: character.name,
+      player: character.player,
+    });
   } catch (err) {
     console.error('Failed to export standalone HTML:', err);
     const serializedChar = JSON.stringify(character).replace(/</g, '\\u003c');
     const fallbackHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${character.name}</title><script>window.__INITIAL_CHARACTER__=${serializedChar};</script></head><body>${document.documentElement.outerHTML}</body></html>`;
-    const blob = new Blob([fallbackHtml], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${(character.name || 'Character').replace(/\s+/g, '_')}_pf1e_sheet.html`;
-    a.click();
-    URL.revokeObjectURL(url);
+    await writeOrDownloadExport(fileName, fallbackHtml, 'text/html;charset=utf-8', {
+      characterName: character.name,
+      player: character.player,
+    });
   }
 }
 
 /**
  * Downloads the current character as a formatted JSON file.
+ * Writes to `<character>/exports/` when a folder is connected; otherwise a Blob URL.
  */
-export function exportCharacterJSON(character: PF1Character): void {
-  const dataStr =
-    'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(character, null, 2));
-  const downloadAnchor = document.createElement('a');
-  downloadAnchor.setAttribute('href', dataStr);
-  downloadAnchor.setAttribute(
-    'download',
-    `${(character.name || 'Character').replace(/\s+/g, '_')}_pf1e_sheet.json`
-  );
-  document.body.appendChild(downloadAnchor);
-  downloadAnchor.click();
-  downloadAnchor.remove();
+export async function exportCharacterJSON(character: PF1Character): Promise<void> {
+  const fileName = `${exportFileBaseName(character.name)}_pf1e_sheet.json`;
+  const contents = JSON.stringify(character, null, 2);
+  await writeOrDownloadExport(fileName, contents, 'application/json;charset=utf-8', {
+    characterName: character.name,
+    player: character.player,
+  });
 }
 
 /**
  * Opens a file picker and imports a PF1Character JSON file.
+ * Accepts save-tree envelopes and blank names (B16).
  */
 export function importCharacterJSONFile(
   onImported: (character: PF1Character) => void,
@@ -107,15 +163,21 @@ export function importCharacterJSONFile(
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
-        const parsed = JSON.parse(event.target?.result as string);
-        if (parsed && parsed.name && parsed.abilities) {
-          onImported(normalizeCharacterState(parsed));
-        } else {
-          onError?.('Invalid character sheet format.');
+        const text = event.target?.result;
+        if (typeof text !== 'string') {
+          onError?.('Could not read the selected file.');
+          return;
         }
-      } catch {
-        onError?.('Could not parse JSON file.');
+        onImported(parseImportedCharacterJson(text));
+      } catch (err) {
+        const message = err instanceof Error && err.message === 'Invalid character sheet format.'
+          ? err.message
+          : 'Could not parse JSON file.';
+        onError?.(message);
       }
+    };
+    reader.onerror = () => {
+      onError?.('Could not read the selected file.');
     };
     reader.readAsText(file);
   };
@@ -125,7 +187,7 @@ export function importCharacterJSONFile(
 /**
  * Exports a spreadsheet-compatible CSV summary of the character and derived stats.
  */
-export function exportCharacterCSV(character: PF1Character, derived: DerivedCombatStats): void {
+export async function exportCharacterCSV(character: PF1Character, derived: DerivedCombatStats): Promise<void> {
   const lines: string[] = [
     `Name:,${character.name},,,,Race:,${character.race},,,,Space:,5 ft.`,
     `Class:,${character.characterClass},,,,Level:,${character.level},,Size:,${character.size},,Reach:,5 ft.`,
@@ -145,14 +207,9 @@ export function exportCharacterCSV(character: PF1Character, derived: DerivedComb
     `Combat,BAB,${character.baseAttackBonus},CMB,${derived.cmbTotal},CMD,${derived.cmdTotal},Initiative,${derived.initiativeTotal}`,
   ];
 
-  const csvContent = 'data:text/csv;charset=utf-8,' + encodeURIComponent(lines.join('\n'));
-  const downloadAnchor = document.createElement('a');
-  downloadAnchor.setAttribute('href', csvContent);
-  downloadAnchor.setAttribute(
-    'download',
-    `${(character.name || 'Character').replace(/\s+/g, '_')}_pf1e_sheet.csv`
-  );
-  document.body.appendChild(downloadAnchor);
-  downloadAnchor.click();
-  downloadAnchor.remove();
+  const fileName = `${exportFileBaseName(character.name)}_pf1e_sheet.csv`;
+  await writeOrDownloadExport(fileName, lines.join('\n'), 'text/csv;charset=utf-8', {
+    characterName: character.name,
+    player: character.player,
+  });
 }

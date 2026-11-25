@@ -41,12 +41,12 @@ import {
   adaptArchetypeIntoGrid,
   DEFAULT_AI_MODULE_SETTINGS,
   DEFAULT_SOT_CATALOGUE,
-  getSessionApiKey,
 } from '../../engine/aiService';
 import {
-  extractClassFromSrdDoc,
+  extractClassFromSrdDocWithIngest,
   loadAllHostDeviceSrdDocs,
 } from '../../engine/sotEngine';
+import { persistSpellTablesFromIngest } from '../../storage/characterState';
 import { AppleEyeIcon } from '../common/AppleEyeIcon';
 import { useCharacter } from '../../context/CharacterContext';
 import { applyCareerProgressionToCharacter } from '../../engine/characterIntegration';
@@ -400,7 +400,7 @@ export const AddClassModal: React.FC<AddClassModalProps> = ({
   };
 
   // Populate Class Fields from a Loaded SOT SRD Document (Browser Page Dump)
-  const handlePopulateClassFromSotSrd = (docIdOverride?: string) => {
+  const handlePopulateClassFromSotSrd = async (docIdOverride?: string) => {
     if (!isAIAddClassActive) {
       setSrdFilterNotice(
         'Blocked by AI Blind Spot: Enable "Add Class & Archetype Studio" in AI Listener -> Module Permissions first.'
@@ -429,7 +429,7 @@ export const AddClassModal: React.FC<AddClassModalProps> = ({
       return;
     }
 
-    const extracted = extractClassFromSrdDoc(targetDoc, currentClass.className);
+    const extracted = await extractClassFromSrdDocWithIngest(targetDoc, currentClass.className);
     const parsedRows =
       extracted.rows.length > 0
         ? extracted.rows
@@ -459,7 +459,7 @@ export const AddClassModal: React.FC<AddClassModalProps> = ({
         }
       }
 
-      return {
+      const next = {
         ...prev,
         customClassGrids: {
           ...existingGrids,
@@ -470,11 +470,12 @@ export const AddClassModal: React.FC<AddClassModalProps> = ({
           macaroniSuggestions: mergedSuggs,
         },
       };
+      return extracted.tables.length
+        ? persistSpellTablesFromIngest(next, extracted.tables, extracted.documentId)
+        : next;
     });
 
-    setSuccessMessage(
-      `Populated "${extracted.className}" from SOT SRD "${targetDoc.title}" (d${extracted.hitDie} HD, ${extracted.skillPointsPerLevel} + INT skill ranks, ${parsedRows.length} progression rows, and ${extracted.macaroniSuggestions.length} Macaroni math suggestion(s) sent to DSL Studio)!`
-    );
+    setSuccessMessage(extracted.summaryMessage);
   };
 
   // Adapt Archetype Description into Progression Grid
@@ -486,7 +487,6 @@ export const AddClassModal: React.FC<AddClassModalProps> = ({
         archetypeDescriptionInput,
         currentClass.className,
         currentClass.rows,
-        getSessionApiKey()
       );
 
       // Update current class progression grid rows & rawText with adapted features
