@@ -42,6 +42,7 @@ import {
   CharacterClassEntry,
   CustomBuffEffect,
   CustomClassGrid,
+  MatrixColumn,
   PF1Character,
   WorkspaceLayout,
 } from '../types/character';
@@ -395,6 +396,52 @@ export function applyCareerProgressionToCharacter(
 }
 
 /**
+ * The explicit Character Matrix write boundary. Matrix rows are derived from
+ * user indexes and are never persisted; only this user-triggered projection
+ * updates the sheet. The legacy career function remains for old saves until
+ * the AG3 UI switches its apply button to this function.
+ */
+export interface DerivedMatrixApplyInput {
+  columns: MatrixColumn[];
+  rows: Array<{ level: number; values: Record<string, string>; sourceIndexIds?: string[] }>;
+}
+
+const matrixValueAsNumber = (value: string | undefined): number => {
+  const match = /^\s*([+-]?\d+(?:\.\d+)?)\s*$/.exec(value || '');
+  return match ? Number(match[1]) : 0;
+};
+
+export function applyMatrixProgressionToCharacter(character: PF1Character, matrix: DerivedMatrixApplyInput): PF1Character {
+  const columnFor = (header: string) => matrix.columns.find((column) =>
+    column.header.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') === header
+  );
+  const read = (row: DerivedMatrixApplyInput['rows'][number] | undefined, header: string): string => {
+    const column = columnFor(header);
+    return row && column ? row.values[column.id] || '' : '';
+  };
+  // The derived view always exposes up to 20/40 rows. Blank display rows are
+  // not character levels; a manually entered row has values even without a
+  // source index and remains eligible.
+  const rows = matrix.rows.filter((row) => row.level > 0 && Object.keys(row.values).length > 0).sort((left, right) => left.level - right.level);
+  const last = rows.at(-1);
+  const features = rows.flatMap((row) => read(row, 'special').split(/,\s*(?![^()]*\))/)).map((value) => value.replace(/\s*<(?:act|rec|spell|feat)>\s*$/i, '').trim()).filter(Boolean);
+  const featsAndAbilities = [...(character.featsAndAbilities || [])];
+  features.forEach((feature) => { if (!featsAndAbilities.some((saved) => saved.toLowerCase() === feature.toLowerCase())) featsAndAbilities.push(feature); });
+  return syncOddLevelFeats({
+    ...character,
+    level: rows.length,
+    baseAttackBonus: matrixValueAsNumber(read(last, 'base_attack_bonus') || read(last, 'bab')),
+    saves: {
+      ...character.saves,
+      fortitude: { ...character.saves.fortitude, base: matrixValueAsNumber(read(last, 'fort')) },
+      reflex: { ...character.saves.reflex, base: matrixValueAsNumber(read(last, 'ref')) },
+      will: { ...character.saves.will, base: matrixValueAsNumber(read(last, 'will')) },
+    },
+    featsAndAbilities,
+  });
+}
+
+/**
  * Applies Point Buy base scores and Level Ability Score Increases (ASI) to a character.
  */
 export function applyPointBuyToCharacter(
@@ -509,6 +556,20 @@ export function projectMacaroniResult(
   let nextCharacter = engineApplied.updatedCharacter;
   const notes: string[] = engineApplied.didMutate ? [engineApplied.statusMessage] : [];
   let didMutate = engineApplied.didMutate;
+
+  // The evaluator keeps pasta pure except for the supplied ephemeral store. Persist its
+  // snapshots here, at the shared character-state projection boundary.
+  if (result.stepperSnapshots?.length) {
+    const macaroniStepperStore = { ...(nextCharacter.macaroniStepperStore || {}) };
+    for (const snapshot of result.stepperSnapshots) {
+      if (snapshot.bangId && Number.isFinite(snapshot.step) && snapshot.step >= 0) {
+        macaroniStepperStore[snapshot.bangId] = Math.floor(snapshot.step);
+      }
+    }
+    nextCharacter = { ...nextCharacter, macaroniStepperStore };
+    didMutate = true;
+    notes.push(`Stepper advanced to ${result.stepperSnapshots[result.stepperSnapshots.length - 1].step}`);
+  }
 
   const deltasByStat = new Map<BuffStatTarget, number>();
 

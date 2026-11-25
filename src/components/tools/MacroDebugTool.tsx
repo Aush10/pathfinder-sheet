@@ -63,6 +63,7 @@ export const MacroDebugTool: React.FC<MacroDebugToolProps> = ({ isOpen, onClose 
       character,
       formulaContext,
       uiPresets: character.uiMakePresets,
+      stepperStore: { ...(character.macaroniStepperStore || {}) },
     });
 
     return {
@@ -95,8 +96,9 @@ export const MacroDebugTool: React.FC<MacroDebugToolProps> = ({ isOpen, onClose 
       character,
       formulaContext,
       uiPresets: character.uiMakePresets,
+      stepperStore: { ...(character.macaroniStepperStore || {}) },
     });
-    const canApply = (macro.buffMakeEvents?.length || 0) > 0 || (macro.stateMutations?.length || 0) > 0;
+    const canApply = (macro.buffMakeEvents?.length || 0) > 0 || (macro.stateMutations?.length || 0) > 0 || (macro.stepperSnapshots?.length || 0) > 0;
 
     setTrace(nextTrace);
     if (!canApply) {

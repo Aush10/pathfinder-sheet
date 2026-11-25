@@ -434,6 +434,7 @@ export const XDXTool: React.FC<XDXToolProps> = ({
       character,
       formulaContext: context,
       uiPresets: character.uiMakePresets,
+      stepperStore: { ...(character.macaroniStepperStore || {}) },
     });
 
     // 1. Dispatch UI alerts if any (<TAG"message">)
@@ -466,7 +467,8 @@ export const XDXTool: React.FC<XDXToolProps> = ({
     const pushesOut: string[] = [];
     if (
       (macaroniResult.buffMakeEvents && macaroniResult.buffMakeEvents.length > 0) ||
-      (macaroniResult.stateMutations && macaroniResult.stateMutations.length > 0)
+      (macaroniResult.stateMutations && macaroniResult.stateMutations.length > 0) ||
+      (macaroniResult.stepperSnapshots && macaroniResult.stepperSnapshots.length > 0)
     ) {
       onUpdateCharacter((prev) => {
         const applied = projectMacaroniResult(prev, macaroniResult);

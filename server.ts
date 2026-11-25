@@ -17,6 +17,8 @@ async function startServer() {
 
   registerLockFileMime(express.static);
   app.use(lockFileMiddleware);
+  // Complete Sheet may send large SOT pages. POST /api/sot/ingest also caps the
+  // source string itself at 5 MiB and never executes request content.
   app.use(express.json({ limit: '10mb' }));
   registerApiRoutes(app);
 

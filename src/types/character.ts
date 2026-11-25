@@ -370,6 +370,33 @@ export interface SpellItem {
   description: string;
 }
 
+/** A lossless, queryable spell-progression row imported from an SRD table. */
+export interface SpellProgressionRow {
+  /** Character/class level, always bounded to the PF1 1--20 progression. */
+  level: number;
+  /** Values retain their source text (including dashes and footnote markers). */
+  values: Record<string, string>;
+}
+
+export type SpellProgressionKind = 'spells-per-day' | 'spells-known';
+
+/**
+ * Structured import of one SRD spell-progression table.  Column keys use the
+ * ingest prefixes `spd_*` and `sk_*`, so consumers never need to scrape prose.
+ */
+export interface SpellProgressionTable {
+  kind: SpellProgressionKind;
+  sourceTableId?: string;
+  sourceDocumentId?: string;
+  columns: string[];
+  rows: SpellProgressionRow[];
+}
+
+export interface SpellProgressionTables {
+  spellsPerDay: SpellProgressionTable;
+  spellsKnown: SpellProgressionTable;
+}
+
 export type MacaroniCategory = 'logic' | 'placeholder' | 'action' | 'step';
 
 export interface UiMakePreset {
@@ -464,6 +491,66 @@ export interface ClassGridRow {
   will: number;
   special: string;
 }
+
+/** Generic user-index columns. Unlike the legacy ClassGridRow shape these
+ * preserve arbitrary named SRD columns such as spell progressions. */
+export type MatrixColumnType = 'number' | 'text' | 'ability-list';
+
+export interface MatrixColumn {
+  id: string;
+  header: string;
+  type: MatrixColumnType;
+  frozen?: boolean;
+  hidden?: boolean;
+}
+
+export interface MatrixRow {
+  level: number;
+  values: Record<string, string>;
+}
+
+export interface MatrixAssignment {
+  value: string;
+  sectionId: string;
+  text?: string;
+}
+
+export interface MatrixBinding {
+  value: string;
+  mode: 'take-highest' | 'count-total';
+  key: string;
+}
+
+/** Saved Matrix input. The actual Matrix is deliberately derived, not saved. */
+export interface UserMatrixIndex {
+  id: string;
+  name: string;
+  columns: MatrixColumn[];
+  rows: MatrixRow[];
+  row0?: MatrixRow;
+  appendToIndexId?: string;
+  assignments?: MatrixAssignment[];
+  bindings?: MatrixBinding[];
+  sourceTableIds?: string[];
+  classData?: {
+    hitDie?: number;
+    skillPointsPerLevel?: number;
+    proficiencies?: string;
+    classSkillsText?: string;
+  };
+}
+
+export interface CareerIndexTrack {
+  id: string;
+  header: string;
+  cells: string[];
+}
+
+export interface CareerIndex {
+  tracks: CareerIndexTrack[];
+}
+
+export type CurrencyContainer = 'carried' | 'bank' | 'stored' | 'other';
 
 export interface CustomClassGrid {
   id: string; // 'class1', 'class2', etc.
@@ -692,6 +779,8 @@ export interface PF1Character {
     sp: number;
     gp: number;
     pp: number;
+    /** Missing means legacy carried coinage. */
+    container?: CurrencyContainer;
   };
   includeCoinWeight?: boolean;
   coinWeightRate?: number;
@@ -702,6 +791,8 @@ export interface PF1Character {
   spellKeyAbility: AbilityName;
   spellSlots: SpellSlotLevel[];
   spells: SpellItem[];
+  /** Imported SRD spell-progression tables. Persistence and UI wiring are layered separately. */
+  spellTables?: Partial<SpellProgressionTables>;
 
   // Conditions & Buffs
   conditions: ConditionState;
@@ -722,6 +813,8 @@ export interface PF1Character {
 
   // Modular Tabletop Tools State (Stepper, Deck, XDX)
   stepperRules?: StepperRule[];
+  /** Persisted hidden counters for Macroni `!` objects, keyed by evaluator bang id. */
+  macaroniStepperStore?: Record<string, number>;
   deckState?: DeckState;
   xdxMacros?: XdxMacroEntry[];
 
@@ -731,6 +824,10 @@ export interface PF1Character {
 
   // Custom Class Progression Grids (Add Class Tool)
   customClassGrids?: Record<string, CustomClassGrid>;
+
+  /** Source state for CX3. Its rendered Matrix is never persisted. */
+  matrixIndexes?: Record<string, UserMatrixIndex>;
+  careerIndex?: CareerIndex;
 
   // Career Progression, Multiclassing & Gestalt
   careerData?: CareerProgressionData;
