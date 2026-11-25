@@ -30,9 +30,16 @@ test('calculateAutoChange avoids floating-point drift on 10019.61 gp and zero', 
   });
 });
 
-test('reconcileCurrency compares coin total against currentGp + bankGp', () => {
+test('reconcileCurrency defaults to currentGp and can include bankGp explicitly', () => {
   const coins = { pp: 11, gp: 1, sp: 1, cp: 1 };
   assert.equal(getCoinsTotalGp(coins), 111.11);
+
+  const carriedOnlyByDefault = reconcileCurrency(
+    { pp: 10, gp: 0, sp: 0, cp: 0 },
+    { currentGp: 100, bankGp: 11.11 }
+  );
+  assert.equal(carriedOnlyByDefault.isBalanced, true);
+  assert.equal(carriedOnlyByDefault.targetGp, 100);
 
   const balanced = reconcileCurrency(coins, { currentGp: 100, bankGp: 11.11 }, true);
   assert.equal(balanced.isBalanced, true);

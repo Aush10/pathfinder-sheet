@@ -22,14 +22,12 @@ import { BlueprintSidebar } from './components/workspace/BlueprintSidebar';
 import { SheetPage1Core } from './components/sheet/SheetPage1Core';
 import { SheetPage2ActionsSkills } from './components/sheet/SheetPage2ActionsSkills';
 import { SheetPage3BioStorage } from './components/sheet/SheetPage3BioStorage';
-import { SheetPage3SpellsBio } from './components/sheet/SheetPage3SpellsBio';
 import { SheetPage4FormulaStudio } from './components/sheet/SheetPage4FormulaStudio';
 import { BuffBoxModule } from './components/sheet/BuffBoxModule';
 import { PrintSheet } from './components/sheet/PrintSheet';
 
 import { DiceRollerTray } from './components/tools/DiceRollerTray';
 import { PointBuyModal } from './components/tools/PointBuyModal';
-import { QuickHPBar } from './components/tools/QuickHPBar';
 import { StepperTool } from './components/tools/StepperTool';
 import { DeckTool } from './components/tools/DeckTool';
 import { XDXTool } from './components/tools/XDXTool';
@@ -74,9 +72,7 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
   const [dicePresetFormula, setDicePresetFormula] = useState<string>('1d20+7');
   const [diceRollId, setDiceRollId] = useState(0);
   const [isPointBuyOpen, setIsPointBuyOpen] = useState(false);
-  const [isQuickHPOpen, setIsQuickHPOpen] = useState(false);
   const [isBuffBoxOpen, setIsBuffBoxOpen] = useState(false);
-  const [isConditionsOpen, setIsConditionsOpen] = useState(false);
   const [isStepperOpen, setIsStepperOpen] = useState(false);
   const [isDeckOpen, setIsDeckOpen] = useState(false);
   const [isXDXOpen, setIsXDXOpen] = useState(false);
@@ -135,9 +131,7 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
       if ((e.ctrlKey && (e.key === 'x' || e.key === 'X')) || e.key === 'Escape') {
         setIsDiceOpen(false);
         setIsPointBuyOpen(false);
-        setIsQuickHPOpen(false);
         setIsBuffBoxOpen(false);
-        setIsConditionsOpen(false);
         setIsStepperOpen(false);
         setIsDeckOpen(false);
         setIsXDXOpen(false);
@@ -266,7 +260,6 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
             onOpenPointBuy={() => setIsPointBuyOpen(true)}
             onOpenDiceRoller={() => setIsDiceOpen(true)}
             onOpenBuffBox={() => setIsBuffBoxOpen(true)}
-            onOpenConditions={() => setIsConditionsOpen((prev) => !prev)}
             onOpenDeck={() => setIsDeckOpen(true)}
             onOpenXDX={() => setIsXDXOpen(true)}
             onOpenMacroDebug={() => setIsMacroDebugOpen(true)}
@@ -302,15 +295,6 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
           className={`flex-1 min-w-0 overflow-y-auto pf1-theme-scrollbar p-4 md:p-8 transition-colors duration-200 ${getCanvasBgClass()}`}
         >
           <div className="max-w-6xl mx-auto space-y-6">
-            {isConditionsOpen && (
-              <div className="mb-4">
-                <SheetPage3SpellsBio
-                  fontClass={fontClass}
-                  visibleModules={{ conditions: true }}
-                />
-              </div>
-            )}
-
             {layout.showAllSheets ? (
               <div className="space-y-12">
                 <section className="border-b border-black/10 dark:border-white/10 pb-8">
@@ -397,14 +381,6 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
         isOpen={isPointBuyOpen}
         onClose={() => setIsPointBuyOpen(false)}
       />
-
-      {isQuickHPOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="w-full max-w-sm">
-            <QuickHPBar onClose={() => setIsQuickHPOpen(false)} />
-          </div>
-        </div>
-      )}
 
       {isBuffBoxOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-xs p-4">

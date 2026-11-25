@@ -1010,25 +1010,25 @@
     {
       "id": "m-1",
       "name": "firebreath",
-      "formula": "2d6+(5*floor(#level/2)+1) \"fire\"",
+      "formula": "<<[{2d6}+(5*floor(#level/2)+1)] \"fire\"",
       "description": "Dragon fire breath"
     },
     {
       "id": "m-2",
       "name": "mainattack",
-      "formula": "d20+#bab+#str | 1d8+#str \"slashing\"",
+      "formula": "<<[{d20}+#bab+#str] | [{d8}+#str] \"slashing\"",
       "description": "Primary weapon attack"
     },
     {
       "id": "m-3",
       "name": "blood_drain",
-      "formula": "\"blood\" >>HP-5",
+      "formula": ">hp<-5",
       "description": "Drain 5 HP from character"
     },
     {
       "id": "m-4",
       "name": "spell_dc",
-      "formula": "DC+#CON \"Fort DC\"",
+      "formula": "<<[10+#CON] \"Fort DC\"",
       "description": "Standard ability DC"
     }
   ],

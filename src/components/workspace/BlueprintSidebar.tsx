@@ -39,7 +39,6 @@ interface BlueprintSidebarProps {
   onOpenPointBuy: () => void;
   onOpenDiceRoller?: () => void;
   onOpenBuffBox: () => void;
-  onOpenConditions: () => void;
   onOpenDeck: () => void;
   onOpenXDX: () => void;
   onOpenMacroDebug?: () => void;
@@ -67,7 +66,6 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
   onOpenPointBuy,
   onOpenDiceRoller,
   onOpenBuffBox,
-  onOpenConditions,
   onOpenDeck,
   onOpenXDX,
   onOpenMacroDebug,

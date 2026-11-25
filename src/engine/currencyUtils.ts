@@ -65,7 +65,7 @@ export function getCoinsTotalGp(
 export function reconcileCurrency(
   currency?: Partial<PF1Character['currency']> | null,
   downtimeCapital?: Partial<DowntimeCapital> | null,
-  includeBank: boolean = true
+  includeBank = false
 ): CurrencyReconciliation {
   const currentGp = Number.isFinite(downtimeCapital?.currentGp)
     ? downtimeCapital!.currentGp!
