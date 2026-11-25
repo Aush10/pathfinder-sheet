@@ -33,7 +33,8 @@ function Get-PF1MWRequiredRuntimeEntries {
     'runtime-manifest.json',
     'memory-bank-template/manifest.json'
   ) + (Get-PF1MWPackagedServerFiles) + @(
-    'dist/index.html'
+    'dist/index.html',
+    'pt-kit/README.md'
   )
 }
 
@@ -69,6 +70,11 @@ function Test-PF1MWAllowedRuntimeEntry {
     '^dist/assets/aistudio/image_[a-z0-9]+\.png$' { return $true }
     '^dist/character-sheet-icons/(01-flat-enamel|02-beveled-token|03-arcane-stamp|04-generic-portraits)/[a-z0-9-]+\.png$' {
       return $true
+    }
+    '^launch-warning\.html$' { return $true }
+    '^dist/launch-warning\.html$' { return $true }
+    '^pt-kit/[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*\.(md|html|txt|ts)$' {
+      return $name -notmatch '/out/'
     }
     default { return $false }
   }

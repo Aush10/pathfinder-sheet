@@ -68,6 +68,9 @@ test('shared contract allowlist accepts the aligned runtime and rejects secrets 
     'dist/index.html',
     'dist/assets/index-CrtIC_ra.js',
     'dist/assets/index-BwafXlp0.css',
+    'pt-kit/README.md',
+    'pt-kit/ingest/run.ts',
+    'launch-warning.html',
   ];
   const denied = [
     '.env',
@@ -79,6 +82,7 @@ test('shared contract allowlist accepts the aligned runtime and rejects secrets 
     'server/openai.test.ts',
     'dist/pathfinder_sheet_latest.zip',
     'dist/pf1mw-runtime.zip',
+    'pt-kit/ingest/out/table.json',
   ];
 
   const probe = [...allowed, ...denied]
@@ -105,6 +109,8 @@ test('Package, Install, and Start agree on server.ts plus the files Start alread
   assert.match(contract, /memory-bank-template\/manifest\.json/);
   assert.match(contract, /assets\/aistudio/);
   assert.match(contract, /dist\/index\.html/);
+  assert.match(contract, /pt-kit\/README\.md/);
+  assert.match(contract, /launch-warning\\.html/);
 
   assert.match(packager, /PF1MW-RuntimeContract\.ps1/);
   assert.match(packager, /Get-PF1MWPackagedServerFiles/);
