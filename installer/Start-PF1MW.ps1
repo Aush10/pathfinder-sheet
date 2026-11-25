@@ -10,7 +10,10 @@ $iconPath = Join-Path $appDirectory 'chirpy.ico'
 $runtimeManifestPath = Join-Path $appDirectory 'runtime-manifest.json'
 $memoryTemplatePath = Join-Path $appDirectory 'memory-bank-template\manifest.json'
 $aiStudioAssetDirectory = Join-Path $appDirectory 'assets\aistudio'
+$serverEntryPath = Join-Path $appDirectory 'server.ts'
+$distIndexPath = Join-Path $appDirectory 'dist\index.html'
 $address = "http://127.0.0.1:$port/"
+$apiStatusAddress = "http://127.0.0.1:$port/api/openai/status"
 
 function Get-PF1MWBrowserPath {
   $candidates = @(
@@ -38,18 +41,26 @@ function Get-PF1MWBrowserPath {
   throw 'Microsoft Edge or Google Chrome is required to open the app in its mini-browser window.'
 }
 
-function Test-PF1MWHost {
-  param([long]$ExpectedLength)
+function Test-PF1MWHttpOk {
+  param(
+    [Parameter(Mandatory = $true)][string]$Url,
+    [long]$ExpectedLength = -1
+  )
 
-  $request = [System.Net.HttpWebRequest]::Create($address)
-  $request.Method = 'HEAD'
+  $request = [System.Net.HttpWebRequest]::Create($Url)
+  $request.Method = 'GET'
   $request.Timeout = 1000
   $request.ReadWriteTimeout = 1000
   try {
     $response = [System.Net.HttpWebResponse]$request.GetResponse()
     try {
-      return $response.StatusCode -eq [System.Net.HttpStatusCode]::OK -and
-        $response.ContentLength -eq $ExpectedLength
+      if ($response.StatusCode -ne [System.Net.HttpStatusCode]::OK) {
+        return $false
+      }
+      if ($ExpectedLength -ge 0 -and $response.ContentLength -ne $ExpectedLength) {
+        return $false
+      }
+      return $true
     } finally {
       $response.Dispose()
     }
@@ -58,25 +69,72 @@ function Test-PF1MWHost {
   }
 }
 
-foreach ($requiredFile in @($htmlPath, $iconPath, $runtimeManifestPath, $memoryTemplatePath)) {
-  if (-not (Test-Path -LiteralPath $requiredFile -PathType Leaf)) {
-    throw "A required installed runtime file is missing: $requiredFile"
+function Test-PF1MWNodeVersion {
+  $node = Get-Command node -ErrorAction SilentlyContinue
+  if (-not $node) {
+    return $false
+  }
+  $raw = (& node -p "process.versions.node" 2>$null | Select-Object -First 1)
+  if ($raw -notmatch '^(\d+)\.') {
+    return $false
+  }
+  return ([int]$Matches[1] -ge 22)
+}
+
+function Install-PF1MWNodeModules {
+  param([Parameter(Mandatory = $true)][string]$AppDirectory)
+
+  $expressPath = Join-Path $AppDirectory 'node_modules\express'
+  if (Test-Path -LiteralPath $expressPath -PathType Container) {
+    return $true
+  }
+  $npm = Get-Command npm -ErrorAction SilentlyContinue
+  if (-not $npm) {
+    return $false
+  }
+  Push-Location -LiteralPath $AppDirectory
+  try {
+    & npm ci --no-fund --no-audit
+    return ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $expressPath -PathType Container))
+  } catch {
+    Write-Warning "npm ci failed: $($_.Exception.Message)"
+    return $false
+  } finally {
+    Pop-Location
   }
 }
-if (-not (Test-Path -LiteralPath $aiStudioAssetDirectory -PathType Container)) {
-  throw "The installed AI Studio asset directory is missing: $aiStudioAssetDirectory"
+
+function Get-PF1MWUseApiServer {
+  if (-not (Test-Path -LiteralPath $serverEntryPath -PathType Leaf)) {
+    return $false
+  }
+  if (-not (Test-Path -LiteralPath $distIndexPath -PathType Leaf)) {
+    return $false
+  }
+  if (-not (Test-PF1MWNodeVersion)) {
+    return $false
+  }
+  return (Install-PF1MWNodeModules -AppDirectory $appDirectory)
 }
 
-$runtimeManifest = Get-Content -LiteralPath $runtimeManifestPath -Raw | ConvertFrom-Json -ErrorAction Stop
-if ($runtimeManifest.format -ne 'pf1mw-runtime-manifest' -or $runtimeManifest.schemaVersion -ne 1) {
-  throw "The installed runtime manifest has an unsupported format: $runtimeManifestPath"
-}
-$runtimeVersion = [string]$runtimeManifest.releaseVersion
-if ($runtimeVersion -notmatch '^[0-9A-Za-z][0-9A-Za-z._+-]{0,63}$') {
-  throw "The installed runtime manifest has an invalid release version: $runtimeManifestPath"
+function Start-PF1MWApiServer {
+  $previousNodeEnv = $env:NODE_ENV
+  $previousPort = $env:PORT
+  $env:NODE_ENV = 'production'
+  $env:PORT = "$port"
+  try {
+    Set-Location -LiteralPath $appDirectory
+    & node --experimental-strip-types server.ts
+    if ($LASTEXITCODE -ne 0) {
+      throw "server.ts exited with code $LASTEXITCODE"
+    }
+  } finally {
+    $env:NODE_ENV = $previousNodeEnv
+    $env:PORT = $previousPort
+  }
 }
 
-if ($Server) {
+function Start-PF1MWStaticServer {
   $htmlBytes = [System.IO.File]::ReadAllBytes($htmlPath)
   $iconBytes = [System.IO.File]::ReadAllBytes($iconPath)
   $runtimeManifestBytes = [System.IO.File]::ReadAllBytes($runtimeManifestPath)
@@ -198,10 +256,45 @@ if ($Server) {
   }
 }
 
+foreach ($requiredFile in @($htmlPath, $iconPath, $runtimeManifestPath, $memoryTemplatePath)) {
+  if (-not (Test-Path -LiteralPath $requiredFile -PathType Leaf)) {
+    throw "A required installed runtime file is missing: $requiredFile"
+  }
+}
+if (-not (Test-Path -LiteralPath $aiStudioAssetDirectory -PathType Container)) {
+  throw "The installed AI Studio asset directory is missing: $aiStudioAssetDirectory"
+}
+
+$runtimeManifest = Get-Content -LiteralPath $runtimeManifestPath -Raw | ConvertFrom-Json -ErrorAction Stop
+if ($runtimeManifest.format -ne 'pf1mw-runtime-manifest' -or $runtimeManifest.schemaVersion -ne 1) {
+  throw "The installed runtime manifest has an unsupported format: $runtimeManifestPath"
+}
+$runtimeVersion = [string]$runtimeManifest.releaseVersion
+if ($runtimeVersion -notmatch '^[0-9A-Za-z][0-9A-Za-z._+-]{0,63}$') {
+  throw "The installed runtime manifest has an invalid release version: $runtimeManifestPath"
+}
+
+$useApiServer = Get-PF1MWUseApiServer
+
+if ($Server) {
+  if ($useApiServer) {
+    Start-PF1MWApiServer
+    return
+  }
+  Start-PF1MWStaticServer
+  return
+}
+
 $browserPath = Get-PF1MWBrowserPath
 $expectedLength = (Get-Item -LiteralPath $htmlPath).Length
+$hostReady = $false
+if ($useApiServer) {
+  $hostReady = Test-PF1MWHttpOk -Url $apiStatusAddress
+} else {
+  $hostReady = Test-PF1MWHttpOk -Url $address -ExpectedLength $expectedLength
+}
 
-if (-not (Test-PF1MWHost -ExpectedLength $expectedLength)) {
+if (-not $hostReady) {
   $powershellPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
   if (-not (Test-Path -LiteralPath $powershellPath -PathType Leaf)) {
     throw "Windows PowerShell was not found: $powershellPath"
@@ -211,9 +304,14 @@ if (-not (Test-PF1MWHost -ExpectedLength $expectedLength)) {
   Start-Process -FilePath $powershellPath -ArgumentList $serverArguments -WindowStyle Hidden
 
   $ready = $false
-  for ($attempt = 0; $attempt -lt 40; $attempt++) {
+  for ($attempt = 0; $attempt -lt 80; $attempt++) {
     Start-Sleep -Milliseconds 250
-    if (Test-PF1MWHost -ExpectedLength $expectedLength) {
+    if ($useApiServer) {
+      if (Test-PF1MWHttpOk -Url $apiStatusAddress) {
+        $ready = $true
+        break
+      }
+    } elseif (Test-PF1MWHttpOk -Url $address -ExpectedLength $expectedLength) {
       $ready = $true
       break
     }

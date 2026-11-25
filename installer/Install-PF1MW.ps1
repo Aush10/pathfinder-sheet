@@ -8,6 +8,11 @@ $repository = 'Aush10/pathfinder-sheet'
 $assetName = 'pf1mw-runtime.zip'
 $checksumAssetName = "$assetName.sha256"
 $desktopDirectory = [Environment]::GetFolderPath('DesktopDirectory')
+$contractPath = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'PF1MW-RuntimeContract.ps1'
+if (-not (Test-Path -LiteralPath $contractPath -PathType Leaf)) {
+  throw "The runtime contract is missing: $contractPath"
+}
+. $contractPath
 
 if (-not $env:LOCALAPPDATA) {
   throw 'LOCALAPPDATA is not available. Run this installer from a signed-in Windows user account.'
@@ -82,18 +87,15 @@ try {
   }
 
   Add-Type -AssemblyName System.IO.Compression.FileSystem
-  $requiredFiles = @('index.html', 'chirpy.ico', 'Start-PF1MW.ps1')
+  $requiredFiles = @(Get-PF1MWRequiredRuntimeEntries)
   $stageDirectory = Join-Path $temporaryDirectory 'runtime'
   New-Item -ItemType Directory -Path $stageDirectory | Out-Null
   $archive = [System.IO.Compression.ZipFile]::OpenRead($archivePath)
   try {
-    $entries = @($archive.Entries)
+    $entries = @($archive.Entries | Where-Object { $_.Name -ne '' })
     $entryNames = @($entries | ForEach-Object { $_.FullName.Replace('\', '/') })
     foreach ($entryName in $entryNames) {
-      if (
-        $entryName -notin $requiredFiles -and
-        $entryName -notmatch '^character-sheet-icons/(01-flat-enamel|02-beveled-token|03-arcane-stamp|04-generic-portraits)/[a-z0-9-]+\.png$'
-      ) {
+      if (-not (Test-PF1MWAllowedRuntimeEntry -Path $entryName)) {
         throw "The runtime archive contains an unexpected path: $entryName"
       }
     }
@@ -101,7 +103,7 @@ try {
       throw 'The runtime archive contains duplicate paths.'
     }
     foreach ($fileName in $requiredFiles) {
-      $entry = @($entries | Where-Object { $_.FullName -ceq $fileName })
+      $entry = @($entries | Where-Object { $_.FullName.Replace('\', '/') -ceq $fileName })
       if ($entry.Count -ne 1 -or $entry[0].Length -le 0) {
         throw "The runtime archive is missing a valid $fileName."
       }
@@ -113,6 +115,22 @@ try {
     )
     if ($assetEntries.Count -eq 0) {
       throw 'The runtime archive is missing the character sheet image assets.'
+    }
+    $aiStudioEntries = @(
+      $entries | Where-Object {
+        $_.FullName.Replace('\', '/') -match '^assets/aistudio/image_[a-z0-9]+\.png$'
+      }
+    )
+    if ($aiStudioEntries.Count -eq 0) {
+      throw 'The runtime archive is missing the AI Studio image assets.'
+    }
+    $bundleEntries = @(
+      $entries | Where-Object {
+        $_.FullName.Replace('\', '/') -match '^dist/assets/.+\.js$'
+      }
+    )
+    if ($bundleEntries.Count -eq 0) {
+      throw 'The runtime archive is missing the production JavaScript bundle under dist/assets/.'
     }
     foreach ($entry in $entries) {
       $fileName = $entry.FullName.Replace('\', '/')
@@ -138,13 +156,14 @@ try {
   if ((Get-Item -LiteralPath (Join-Path $stageDirectory 'index.html')).Length -lt 10000) {
     throw 'The standalone app in the runtime package looks incomplete.'
   }
+  if ((Get-Item -LiteralPath (Join-Path $stageDirectory 'dist\index.html')).Length -lt 100) {
+    throw 'The production dist/index.html in the runtime package looks incomplete.'
+  }
   if (-not (Test-Path -LiteralPath $desktopDirectory -PathType Container)) {
     throw "The Windows desktop folder was not found: $desktopDirectory"
   }
 
-  $runtimeFiles = @($requiredFiles) + @(
-    $assetEntries | ForEach-Object { $_.FullName.Replace('\', '/') }
-  )
+  $runtimeFiles = @($entryNames)
   $existingFiles = @(
     $runtimeFiles | ForEach-Object {
       $destination = Join-Path $resolvedInstallDirectory ($_.Replace('/', '\'))
@@ -177,6 +196,22 @@ try {
       -Force
   }
 
+  $nodeCommand = Get-Command node -ErrorAction SilentlyContinue
+  $npmCommand = Get-Command npm -ErrorAction SilentlyContinue
+  if ($nodeCommand -and $npmCommand) {
+    Push-Location -LiteralPath $resolvedInstallDirectory
+    try {
+      & npm ci --no-fund --no-audit
+      if ($LASTEXITCODE -ne 0) {
+        Write-Warning "npm ci failed with exit code $LASTEXITCODE. Start-PF1MW.ps1 will use standalone HTML until Node modules are installed."
+      }
+    } finally {
+      Pop-Location
+    }
+  } else {
+    Write-Warning 'Node.js 22+ was not found. The installed app will open the standalone sheet (no /api). Install Node.js to enable AI, ingest, and Complete Sheet.'
+  }
+
   $shortcutPath = Join-Path $desktopDirectory 'Pathfinder 1e Modular Workspace.lnk'
   $launcherPath = Join-Path $resolvedInstallDirectory 'Start-PF1MW.ps1'
   $powershellPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
@@ -204,6 +239,8 @@ try {
   }
   Write-Output "Desktop shortcut created: $shortcutPath"
   Write-Output "Verified package SHA-256: $actualHash"
+  Write-Output "API server: server.ts on 127.0.0.1:$(Get-PF1MWInstalledApiPort) when Node.js 22+ and node_modules are present."
+  Write-Output "Put OPENAI_API_KEY in .env.local next to server.ts (never packaged)."
   if ($backupDirectory) {
     Write-Output "Previous app files backed up to: $backupDirectory"
   }

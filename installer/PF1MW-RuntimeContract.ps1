@@ -1,6 +1,6 @@
 # Shared allowlist and required entries for Package-PF1MW.ps1 and Install-PF1MW.ps1.
 # Start-PF1MW.ps1 stays self-contained inside the zip and does not dot-source this file.
-# Never allow node_modules, .env, .env.local, src/, or pfautosheetv3/.
+# Never allow node_modules, .env, .env.local, or src/.
 
 function Get-PF1MWInstalledApiPort {
   38173

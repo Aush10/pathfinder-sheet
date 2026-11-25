@@ -4,6 +4,12 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repositoryDirectory = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+$contractPath = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'PF1MW-RuntimeContract.ps1'
+if (-not (Test-Path -LiteralPath $contractPath -PathType Leaf)) {
+  throw "The runtime contract is missing: $contractPath"
+}
+. $contractPath
+
 $runtimeFiles = @(
   @{ Source = Join-Path $repositoryDirectory 'public\pathfinder1e_standalone.html'; Name = 'index.html' },
   @{ Source = Join-Path $repositoryDirectory 'public\chirpy.ico'; Name = 'chirpy.ico' },
@@ -13,7 +19,8 @@ $assetDirectory = Join-Path $repositoryDirectory 'public\character-sheet-icons'
 $aiStudioAssetDirectory = Join-Path $repositoryDirectory 'public\assets\aistudio'
 $memoryTemplateDirectory = Join-Path $repositoryDirectory 'public\memory-bank-template'
 $memoryTemplatePath = Join-Path $memoryTemplateDirectory 'manifest.json'
-$outputDirectory = Join-Path $repositoryDirectory 'dist'
+$distDirectory = Join-Path $repositoryDirectory 'dist'
+$outputDirectory = $distDirectory
 $archivePath = Join-Path $outputDirectory 'pf1mw-runtime.zip'
 $checksumPath = "$archivePath.sha256"
 $stageDirectory = Join-Path ([System.IO.Path]::GetTempPath()) (
@@ -22,7 +29,8 @@ $stageDirectory = Join-Path ([System.IO.Path]::GetTempPath()) (
 
 function Get-PF1MWSourceRevision {
   $revision = (& git -C $repositoryDirectory rev-parse --short=12 HEAD 2>$null | Select-Object -First 1)
-  if ($LASTEXITCODE -eq 0 -and $revision -and $revision -match '^[0-9a-f]{7,40}$') {
+  $revision = [string]$revision
+  if ($revision -match '^[0-9a-f]{7,40}$') {
     return $revision
   }
   return 'unknown'
@@ -60,6 +68,24 @@ function Test-PF1MWMemoryTemplate {
   }
 }
 
+function Copy-PF1MWStagedFile {
+  param(
+    [Parameter(Mandatory = $true)][string]$Source,
+    [Parameter(Mandatory = $true)][string]$RelativeName
+  )
+
+  $normalized = $RelativeName.Replace('\', '/')
+  if (-not (Test-PF1MWAllowedRuntimeEntry -Path $normalized)) {
+    throw "Refusing to package a path outside the runtime allowlist: $normalized"
+  }
+  if ($normalized -match '(^|/)\.env(\.local)?$') {
+    throw "Refusing to package an env file: $normalized"
+  }
+  $destination = Join-Path $stageDirectory ($normalized.Replace('/', '\'))
+  New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
+  Copy-Item -LiteralPath $Source -Destination $destination
+}
+
 foreach ($file in $runtimeFiles) {
   if (-not (Test-Path -LiteralPath $file.Source -PathType Leaf)) {
     throw "Required runtime file is missing: $($file.Source)"
@@ -78,6 +104,30 @@ if (-not (Test-Path -LiteralPath $memoryTemplatePath -PathType Leaf)) {
 }
 Test-PF1MWMemoryTemplate -Path $memoryTemplatePath
 
+foreach ($relative in Get-PF1MWPackagedServerFiles) {
+  $source = Join-Path $repositoryDirectory ($relative.Replace('/', '\'))
+  if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
+    throw "Required API runtime file is missing: $source"
+  }
+}
+
+$distIndex = Join-Path $distDirectory 'index.html'
+if (-not (Test-Path -LiteralPath $distIndex -PathType Leaf)) {
+  Write-Output 'dist/index.html is missing; running npm run build so the installed server.ts can serve production assets...'
+  Push-Location -LiteralPath $repositoryDirectory
+  try {
+    & npm run build
+    if ($LASTEXITCODE -ne 0) {
+      throw "npm run build failed with exit code $LASTEXITCODE"
+    }
+  } finally {
+    Pop-Location
+  }
+}
+if (-not (Test-Path -LiteralPath $distIndex -PathType Leaf)) {
+  throw "Required production bundle is missing: $distIndex"
+}
+
 $characterSheetAssetNames = @(
   Get-ChildItem -LiteralPath $assetDirectory -Recurse -File -Filter '*.png' |
     ForEach-Object {
@@ -94,25 +144,34 @@ if ($aiStudioAssetNames | Where-Object { $_ -notmatch '^assets/aistudio/image_[a
 
 $resolvedReleaseVersion = Get-PF1MWReleaseVersion
 $sourceRevision = Get-PF1MWSourceRevision
-$expectedNames = @(
-  'Start-PF1MW.ps1',
-  'chirpy.ico',
-  'index.html',
-  'memory-bank-template/manifest.json',
-  'runtime-manifest.json'
-) + $characterSheetAssetNames + $aiStudioAssetNames
-$expectedNames = @($expectedNames | Sort-Object)
 
 New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
 New-Item -ItemType Directory -Path $stageDirectory | Out-Null
 try {
   foreach ($file in $runtimeFiles) {
-    Copy-Item -LiteralPath $file.Source -Destination (Join-Path $stageDirectory $file.Name)
+    Copy-PF1MWStagedFile -Source $file.Source -RelativeName $file.Name
   }
-  Copy-Item -LiteralPath $assetDirectory -Destination $stageDirectory -Recurse
-  New-Item -ItemType Directory -Path (Join-Path $stageDirectory 'assets') | Out-Null
-  Copy-Item -LiteralPath $aiStudioAssetDirectory -Destination (Join-Path $stageDirectory 'assets') -Recurse
-  Copy-Item -LiteralPath $memoryTemplateDirectory -Destination $stageDirectory -Recurse
+  Get-ChildItem -LiteralPath $assetDirectory -Recurse -File -Filter '*.png' | ForEach-Object {
+    $relative = 'character-sheet-icons/' + $_.FullName.Substring($assetDirectory.Length + 1).Replace('\', '/')
+    Copy-PF1MWStagedFile -Source $_.FullName -RelativeName $relative
+  }
+  Get-ChildItem -LiteralPath $aiStudioAssetDirectory -File -Filter '*.png' | ForEach-Object {
+    Copy-PF1MWStagedFile -Source $_.FullName -RelativeName ('assets/aistudio/' + $_.Name)
+  }
+  Copy-PF1MWStagedFile -Source $memoryTemplatePath -RelativeName 'memory-bank-template/manifest.json'
+
+  foreach ($relative in Get-PF1MWPackagedServerFiles) {
+    Copy-PF1MWStagedFile `
+      -Source (Join-Path $repositoryDirectory ($relative.Replace('/', '\'))) `
+      -RelativeName $relative
+  }
+
+  Get-ChildItem -LiteralPath $distDirectory -Recurse -File | ForEach-Object {
+    $relative = 'dist/' + $_.FullName.Substring($distDirectory.Length + 1).Replace('\', '/')
+    if (Test-PF1MWAllowedRuntimeEntry -Path $relative) {
+      Copy-PF1MWStagedFile -Source $_.FullName -RelativeName $relative
+    }
+  }
 
   $runtimeManifest = [ordered]@{
     format = 'pf1mw-runtime-manifest'
@@ -120,6 +179,8 @@ try {
     releaseVersion = $resolvedReleaseVersion
     sourceRevision = $sourceRevision
     builtAt = [DateTime]::UtcNow.ToString('o')
+    apiEntry = 'server.ts'
+    apiPort = Get-PF1MWInstalledApiPort
     indexHtmlSha256 = (Get-FileHash -LiteralPath (Join-Path $stageDirectory 'index.html') -Algorithm SHA256).Hash.ToLowerInvariant()
     memoryTemplateSha256 = (Get-FileHash -LiteralPath (Join-Path $stageDirectory 'memory-bank-template\manifest.json') -Algorithm SHA256).Hash.ToLowerInvariant()
     characterSheetAssets = @($characterSheetAssetNames | Sort-Object)
@@ -131,11 +192,41 @@ try {
     [System.Text.UTF8Encoding]::new($false)
   )
 
-  Compress-Archive `
-    -Path (Join-Path $stageDirectory '*') `
-    -DestinationPath $archivePath `
-    -CompressionLevel Optimal `
-    -Force
+  $stagedNames = @(
+    Get-ChildItem -LiteralPath $stageDirectory -Recurse -File -Force |
+      ForEach-Object { $_.FullName.Substring($stageDirectory.Length + 1).Replace('\', '/') } |
+      Sort-Object
+  )
+  foreach ($name in $stagedNames) {
+    if (-not (Test-PF1MWAllowedRuntimeEntry -Path $name)) {
+      throw "Staged runtime file is not on the allowlist: $name"
+    }
+  }
+  foreach ($required in Get-PF1MWRequiredRuntimeEntries) {
+    if ($stagedNames -notcontains $required) {
+      throw "Staged runtime is missing required file: $required"
+    }
+  }
+  if (-not ($stagedNames | Where-Object { $_ -match '^dist/assets/.+\.js$' })) {
+    throw 'Staged runtime is missing the production JavaScript bundle under dist/assets/.'
+  }
+  if (-not ($stagedNames | Where-Object { $_ -match '^assets/aistudio/image_[a-z0-9]+\.png$' })) {
+    throw 'Staged runtime is missing AI Studio PNG assets.'
+  }
+  if (-not ($stagedNames | Where-Object { $_ -match '^character-sheet-icons/' })) {
+    throw 'Staged runtime is missing character sheet image assets.'
+  }
+
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  if (Test-Path -LiteralPath $archivePath -PathType Leaf) {
+    Remove-Item -LiteralPath $archivePath -Force
+  }
+  [System.IO.Compression.ZipFile]::CreateFromDirectory(
+    $stageDirectory,
+    $archivePath,
+    [System.IO.Compression.CompressionLevel]::Optimal,
+    $false
+  )
 
   $hash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
   [System.IO.File]::WriteAllText(
@@ -144,14 +235,15 @@ try {
     [System.Text.Encoding]::ASCII
   )
 
-  Add-Type -AssemblyName System.IO.Compression.FileSystem
   $archive = [System.IO.Compression.ZipFile]::OpenRead($archivePath)
   try {
     $names = @(
       $archive.Entries |
+        Where-Object { $_.Name -ne '' } |
         ForEach-Object { $_.FullName.Replace('\', '/') } |
         Sort-Object
     )
+    $expectedNames = @($stagedNames | Sort-Object)
     if (($names -join "`n") -ne ($expectedNames -join "`n")) {
       throw "Runtime ZIP contains unexpected files: $($names -join ', ')"
     }
@@ -162,6 +254,9 @@ try {
   $manifestCheck = Get-Content -LiteralPath (Join-Path $stageDirectory 'runtime-manifest.json') -Raw | ConvertFrom-Json -ErrorAction Stop
   if ($manifestCheck.format -ne 'pf1mw-runtime-manifest' -or $manifestCheck.schemaVersion -ne 1 -or $manifestCheck.releaseVersion -ne $resolvedReleaseVersion) {
     throw 'Generated runtime manifest is invalid.'
+  }
+  if ($manifestCheck.apiEntry -ne 'server.ts' -or [int]$manifestCheck.apiPort -ne (Get-PF1MWInstalledApiPort)) {
+    throw 'Generated runtime manifest is missing the server.ts API contract.'
   }
   if ($manifestCheck.indexHtmlSha256 -ne $runtimeManifest.indexHtmlSha256 -or $manifestCheck.memoryTemplateSha256 -ne $runtimeManifest.memoryTemplateSha256) {
     throw 'Generated runtime manifest hashes do not match staged runtime assets.'
@@ -174,3 +269,4 @@ Get-Item -LiteralPath $archivePath, $checksumPath | Select-Object Name, Length
 Write-Output "Release version: $resolvedReleaseVersion"
 Write-Output "Source revision: $sourceRevision"
 Write-Output "SHA-256: $hash"
+Write-Output 'Installed app runs server.ts when Node.js 22+ is present (AI / ingest / Complete Sheet). Standalone HTML is the fallback.'
