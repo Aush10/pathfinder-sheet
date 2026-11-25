@@ -37,6 +37,7 @@ import {
   DEFAULT_ABILITY_TYPES,
   RESOURCE_BAR_COLORS,
   buildActionFromMacroResult,
+  evaluateCounterDisplayValue,
   evaluateDirectoryMacroValue,
   filterDirectoryEntries,
   getAltsForEntry,
@@ -45,12 +46,162 @@ import {
   resolveActionEntryType,
   resolveResourceColor,
   searchCharacterMacros,
+  stepCounterBangAction,
   stepResourceBarValue,
   type SearchableMacroResult,
 } from '../../engine/actionDirectory';
+import { projectMacaroniResult } from '../../engine/characterIntegration';
+import {
+  SPELL_KNOWN_REMAINING_TAB_ID,
+  getPersistedSpellProgressionRow,
+  getSpellSlotCastBinding,
+  spellSlotActionId,
+  spellSlotResourceId,
+} from '../../storage/characterState';
 import { lookupRulesWithSOT, RulesLookupResult } from '../../engine/aiService';
 import { AppleEyeIcon } from '../common/AppleEyeIcon';
 import { FieldCallTooltip } from '../common/FieldCallTooltip';
+
+export interface SpellCastExecutionOutcome {
+  character: PF1Character;
+  feedback: string;
+}
+
+/**
+ * Pure character state update for casting a spell from Actions & Resources:
+ * binds to AF8's spell-slot stepper (`spell-slot-<N>`), runs `-1` or `!` steppers
+ * via `stepResourceBarValue`, projects any `!` snapshots via `projectMacaroniResult`,
+ * and keeps matching slot action, ResourceTracker, and spellSlots coherent.
+ */
+export function executeSpellCastOnCharacter(
+  character: PF1Character,
+  spellEntry: CharacterActionItem,
+  derived?: DerivedCombatStats
+): SpellCastExecutionOutcome {
+  const spellLevel = Math.max(0, Math.min(9, Math.floor(spellEntry.spellLevel ?? 1)));
+  if (spellLevel === 0) {
+    return {
+      character,
+      feedback: `Cast ${spellEntry.name} (Cantrip Lvl 0 — no slot expended).`,
+    };
+  }
+
+  const binding = getSpellSlotCastBinding(character, spellLevel);
+  if (!binding) {
+    return {
+      character,
+      feedback: `Cast ${spellEntry.name} (Lvl ${spellLevel}; no configured slot pool).`,
+    };
+  }
+
+  const actions = [...(character.characterActions || [])];
+  const trackers = [...(character.resourceTrackers || [])];
+  const slotActionIdTarget = binding.actionId || spellSlotActionId(spellLevel);
+  const slotResourceIdTarget = binding.resourceId || spellSlotResourceId(spellLevel);
+
+  const actionIdx = actions.findIndex((a) => a.id === slotActionIdTarget);
+  const trackerIdx = trackers.findIndex((r) => r.id === slotResourceIdTarget);
+
+  const existingSlotEntry = (character.spellSlots || []).find((s) => s.level === spellLevel);
+  const fallbackMax =
+    (actionIdx >= 0 ? actions[actionIdx].resourceMax : undefined) ??
+    (trackerIdx >= 0 ? trackers[trackerIdx].max : undefined) ??
+    Math.max(1, (existingSlotEntry ? existingSlotEntry.spellsPerDay + existingSlotEntry.bonusSpells : 1));
+  const fallbackCur =
+    (actionIdx >= 0 ? actions[actionIdx].resourceCurrent : undefined) ??
+    (trackerIdx >= 0 ? trackers[trackerIdx].current : undefined) ??
+    fallbackMax;
+
+  const slotEntry: CharacterActionItem =
+    actionIdx >= 0
+      ? {
+          ...actions[actionIdx],
+          stepperMacro: actions[actionIdx].stepperMacro || binding.stepperMacro,
+        }
+      : {
+          id: slotActionIdTarget,
+          name: `Level ${spellLevel} Spell Slots`,
+          entryType: 'resource',
+          category: 'Spells',
+          actionType: 'Passive / Pool',
+          description: `Expends a level ${spellLevel} spell slot.`,
+          resourceCurrent: fallbackCur,
+          resourceMax: fallbackMax,
+          stepperMacro: binding.stepperMacro,
+          stepperStepCount: 0,
+          linkedResourceId: slotResourceIdTarget,
+        };
+
+  const stepOutcome = stepResourceBarValue(slotEntry, character, derived, {
+    stepperScopeId: binding.stepperScopeId,
+  });
+
+  let nextCharacter = character;
+  if (stepOutcome.macaroniResult?.stepperSnapshots?.length) {
+    nextCharacter = projectMacaroniResult(nextCharacter, stepOutcome.macaroniResult).character;
+  }
+
+  const nextCur = stepOutcome.nextCurrent;
+  const nextMax = stepOutcome.nextMax;
+  const nextStepCount = stepOutcome.nextStepCount;
+
+  const nextActions = [...(nextCharacter.characterActions || [])];
+  const nextActionIdx = nextActions.findIndex((a) => a.id === slotActionIdTarget);
+  if (nextActionIdx >= 0) {
+    nextActions[nextActionIdx] = {
+      ...nextActions[nextActionIdx],
+      resourceCurrent: nextCur,
+      resourceMax: nextMax,
+      stepperStepCount: nextStepCount,
+      usesPerDay: `${nextCur}/${nextMax} remaining`,
+    };
+  }
+
+  const nextTrackers = [...(nextCharacter.resourceTrackers || [])];
+  const nextTrackerIdx = nextTrackers.findIndex((r) => r.id === slotResourceIdTarget);
+  if (nextTrackerIdx >= 0) {
+    nextTrackers[nextTrackerIdx] = {
+      ...nextTrackers[nextTrackerIdx],
+      current: nextCur,
+      max: nextMax,
+    };
+  }
+
+  const nextSpellSlots = Array.isArray(nextCharacter.spellSlots)
+    ? nextCharacter.spellSlots.map((slot) =>
+        slot.level === spellLevel
+          ? { ...slot, usedSlots: Math.max(0, nextMax - nextCur) }
+          : slot
+      )
+    : undefined;
+
+  return {
+    character: {
+      ...nextCharacter,
+      characterActions: nextActions,
+      resourceTrackers: nextTrackers,
+      ...(nextSpellSlots ? { spellSlots: nextSpellSlots } : {}),
+    },
+    feedback: `Cast ${spellEntry.name} (Lvl ${spellLevel}): ${nextCur}/${nextMax} slots remaining.`,
+  };
+}
+
+/**
+ * Pure character state update for running a Counter entry's `!` stepper macro
+ * and projecting persisted `macaroniStepperStore` snapshots via `projectMacaroniResult`.
+ */
+export function executeCounterRunStepperOnCharacter(
+  character: PF1Character,
+  counterEntry: CharacterActionItem,
+  derived?: DerivedCombatStats
+): SpellCastExecutionOutcome {
+  const stepOutcome = stepCounterBangAction(counterEntry, character, derived);
+  const projected = projectMacaroniResult(character, stepOutcome.macaroniResult);
+  return {
+    character: projected.character,
+    feedback: stepOutcome.feedback,
+  };
+}
 
 interface ActionDirectoryModuleProps {
   character: PF1Character;
@@ -129,6 +280,12 @@ export const ActionDirectoryModule: React.FC<ActionDirectoryModuleProps> = ({
   const [activeAltSelection, setActiveAltSelection] = useState<Record<string, string | null>>({});
   const [hoveredDogEarId, setHoveredDogEarId] = useState<string | null>(null);
   const [tabAssignPickerId, setTabAssignPickerId] = useState<string | null>(null);
+  const [inlineAbilityTypeEditId, setInlineAbilityTypeEditId] = useState<string | null>(null);
+  const [castPromptState, setCastPromptState] = useState<{
+    baseEntry: CharacterActionItem;
+    selectedEntry: CharacterActionItem;
+    showAltChoices: boolean;
+  } | null>(null);
   const [directoryNotice, setDirectoryNotice] = useState<string | null>(null);
 
   // Format picker & Editor modal state
@@ -673,14 +830,19 @@ export const ActionDirectoryModule: React.FC<ActionDirectoryModuleProps> = ({
     entry: CharacterActionItem,
     nextCurrent: number,
     nextMax?: number,
-    nextStepCount?: number
+    nextStepCount?: number,
+    macaroniResult?: ReturnType<typeof stepResourceBarValue>['macaroniResult']
   ) => {
     const maxVal = nextMax !== undefined ? Math.max(1, nextMax) : Math.max(1, entry.resourceMax || 1);
     const clampedCurrent = Math.max(0, Math.min(maxVal, nextCurrent));
 
     onUpdateCharacter((prev) => {
-      const prevActions = [...(prev.characterActions || [])];
-      const prevTrackers = [...(prev.resourceTrackers || [])];
+      const projectedBase =
+        macaroniResult?.stepperSnapshots?.length
+          ? projectMacaroniResult(prev, macaroniResult).character
+          : prev;
+      const prevActions = [...(projectedBase.characterActions || [])];
+      const prevTrackers = [...(projectedBase.resourceTrackers || [])];
       const actionExists = prevActions.some((a) => a.id === entry.id);
 
       const nextActionFields: Partial<CharacterActionItem> = {
@@ -722,7 +884,7 @@ export const ActionDirectoryModule: React.FC<ActionDirectoryModuleProps> = ({
             ];
 
       return {
-        ...prev,
+        ...projectedBase,
         characterActions: updatedActions,
         resourceTrackers: updatedTrackers,
       };
@@ -735,9 +897,52 @@ export const ActionDirectoryModule: React.FC<ActionDirectoryModuleProps> = ({
       entry,
       stepOutcome.nextCurrent,
       stepOutcome.nextMax,
-      stepOutcome.nextStepCount
+      stepOutcome.nextStepCount,
+      stepOutcome.macaroniResult
     );
     setDirectoryNotice(stepOutcome.feedback);
+  };
+
+  const handleRunCounterStepper = (entry: CharacterActionItem) => {
+    let feedbackMsg = '';
+    onUpdateCharacter((prev) => {
+      const outcome = executeCounterRunStepperOnCharacter(prev, entry, derived);
+      feedbackMsg = outcome.feedback;
+      return outcome.character;
+    });
+    if (feedbackMsg) setDirectoryNotice(feedbackMsg);
+  };
+
+  const handleConfirmSpellCast = () => {
+    if (!castPromptState) return;
+    const chosen = castPromptState.selectedEntry;
+    let feedbackMsg = '';
+    onUpdateCharacter((prev) => {
+      const outcome = executeSpellCastOnCharacter(prev, chosen, derived);
+      feedbackMsg = outcome.feedback;
+      return outcome.character;
+    });
+    setCastPromptState(null);
+    if (feedbackMsg) setDirectoryNotice(feedbackMsg);
+  };
+
+  const handleInlineAbilityTypeChange = (entry: CharacterActionItem, nextAbilityType: string) => {
+    const clean = nextAbilityType.trim() || 'Class Feature';
+    onUpdateCharacter((prev) => ({
+      ...prev,
+      characterActions: (prev.characterActions || []).map((a) =>
+        a.id === entry.id
+          ? {
+              ...a,
+              abilityType: clean,
+              category: clean.toLowerCase() === 'racial' ? 'Racial' : a.category || 'Class Ability',
+              shortSummary: `${clean} • ${a.actionType || 'Standard'}`,
+            }
+          : a
+      ),
+    }));
+    setInlineAbilityTypeEditId(null);
+    setDirectoryNotice(`Updated "${entry.name}" ability type to "${clean}".`);
   };
 
   const handleResetAllPools = () => {
@@ -1039,6 +1244,30 @@ export const ActionDirectoryModule: React.FC<ActionDirectoryModuleProps> = ({
       )}
 
       {/* Clean Slate Empty State vs Cards List */}
+      {activeTab &&
+        (activeTab.id.startsWith('spell-known-') || activeTab.id === SPELL_KNOWN_REMAINING_TAB_ID) && (() => {
+          const isRemaining = activeTab.id === SPELL_KNOWN_REMAINING_TAB_ID;
+          const levelDigits = activeTab.id.replace(/\D+/g, '');
+          const lvl = levelDigits ? parseInt(levelDigits, 10) : character.level || 1;
+          const knownRow = getPersistedSpellProgressionRow(character, 'spells-known', character.level || 1);
+          const perDayRow = getPersistedSpellProgressionRow(character, 'spells-per-day', character.level || 1);
+          return (
+            <div className="px-3 py-2 rounded-lg border border-purple-500/35 bg-purple-500/10 text-[11px] font-mono flex items-center justify-between gap-2 flex-wrap">
+              <span>
+                {isRemaining
+                  ? 'Spells Known Remaining Pool — assign unallocated or metamagic spells here via "Add to list".'
+                  : `Spell Known Lvl ${lvl} Tab (${activeTab.entryIds.length} assigned).`}
+              </span>
+              {(knownRow || perDayRow) && (
+                <span className="text-[10px] opacity-80">
+                  {knownRow ? `Known[${lvl}]: ${knownRow.values?.[`sk_${lvl}`] ?? '—'}` : ''}
+                  {knownRow && perDayRow ? ' • ' : ''}
+                  {perDayRow ? `Per Day[${lvl}]: ${perDayRow.values?.[`spd_${lvl}`] ?? '—'}` : ''}
+                </span>
+              )}
+            </div>
+          );
+        })()}
       {!hasAnyEntries && !searchQuery.trim() && !activeTab ? (
         <div className="py-10 px-4 text-center rounded-xl border border-dashed border-black/15 dark:border-white/15 space-y-2.5">
           <Sparkles className="w-7 h-7 mx-auto text-amber-500/70" />
@@ -1073,10 +1302,10 @@ export const ActionDirectoryModule: React.FC<ActionDirectoryModuleProps> = ({
               ? evaluateDirectoryMacroValue(displayed.saveDC, character, derived)
               : null;
 
-            // Evaluated Counter total if Counter
+            // Evaluated Counter total if Counter (never mutates ! state during render)
             const counterEval =
               displayType === 'counter'
-                ? evaluateDirectoryMacroValue(displayed.totalCountMacro, character, derived)
+                ? evaluateCounterDisplayValue(displayed, character, derived)
                 : null;
 
             // Resource Bar metrics
@@ -1222,11 +1451,32 @@ export const ActionDirectoryModule: React.FC<ActionDirectoryModuleProps> = ({
                           </span>
                         )}
 
-                        {displayType === 'ability' && (
-                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-black/10 dark:bg-white/10 border border-black/10 dark:border-white/10">
-                            {displayed.abilityType || 'Class Feature'}
-                          </span>
-                        )}
+                        {displayType === 'ability' &&
+                          (inlineAbilityTypeEditId === displayed.id ? (
+                            <select
+                              value={displayed.abilityType || 'Class Feature'}
+                              onChange={(e) => handleInlineAbilityTypeChange(displayed, e.target.value)}
+                              onBlur={() => setInlineAbilityTypeEditId(null)}
+                              autoFocus
+                              className={`text-[10px] font-mono px-1.5 py-0.2 rounded border ${inputStyle}`}
+                              aria-label={`Change ability type for ${displayed.name}`}
+                            >
+                              {allAbilityTypes.map((t) => (
+                                <option key={t} value={t}>
+                                  {t}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setInlineAbilityTypeEditId(displayed.id)}
+                              className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-black/10 dark:bg-white/10 hover:bg-amber-500/20 border border-black/10 dark:border-white/15 cursor-pointer"
+                              title="Click to edit ability type"
+                            >
+                              {displayed.abilityType || 'Class Feature'}
+                            </button>
+                          ))}
 
                         {displayType === 'spell' && (
                           <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30">
@@ -1292,6 +1542,25 @@ export const ActionDirectoryModule: React.FC<ActionDirectoryModuleProps> = ({
 
                   {/* Right Side Type-Specific Controls + Dropdown */}
                   <div className="flex items-center gap-1.5 shrink-0">
+                    {/* AG6 Spell Cast Button + B3 Availability Checkbox */}
+                    {displayType === 'spell' && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setCastPromptState({
+                            baseEntry,
+                            selectedEntry: displayed,
+                            showAltChoices: false,
+                          })
+                        }
+                        className="px-2.5 py-1 rounded bg-purple-600 hover:bg-purple-500 text-white font-mono font-bold text-xs flex items-center gap-1 shadow-xs transition-transform active:scale-95"
+                        title={`Cast ${displayed.name} (Lvl ${displayed.spellLevel ?? 1})`}
+                      >
+                        <Wand2 className="w-3 h-3" />
+                        <span>Cast</span>
+                      </button>
+                    )}
+
                     {/* B3 Spell Availability Checkbox */}
                     {displayType === 'spell' && baseType !== 'alt' && (
                       <label
@@ -1321,14 +1590,27 @@ export const ActionDirectoryModule: React.FC<ActionDirectoryModuleProps> = ({
                       </button>
                     )}
 
-                    {/* B4 Counter Evaluated Total */}
+                    {/* B4 Counter Evaluated Total + AG6 Run Stepper for ! Counters */}
                     {displayType === 'counter' && (
-                      <span
-                        className="px-2.5 py-1 rounded bg-cyan-500/15 border border-cyan-500/40 text-cyan-700 dark:text-cyan-300 font-mono font-black text-xs tabular-nums"
-                        title={`Macro: ${displayed.totalCountMacro || '0'}`}
-                      >
-                        {counterEval?.display || '0'}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className="px-2.5 py-1 rounded bg-cyan-500/15 border border-cyan-500/40 text-cyan-700 dark:text-cyan-300 font-mono font-black text-xs tabular-nums"
+                          title={`Macro: ${displayed.totalCountMacro || '0'}`}
+                        >
+                          {counterEval?.display || '0'}
+                        </span>
+                        {counterEval?.hasBang && (
+                          <button
+                            type="button"
+                            onClick={() => handleRunCounterStepper(displayed)}
+                            className="px-2.5 py-1 rounded bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-mono font-bold text-xs flex items-center gap-1 shadow-xs transition-transform active:scale-95"
+                            title={`Run Stepper (${displayed.totalCountMacro})`}
+                          >
+                            <Play className="w-3 h-3 fill-current" />
+                            <span>Run Stepper</span>
+                          </button>
+                        )}
+                      </div>
                     )}
 
                     {/* B2/B3 Dice Box Roll Button */}
@@ -1611,24 +1893,151 @@ export const ActionDirectoryModule: React.FC<ActionDirectoryModuleProps> = ({
       )}
 
       {/* ===================================================================== */}
+      {/* AG6: SPELL CAST CONFIRMATION POPUP                                    */}
+      {/* ===================================================================== */}
+      {castPromptState && (() => {
+        const { baseEntry, selectedEntry, showAltChoices } = castPromptState;
+        const altEntries = getAltsForEntry(normalizedEntries, baseEntry.id);
+        const castLevel = Math.max(0, Math.min(9, Math.floor(selectedEntry.spellLevel ?? 1)));
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Cast ${selectedEntry.name}`}
+          >
+            <div className={`w-full max-w-md rounded-2xl border p-5 space-y-4 shadow-2xl ${cardBg}`}>
+              <div className="flex items-start justify-between gap-2 border-b pb-3 border-black/10 dark:border-white/10">
+                <div className="flex items-center gap-2">
+                  <Wand2 className="w-5 h-5 text-purple-500 shrink-0" />
+                  <div>
+                    <h3 className="font-serif font-bold text-base text-purple-500">
+                      Cast {selectedEntry.name} {castLevel}?
+                    </h3>
+                    <p className="text-[11px] font-mono opacity-75">
+                      Level {castLevel} spell slot stepper will execute
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCastPromptState(null)}
+                  className="p-1 opacity-70 hover:opacity-100"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {showAltChoices && altEntries.length > 0 && (
+                <div className="space-y-1.5 text-xs">
+                  <div className="text-[11px] font-mono font-bold opacity-80">
+                    Choose Casting Version
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCastPromptState((prev) =>
+                        prev ? { ...prev, selectedEntry: baseEntry } : null
+                      )
+                    }
+                    className={`w-full text-left px-3 py-1.5 rounded border font-mono flex items-center justify-between ${
+                      selectedEntry.id === baseEntry.id
+                        ? 'bg-purple-600 text-white border-purple-500'
+                        : 'bg-black/10 dark:bg-white/10 border-black/15 dark:border-white/15'
+                    }`}
+                  >
+                    <span>{baseEntry.name} (Standard)</span>
+                    <span>Lvl {baseEntry.spellLevel ?? 1}</span>
+                  </button>
+                  {altEntries.map((alt) => (
+                    <button
+                      key={alt.id}
+                      type="button"
+                      onClick={() =>
+                        setCastPromptState((prev) => (prev ? { ...prev, selectedEntry: alt } : null))
+                      }
+                      className={`w-full text-left px-3 py-1.5 rounded border font-mono flex items-center justify-between ${
+                        selectedEntry.id === alt.id
+                          ? 'bg-cyan-600 text-white border-cyan-500'
+                          : 'bg-black/10 dark:bg-white/10 border-black/15 dark:border-white/15'
+                      }`}
+                    >
+                      <span>{alt.name}</span>
+                      <span>Lvl {alt.spellLevel ?? baseEntry.spellLevel ?? 1}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
+                {altEntries.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCastPromptState((prev) =>
+                        prev ? { ...prev, showAltChoices: !prev.showAltChoices } : null
+                      )
+                    }
+                    className="px-3 py-1.5 rounded border border-cyan-500/50 text-cyan-600 dark:text-cyan-300 hover:bg-cyan-500/10 text-xs font-mono font-bold mr-auto"
+                  >
+                    Alternate casting
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setCastPromptState(null)}
+                  className="px-3 py-1.5 rounded border border-black/15 dark:border-white/15 text-xs font-mono hover:bg-black/10 dark:hover:bg-white/10"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmSpellCast}
+                  className="px-4 py-1.5 rounded bg-purple-600 hover:bg-purple-500 text-white text-xs font-mono font-bold shadow-sm"
+                >
+                  Yes
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ===================================================================== */}
       {/* B1–B5: FORMAT-SPECIFIC CREATE / EDIT MODAL                            */}
       {/* ===================================================================== */}
       {editorFormat && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
           <div className={`w-full max-w-lg rounded-2xl border p-6 space-y-4 shadow-2xl ${cardBg}`}>
             <div className="flex items-center justify-between border-b pb-3 border-black/10 dark:border-white/10">
-              <h3 className="font-serif font-bold text-base text-amber-500">
-                {editingEntryId ? 'Edit' : 'New'}{' '}
-                {editorFormat === 'resource'
-                  ? 'Resource Bar'
-                  : editorFormat === 'ability'
-                  ? 'Ability'
-                  : editorFormat === 'spell'
-                  ? 'Spell'
-                  : editorFormat === 'counter'
-                  ? 'Counter'
-                  : 'Alt Variation'}
-              </h3>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-serif font-bold text-base text-amber-500">
+                  {editingEntryId ? 'Edit' : 'New'}{' '}
+                  {editorFormat === 'resource'
+                    ? 'Resource Bar'
+                    : editorFormat === 'ability'
+                    ? 'Ability'
+                    : editorFormat === 'spell'
+                    ? 'Spell'
+                    : editorFormat === 'counter'
+                    ? 'Counter'
+                    : 'Alt Variation'}
+                </h3>
+                {editingEntryId && (
+                  <select
+                    value={editorFormat}
+                    onChange={(e) => setEditorFormat(e.target.value as ActionDirectoryEntryType)}
+                    aria-label="Entry format"
+                    className={`px-2 py-0.5 rounded border text-[11px] font-mono ${inputStyle}`}
+                  >
+                    <option value="ability">Ability</option>
+                    <option value="resource">Resource Bar</option>
+                    <option value="spell">Spell</option>
+                    <option value="counter">Counter</option>
+                    {altEligibleOriginals.length > 0 && <option value="alt">Alt Variation</option>}
+                  </select>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={() => {

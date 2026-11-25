@@ -618,7 +618,7 @@ export const SheetPage1Core: React.FC<SheetPage1CoreProps> = ({
               </button>
             </div>
 
-            <div className="p-3 overflow-x-auto">
+            <div className="p-3 overflow-x-auto pf1-theme-scrollbar">
               <table className="w-full text-left text-xs border-collapse font-mono">
                 <thead>
                   <tr className="border-b border-black/10 dark:border-white/10 text-[10px] uppercase opacity-75">

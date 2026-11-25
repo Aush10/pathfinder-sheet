@@ -13,27 +13,91 @@ input[type="number"] {
   appearance: textfield;
 }
 
+:root,
+[data-pf1-theme='parchment'] {
+  --pf1-scrollbar-track: rgba(217, 198, 165, 0.45);
+  --pf1-scrollbar-thumb: #9a6b35;
+  --pf1-scrollbar-thumb-hover: #7c5223;
+  --pf1-scrollbar-corner: rgba(217, 198, 165, 0.35);
+  --pf1-scrollbar-size: 8px;
+}
+
+:root:has([data-pf1-theme='blueprint']),
+[data-pf1-theme='blueprint'] {
+  --pf1-scrollbar-track: rgba(15, 23, 42, 0.72);
+  --pf1-scrollbar-thumb: #2563eb;
+  --pf1-scrollbar-thumb-hover: #3b82f6;
+  --pf1-scrollbar-corner: #0f172a;
+}
+
+:root:has([data-pf1-theme='mythweavers']),
+[data-pf1-theme='mythweavers'] {
+  --pf1-scrollbar-track: rgba(24, 24, 27, 0.8);
+  --pf1-scrollbar-thumb: #52525b;
+  --pf1-scrollbar-thumb-hover: #71717a;
+  --pf1-scrollbar-corner: #18181b;
+}
+
+:root:has([data-pf1-theme='print']),
+[data-pf1-theme='print'] {
+  --pf1-scrollbar-track: rgba(226, 232, 240, 0.75);
+  --pf1-scrollbar-thumb: #64748b;
+  --pf1-scrollbar-thumb-hover: #475569;
+  --pf1-scrollbar-corner: #f8fafc;
+}
+
+html,
+body,
+*,
+.pf1-theme-scrollbar,
 .pf1-blue-scrollbar {
-  scrollbar-color: #2563eb transparent;
+  scrollbar-color: var(--pf1-scrollbar-thumb) var(--pf1-scrollbar-track);
   scrollbar-width: thin;
 }
 
+::-webkit-scrollbar,
+.pf1-theme-scrollbar::-webkit-scrollbar,
 .pf1-blue-scrollbar::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: var(--pf1-scrollbar-size, 8px);
+  height: var(--pf1-scrollbar-size, 8px);
 }
 
+::-webkit-scrollbar-track,
+.pf1-theme-scrollbar::-webkit-scrollbar-track,
 .pf1-blue-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.pf1-blue-scrollbar::-webkit-scrollbar-thumb {
-  background-color: #2563eb;
+  background: var(--pf1-scrollbar-track);
   border-radius: 9999px;
 }
 
+::-webkit-scrollbar-thumb,
+.pf1-theme-scrollbar::-webkit-scrollbar-thumb,
+.pf1-blue-scrollbar::-webkit-scrollbar-thumb {
+  background-color: var(--pf1-scrollbar-thumb);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover,
+.pf1-theme-scrollbar::-webkit-scrollbar-thumb:hover,
 .pf1-blue-scrollbar::-webkit-scrollbar-thumb:hover {
-  background-color: #3b82f6;
+  background-color: var(--pf1-scrollbar-thumb-hover);
+}
+
+::-webkit-scrollbar-corner,
+.pf1-theme-scrollbar::-webkit-scrollbar-corner,
+.pf1-blue-scrollbar::-webkit-scrollbar-corner {
+  background: var(--pf1-scrollbar-corner);
+}
+
+@media print {
+  html,
+  body,
+  * {
+    scrollbar-width: none;
+  }
+
+  ::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 .pf1-hidden-turn-stepper {
