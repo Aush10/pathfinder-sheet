@@ -13,7 +13,10 @@ if (-not (Test-Path -LiteralPath $contractPath -PathType Leaf)) {
 $runtimeFiles = @(
   @{ Source = Join-Path $repositoryDirectory 'public\pathfinder1e_standalone.html'; Name = 'index.html' },
   @{ Source = Join-Path $repositoryDirectory 'public\chirpy.ico'; Name = 'chirpy.ico' },
-  @{ Source = Join-Path $repositoryDirectory 'installer\Start-PF1MW.ps1'; Name = 'Start-PF1MW.ps1' }
+  @{ Source = Join-Path $repositoryDirectory 'public\chirpy-updated.ico'; Name = 'chirpy-updated.ico' },
+  @{ Source = Join-Path $repositoryDirectory 'public\chirpy-updated.png'; Name = 'chirpy-updated.png' },
+  @{ Source = Join-Path $repositoryDirectory 'installer\Start-PF1MW.ps1'; Name = 'Start-PF1MW.ps1' },
+  @{ Source = Join-Path $repositoryDirectory 'installer\Update-PF1MW.ps1'; Name = 'Update-PF1MW.ps1' }
 )
 $assetDirectory = Join-Path $repositoryDirectory 'public\character-sheet-icons'
 $aiStudioAssetDirectory = Join-Path $repositoryDirectory 'public\assets\aistudio'
@@ -193,6 +196,10 @@ try {
       Copy-PF1MWStagedFile -Source $warningSource -RelativeName $warningName
     }
   }
+
+  $updatedBatStage = Join-Path $stageDirectory 'Updated.bat'
+  $updatedBatBody = "@echo off`r`nsetlocal`r`ncd /d `"%~dp0`"`r`npowershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0Update-PF1MW.ps1`" -WaitOnExit %*`r`n"
+  [System.IO.File]::WriteAllText($updatedBatStage, $updatedBatBody, [System.Text.Encoding]::ASCII)
 
   $runtimeManifest = [ordered]@{
     format = 'pf1mw-runtime-manifest'

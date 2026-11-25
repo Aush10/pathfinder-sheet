@@ -133,10 +133,36 @@ export function buildPlaytestGuideHtml() {
       </p>
       <div class="row">
         <a class="btn btn-emerald" href="./index.html?playtest=1&amp;kitInit=1">Open Autosheet V3 Now</a>
+        <button class="btn" type="button" onclick="runPlaytestUpdated(false)" style="border-color: rgba(56, 189, 248, 0.7); background: #0f172a;">
+          <img src="./chirpy-updated.png" alt="" width="16" height="16" style="border-radius:3px;" onerror="this.style.display='none'" />
+          <span>Updated (Pull Existing Kits)</span>
+        </button>
         <a class="btn" href="./">Included Baggage Storage (./)</a>
         <a class="btn" href="./ITEM_LIST.md">Item List (ITEM_LIST.md)</a>
         <a class="btn" href="./baggage-list.json">Manifest (baggage-list.json)</a>
       </div>
+    </section>
+
+    <section class="card" style="border-color: rgba(56, 189, 248, 0.5);">
+      <div class="row" style="justify-content: space-between; margin-top: 0;">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <img src="./chirpy-updated.png" alt="Updated (Inverted Chirpy)" width="40" height="40" style="border-radius:8px; border:1px solid rgba(56,189,248,0.45); background:#020617;" onerror="this.style.display='none'" />
+          <div>
+            <h2 style="margin:0;">Updated — Pull Latest Distros For Existing Kits</h2>
+            <p class="muted" style="margin:2px 0 0;">Detects existing kits in your test folder and pulls latest <code>Autosheet-PT-KIT</code> distros without overwriting saves or <code>.env.local</code>.</p>
+          </div>
+        </div>
+        <div class="row" style="margin-top: 0;">
+          <button class="btn" type="button" onclick="runPlaytestUpdated(false)" style="background:#0ea5e9; color:#020617; border-color:#38bdf8;">Run Updated</button>
+          <button class="btn" type="button" onclick="runPlaytestUpdated(true)">Dry-Run Check</button>
+        </div>
+      </div>
+      <div class="row">
+        <a class="btn" href="./Updated.bat" download>Download Updated.bat</a>
+        <button class="btn" type="button" onclick="copyText('powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;.\\Updated.ps1&quot;', this)">Copy Updated Command</button>
+        <code>powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\\Updated.ps1"</code>
+      </div>
+      <div id="updated-out" class="out-box"></div>
     </section>
 
     <section class="card">
@@ -360,6 +386,38 @@ npm run dev</pre>
       } catch (e) {}
       alert('Browser crash log #inits reset to 0. Next Playtest Kit open will show the warning gate.');
     }
+    function runPlaytestUpdated(dryRun) {
+      var box = document.getElementById('updated-out');
+      box.style.display = 'block';
+      if (window.location.protocol.indexOf('http') !== 0) {
+        box.textContent = 'Static file:// mode: run Updated.bat or powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\\Updated.ps1" in your test folder.';
+        return;
+      }
+      box.textContent = dryRun ? 'Checking existing kits...' : 'Pulling latest distros for existing kits...';
+      fetch('/api/playtest/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dryRun: Boolean(dryRun) })
+      }).then(function (r) {
+        return r.text().then(function (txt) { return { status: r.status, text: txt }; });
+      }).then(function (res) {
+        try {
+          var data = JSON.parse(res.text);
+          if (data.ok) {
+            box.textContent = (data.dryRun ? 'Dry-run: ' : 'Updated: ') +
+              (data.upstream || 'local') + (data.sourceRevision ? ' (' + data.sourceRevision + ')' : '') +
+              ' | Kits refreshed: ' + ((data.updatedKits || []).join(', ') || (data.detectedKits || []).join(', ') || 'none') +
+              (data.notes && data.notes.length ? ' | ' + data.notes.join(' ') : '');
+          } else {
+            box.textContent = data.error || ('Update returned HTTP ' + res.status);
+          }
+        } catch (e) {
+          box.textContent = 'HTTP ' + res.status + ': run Updated.bat in your test folder.';
+        }
+      }).catch(function () {
+        box.textContent = 'Local Updated API unreachable: run Updated.bat or .\\Updated.ps1 in your test folder.';
+      });
+    }
   </script>
 </body>
 </html>
@@ -575,14 +633,52 @@ function Start-PlaytestStaticServer {
         $stream = $client.GetStream()
         $reader = [System.IO.StreamReader]::new($stream, [System.Text.Encoding]::ASCII, $false, 1024, $true)
         $requestLine = $reader.ReadLine()
-        while (($hdr = $reader.ReadLine()) -and $hdr.Length -gt 0) {}
+        $contentLength = 0
+        while (($hdr = $reader.ReadLine()) -and $hdr.Length -gt 0) {
+          if ($hdr -match '^Content-Length:\\s*(\\d+)$') {
+            $contentLength = [Math]::Min(4096, [int]$Matches[1])
+          }
+        }
+        $bodyText = ''
+        if ($contentLength -gt 0) {
+          $charBuf = New-Object char[] $contentLength
+          $readCount = $reader.Read($charBuf, 0, $contentLength)
+          if ($readCount -gt 0) {
+            $bodyText = -join $charBuf[0..($readCount - 1)]
+          }
+        }
 
         $status = '404 Not Found'
         $body = [System.Text.Encoding]::UTF8.GetBytes('Not found')
         $contentType = 'text/plain; charset=utf-8'
         $sendBody = $true
 
-        if ($requestLine -match '^(GET|HEAD) ([^ ?]+)(?:\\?[^ ]*)? HTTP/1\\.[01]$') {
+        if ($requestLine -match '^GET /api/playtest/update-status(?:\\?[^ ]*)? HTTP/1\\.[01]$') {
+          $updaterFile = Join-Path $appDirectory 'Updated.ps1'
+          if (Test-Path -LiteralPath $updaterFile -PathType Leaf) {
+            $psExeLocal = Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\powershell.exe'
+            $jsonOut = (& $psExeLocal -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $updaterFile -TargetDirectory $appDirectory -DryRun -Json 2>$null | Select-Object -Last 1)
+            if ($jsonOut) {
+              $status = '200 OK'
+              $body = [System.Text.Encoding]::UTF8.GetBytes([string]$jsonOut)
+              $contentType = 'application/json; charset=utf-8'
+            }
+          }
+        } elseif ($requestLine -match '^POST /api/playtest/update(?:\\?[^ ]*)? HTTP/1\\.[01]$') {
+          $updaterFile = Join-Path $appDirectory 'Updated.ps1'
+          if (Test-Path -LiteralPath $updaterFile -PathType Leaf) {
+            $psExeLocal = Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\powershell.exe'
+            $updArgs = @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $updaterFile, '-TargetDirectory', $appDirectory, '-Json')
+            if ($bodyText -match '"dryRun"\\s*:\\s*true') { $updArgs += '-DryRun' }
+            if ($bodyText -match '"allKits"\\s*:\\s*true') { $updArgs += '-AllKits' }
+            $jsonOut = (& $psExeLocal @updArgs 2>$null | Select-Object -Last 1)
+            if ($jsonOut) {
+              $status = if ($LASTEXITCODE -eq 0) { '200 OK' } else { '500 Internal Server Error' }
+              $body = [System.Text.Encoding]::UTF8.GetBytes([string]$jsonOut)
+              $contentType = 'application/json; charset=utf-8'
+            }
+          }
+        } elseif ($requestLine -match '^(GET|HEAD) ([^ ?]+)(?:\\?[^ ]*)? HTTP/1\\.[01]$') {
           $method = $Matches[1]
           $rawPath = [System.Uri]::UnescapeDataString($Matches[2])
           if ($rawPath -eq '/') { $rawPath = '/index.html' }
@@ -686,11 +782,20 @@ powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "%~d
 `;
 }
 
+export function buildUpdatedAppBat() {
+  return `@echo off
+setlocal
+cd /d "%~dp0"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Updated.ps1" -WaitOnExit %*
+`;
+}
+
 export function buildPlaytestReadmeMd() {
   return `# Aush10's Pathfinder Autosheet V3 — Playtest Kit
 
 > Quick start: double-click **Start-Autosheet-Playtest-Kit.bat** (first launch opens the **Wait it's dangerous out there. Read this o7** safety & quick guide; closing and opening a second time launches directly into the sheet).
 >
+> To pull the latest distros for existing kits in this folder, run **Updated.lnk** / **Updated.bat** (inverted Chirpy icon).
 > You can also open **PLAYTEST_GUIDE.html** or **MACRONI_XDX_BIBLE.html** directly in any browser.
 
 ## What's Inside
@@ -698,7 +803,8 @@ export function buildPlaytestReadmeMd() {
 - \`PLAYTEST_GUIDE.html\` — Interactive Quick Guide, Safety Briefing, Ping checks, & Downloads
 - \`MACRONI_XDX_BIBLE.html\` — Updated Macroni XDX (Macro Native Index) 1.2 reference
 - \`Start-Autosheet-Playtest-Kit.bat\` / \`.ps1\` — Windows chirpy launcher (\`#inits\` 0 → 1 gate)
-- \`shortcuts/\` — Windows Defender Firewall, Guide, Bible, Keyhole folder, and First-Run Reset shortcuts
+- \`Updated.lnk\` / \`Updated.bat\` / \`Updated.ps1\` — Inverted-chirpy **Updated** command & app pulling latest distros for all existing kits in this folder
+- \`shortcuts/\` — Windows Defender Firewall, Updated, Guide, Bible, Keyhole folder, and First-Run Reset shortcuts
 - \`kits/\` — Optional standalone add-on bundles:
   - \`openai-ai-kit.zip\`
   - \`gemini-ai-kit.zip\` (Experimental Gemini API Kit)
@@ -708,7 +814,7 @@ export function buildPlaytestReadmeMd() {
 
 ## Full Development Repository
 \`\`\`powershell
-git clone https://github.com/Aush10/pathfinder-sheet.git
+git clone --branch Autosheet-PT-KIT --single-branch https://github.com/Aush10/pathfinder-sheet.git
 cd pathfinder-sheet
 npm install
 npm run dev
@@ -720,6 +826,10 @@ Feedback / Bug Reports: https://github.com/Aush10/pathfinder-sheet/issues
 
 export function buildShortcutsFiles() {
   return [
+    {
+      name: 'Run-Updated-Command.bat',
+      content: `@echo off\r\npowershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0..\\Updated.ps1" -WaitOnExit\r\n`,
+    },
     {
       name: 'Open-Windows-Defender-Firewall.bat',
       content: `@echo off\r\nstart "" control.exe firewall.cpl\r\n`,

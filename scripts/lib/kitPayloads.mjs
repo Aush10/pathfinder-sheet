@@ -1,5 +1,8 @@
-import { buildSync } from 'esbuild';
+import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
+
+const require = createRequire(import.meta.url);
 
 const SHARED_ENV_LOADER_JS = `import fs from 'node:fs';
 import os from 'node:os';
@@ -455,15 +458,37 @@ node .\\server-gemini-kit.mjs
 }
 
 export function createSotIngestKitFiles(repoRoot) {
-  const bundled = buildSync({
-    entryPoints: [path.join(repoRoot, 'server', 'ingest', 'http.ts')],
-    bundle: true,
-    platform: 'node',
-    format: 'esm',
-    write: false,
-    target: 'node22',
-  });
-  const ingestBundleCode = bundled.outputFiles[0].text;
+  let buildSync = null;
+  try {
+    ({ buildSync } = require('esbuild'));
+  } catch {
+    buildSync = null;
+  }
+
+  let ingestBundleCode = '';
+  const extraTsFiles = [];
+  let useStripTypes = false;
+
+  if (buildSync) {
+    const bundled = buildSync({
+      entryPoints: [path.join(repoRoot, 'server', 'ingest', 'http.ts')],
+      bundle: true,
+      platform: 'node',
+      format: 'esm',
+      write: false,
+      target: 'node22',
+    });
+    ingestBundleCode = bundled.outputFiles[0].text;
+  } else {
+    useStripTypes = true;
+    for (const name of ['http.ts', 'index.ts', 'ingest.ts', 'output-schemas.json']) {
+      const fullPath = path.join(repoRoot, 'server', 'ingest', name);
+      if (fs.existsSync(fullPath)) {
+        extraTsFiles.push({ name: `server-ingest/${name}`, content: fs.readFileSync(fullPath, 'utf8') });
+      }
+    }
+    ingestBundleCode = `export { ingestFromRequestBody } from './server-ingest/http.ts';\n`;
+  }
 
   const readme = `AUTOSHEET PLAYTEST KIT — DETERMINISTIC SOT INGEST KIT
 ======================================================
@@ -481,12 +506,12 @@ Requirements: Node.js 22+ installed on your computer. Zero external npm packages
 
 Option A: CLI Usage (No Server Needed)
 --------------------------------------
-  node ingest-cli.mjs <path-to-srd.html|md|txt|json> [output-dir]
+  node ${useStripTypes ? '--experimental-strip-types ' : ''}ingest-cli.mjs <path-to-srd.html|md|txt|json> [output-dir]
 
 Option B: Local Browser Bridge (/api/sot/ingest)
 ------------------------------------------------
 1. Place this folder next to your Playtest Kit index.html (or set AUTOSHEET_HTML_PATH).
-2. Run Start-Ingest-Kit.bat (or: node server-ingest-kit.mjs).
+2. Run Start-Ingest-Kit.bat (or: node ${useStripTypes ? '--experimental-strip-types ' : ''}server-ingest-kit.mjs).
 3. Open http://127.0.0.1:38173/?playtest=1 in Chrome/Edge and use Source of Truth (SOT)!
 `;
 
@@ -574,22 +599,24 @@ server.listen(PORT, '127.0.0.1', () => {
 });
 `;
 
+  const nodeFlags = useStripTypes ? '--experimental-strip-types ' : '';
   const bat = `@echo off
 setlocal
 cd /d "%~dp0"
 echo Starting Autosheet SOT Ingest Bridge on http://127.0.0.1:38173 ...
-node server-ingest-kit.mjs
+node ${nodeFlags}server-ingest-kit.mjs
 pause
 `;
 
   const ps1 = `$ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $PSScriptRoot
-node .\\server-ingest-kit.mjs
+node ${nodeFlags}.\\server-ingest-kit.mjs
 `;
 
   return [
     { name: 'README.txt', content: readme },
     { name: 'ingest-engine.mjs', content: ingestBundleCode },
+    ...extraTsFiles,
     { name: 'ingest-cli.mjs', content: cliScript },
     { name: 'server-ingest-kit.mjs', content: serverScript },
     { name: 'Start-Ingest-Kit.bat', content: bat },

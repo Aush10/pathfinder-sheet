@@ -50,6 +50,8 @@ import { connectSheetToFolder } from './storage/connectFolder';
 import {
   detectPlaytestRuntimeContext,
   evaluatePlaytestFirstRunGate,
+  triggerPlaytestKitUpdate,
+  type PlaytestUpdateClientResult,
 } from './storage/playtestFirstRun';
 
 export interface AppProps {
@@ -82,6 +84,9 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
   );
   const [isPlaytestGuideOpen, setIsPlaytestGuideOpen] = useState(() => initialGateDecision.gate);
   const [isPlaytestFirstRunGate, setIsPlaytestFirstRunGate] = useState(() => initialGateDecision.gate);
+  const [isUpdatingPlaytest, setIsUpdatingPlaytest] = useState(false);
+  const [lastUpdateResult, setLastUpdateResult] = useState<PlaytestUpdateClientResult | null>(null);
+  const [lastUpdateSummary, setLastUpdateSummary] = useState<string | null>(null);
   const [aiKitStatus, setAiKitStatus] = useState<AiServerProbeStatus>({
     checked: false,
     available: false,
@@ -155,6 +160,53 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
       cancelled = true;
     };
   }, []);
+
+  const applyPlaytestUpdateResult = (res: PlaytestUpdateClientResult) => {
+    setLastUpdateResult(res);
+    if (res.ok) {
+      const summary =
+        res.updatedKits.length > 0
+          ? `Updated ${res.updatedKits.length} kit(s): ${res.updatedKits.join(', ')}`
+          : res.notes?.[0] || 'Existing kits checked.';
+      setLastUpdateSummary(summary);
+    } else {
+      setLastUpdateSummary(res.error || 'Run Updated.bat in your test folder.');
+    }
+  };
+
+  const handleRunUpdatedCommand = async () => {
+    setIsUpdatingPlaytest(true);
+    try {
+      const res = await triggerPlaytestKitUpdate({ dryRun: false });
+      applyPlaytestUpdateResult(res);
+      if (res.offlineFallback || !res.ok) {
+        setIsPlaytestFirstRunGate(false);
+        setIsPlaytestGuideOpen(true);
+      } else {
+        setFloatingAlerts((prev) => [
+          ...prev,
+          {
+            id: `updated-${Date.now()}`,
+            message:
+              res.updatedKits.length > 0
+                ? `Updated pulled latest distros for: ${res.updatedKits.join(', ')}`
+                : `Updated checked existing kits (${res.detectedKits.join(', ') || 'none'}).`,
+            preset: {
+              tag: 0,
+              name: 'Updated',
+              theme: 'celestial_cyan',
+              font: 'mono',
+              layout: 'toast',
+              imageUrl: './chirpy-updated.png',
+            },
+            timestamp: Date.now(),
+          },
+        ]);
+      }
+    } finally {
+      setIsUpdatingPlaytest(false);
+    }
+  };
 
   // Global Ctrl+X or Escape listener to close all open tools/modals
   useEffect(() => {
@@ -310,6 +362,11 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
               setIsPlaytestFirstRunGate(false);
               setIsPlaytestGuideOpen(true);
             }}
+            onRunUpdatedCommand={() => {
+              void handleRunUpdatedCommand();
+            }}
+            isUpdatingPlaytest={isUpdatingPlaytest}
+            lastUpdateSummary={lastUpdateSummary}
             onOpenNewSheet={() => setIsNewSheetOpen(true)}
             onOpenImageBrowser={() =>
               handleOpenImageBrowser({
@@ -532,6 +589,8 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
         isFirstRunGate={isPlaytestFirstRunGate}
         launcherCommand={initialGateDecision.launcherCommand}
         aiKitStatus={aiKitStatus}
+        externalUpdateResult={lastUpdateResult}
+        onUpdateResult={applyPlaytestUpdateResult}
         onClose={() => {
           setIsPlaytestFirstRunGate(false);
           setIsPlaytestGuideOpen(false);

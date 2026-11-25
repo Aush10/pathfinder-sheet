@@ -16,6 +16,7 @@ import {
   retrievalQueryFromConversation,
 } from './sotContext.ts';
 import { ingestFromRequestBody } from './ingest/http.ts';
+import { getPlaytestUpdateStatus, isLoopbackAddress, runPlaytestUpdate } from './playtestUpdate.ts';
 
 export const DEFAULT_SERVER_PORT = 3000;
 
@@ -431,4 +432,22 @@ export function registerApiRoutes(app: Express): void {
   app.post('/api/openai/complete-sheet', handleCompleteSheet);
   app.post('/api/sot/fetch-readonly-page', handleSotFetchReadonlyPage);
   app.post('/api/sot/ingest', handleSotIngest);
+  app.get('/api/playtest/update-status', (req, res) => {
+    if (!isLoopbackAddress(req.socket?.remoteAddress)) {
+      return res.status(403).json({ error: 'Loopback access only.' });
+    }
+    return res.json(getPlaytestUpdateStatus(process.cwd()));
+  });
+  app.post('/api/playtest/update', async (req, res) => {
+    if (!isLoopbackAddress(req.socket?.remoteAddress)) {
+      return res.status(403).json({ error: 'Playtest kit updates can only be triggered from localhost.' });
+    }
+    const body = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
+    const result = await runPlaytestUpdate({
+      targetDir: process.cwd(),
+      dryRun: body.dryRun === true,
+      allKits: body.allKits === true,
+    });
+    return res.status(result.ok ? 200 : 500).json(result);
+  });
 }

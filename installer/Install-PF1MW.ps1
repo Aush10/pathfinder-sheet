@@ -1,4 +1,4 @@
-param(
+﻿param(
   [string]$PackagePath,
   [string]$InstallDirectory = (Join-Path $env:LOCALAPPDATA 'pf1mw')
 )
@@ -228,6 +228,22 @@ try {
     $shortcut.Description = 'Open Pathfinder 1e Modular Workspace'
     $shortcut.IconLocation = "$(Join-Path $resolvedInstallDirectory 'chirpy.ico'),0"
     $shortcut.Save()
+
+    $updaterScriptPath = Join-Path $resolvedInstallDirectory 'Update-PF1MW.ps1'
+    $updatedIconPath = Join-Path $resolvedInstallDirectory 'chirpy-updated.ico'
+    if (Test-Path -LiteralPath $updaterScriptPath -PathType Leaf) {
+      $updatedShortcut = $shell.CreateShortcut((Join-Path $desktopDirectory 'Updated.lnk'))
+      $updatedShortcut.TargetPath = $powershellPath
+      $updatedShortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$updaterScriptPath`" -WaitOnExit"
+      $updatedShortcut.WorkingDirectory = $resolvedInstallDirectory
+      $updatedShortcut.Description = 'Updated — Pull latest distros for all existing Autosheet kits'
+      if (Test-Path -LiteralPath $updatedIconPath -PathType Leaf) {
+        $updatedShortcut.IconLocation = "$updatedIconPath,0"
+      } else {
+        $updatedShortcut.IconLocation = "$(Join-Path $resolvedInstallDirectory 'chirpy.ico'),0"
+      }
+      $updatedShortcut.Save()
+    }
   } finally {
     [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell)
   }

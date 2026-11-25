@@ -15,6 +15,7 @@ function Get-PF1MWPackagedServerFiles {
     'server/env.ts',
     'server/lockFiles.ts',
     'server/openai.ts',
+    'server/playtestUpdate.ts',
     'server/prompts.ts',
     'server/routes.ts',
     'server/sotContext.ts',
@@ -52,7 +53,7 @@ function Test-PF1MWAllowedRuntimeEntry {
   }
 
   switch -Regex ($name) {
-    '^(index\.html|chirpy\.ico|Start-PF1MW\.ps1|runtime-manifest\.json|package\.json|package-lock\.json|\.env\.example|server\.ts)$' {
+    '^(index\.html|chirpy\.ico|chirpy-updated\.ico|chirpy-updated\.png|Start-PF1MW\.ps1|Update-PF1MW\.ps1|Updated\.ps1|Updated\.bat|runtime-manifest\.json|package\.json|package-lock\.json|\.env\.example|server\.ts)$' {
       return $true
     }
     '^memory-bank-template/manifest\.json$' { return $true }
@@ -60,11 +61,11 @@ function Test-PF1MWAllowedRuntimeEntry {
       return $true
     }
     '^assets/aistudio/image_[a-z0-9]+\.png$' { return $true }
-    '^server/(env|lockFiles|openai|prompts|routes|sotContext)\.ts$' { return $true }
+    '^server/(env|lockFiles|openai|playtestUpdate|prompts|routes|sotContext)\.ts$' { return $true }
     '^server/ingest/(http|index|ingest)\.ts$' { return $true }
     '^server/ingest/output-schemas\.json$' { return $true }
     '^dist/index\.html$' { return $true }
-    '^dist/chirpy\.ico$' { return $true }
+    '^dist/(chirpy\.ico|chirpy-updated\.ico|chirpy-updated\.png)$' { return $true }
     '^dist/memory-bank-template/manifest\.json$' { return $true }
     '^dist/assets/[A-Za-z0-9._-]+\.(js|css)$' { return $true }
     '^dist/assets/aistudio/image_[a-z0-9]+\.png$' { return $true }

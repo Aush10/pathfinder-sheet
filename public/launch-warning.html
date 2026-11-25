@@ -132,10 +132,36 @@
       </p>
       <div class="row">
         <a class="btn btn-emerald" href="./index.html?playtest=1&amp;kitInit=1">Open Autosheet V3 Now</a>
+        <button class="btn" type="button" onclick="runPlaytestUpdated(false)" style="border-color: rgba(56, 189, 248, 0.7); background: #0f172a;">
+          <img src="./chirpy-updated.png" alt="" width="16" height="16" style="border-radius:3px;" onerror="this.style.display='none'" />
+          <span>Updated (Pull Existing Kits)</span>
+        </button>
         <a class="btn" href="./">Included Baggage Storage (./)</a>
         <a class="btn" href="./ITEM_LIST.md">Item List (ITEM_LIST.md)</a>
         <a class="btn" href="./baggage-list.json">Manifest (baggage-list.json)</a>
       </div>
+    </section>
+
+    <section class="card" style="border-color: rgba(56, 189, 248, 0.5);">
+      <div class="row" style="justify-content: space-between; margin-top: 0;">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <img src="./chirpy-updated.png" alt="Updated (Inverted Chirpy)" width="40" height="40" style="border-radius:8px; border:1px solid rgba(56,189,248,0.45); background:#020617;" onerror="this.style.display='none'" />
+          <div>
+            <h2 style="margin:0;">Updated — Pull Latest Distros For Existing Kits</h2>
+            <p class="muted" style="margin:2px 0 0;">Detects existing kits in your test folder and pulls latest <code>Autosheet-PT-KIT</code> distros without overwriting saves or <code>.env.local</code>.</p>
+          </div>
+        </div>
+        <div class="row" style="margin-top: 0;">
+          <button class="btn" type="button" onclick="runPlaytestUpdated(false)" style="background:#0ea5e9; color:#020617; border-color:#38bdf8;">Run Updated</button>
+          <button class="btn" type="button" onclick="runPlaytestUpdated(true)">Dry-Run Check</button>
+        </div>
+      </div>
+      <div class="row">
+        <a class="btn" href="./Updated.bat" download>Download Updated.bat</a>
+        <button class="btn" type="button" onclick="copyText('powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;.\Updated.ps1&quot;', this)">Copy Updated Command</button>
+        <code>powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\Updated.ps1"</code>
+      </div>
+      <div id="updated-out" class="out-box"></div>
     </section>
 
     <section class="card">
@@ -358,6 +384,38 @@ npm run dev</pre>
         localStorage.setItem('pf1e_playtest_crash_log_v1', JSON.stringify({ inits: 0 }));
       } catch (e) {}
       alert('Browser crash log #inits reset to 0. Next Playtest Kit open will show the warning gate.');
+    }
+    function runPlaytestUpdated(dryRun) {
+      var box = document.getElementById('updated-out');
+      box.style.display = 'block';
+      if (window.location.protocol.indexOf('http') !== 0) {
+        box.textContent = 'Static file:// mode: run Updated.bat or powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\Updated.ps1" in your test folder.';
+        return;
+      }
+      box.textContent = dryRun ? 'Checking existing kits...' : 'Pulling latest distros for existing kits...';
+      fetch('/api/playtest/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dryRun: Boolean(dryRun) })
+      }).then(function (r) {
+        return r.text().then(function (txt) { return { status: r.status, text: txt }; });
+      }).then(function (res) {
+        try {
+          var data = JSON.parse(res.text);
+          if (data.ok) {
+            box.textContent = (data.dryRun ? 'Dry-run: ' : 'Updated: ') +
+              (data.upstream || 'local') + (data.sourceRevision ? ' (' + data.sourceRevision + ')' : '') +
+              ' | Kits refreshed: ' + ((data.updatedKits || []).join(', ') || (data.detectedKits || []).join(', ') || 'none') +
+              (data.notes && data.notes.length ? ' | ' + data.notes.join(' ') : '');
+          } else {
+            box.textContent = data.error || ('Update returned HTTP ' + res.status);
+          }
+        } catch (e) {
+          box.textContent = 'HTTP ' + res.status + ': run Updated.bat in your test folder.';
+        }
+      }).catch(function () {
+        box.textContent = 'Local Updated API unreachable: run Updated.bat or .\Updated.ps1 in your test folder.';
+      });
     }
   </script>
 </body>

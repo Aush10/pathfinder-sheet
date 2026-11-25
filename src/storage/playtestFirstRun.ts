@@ -11,6 +11,9 @@ export const PLAYTEST_CRASH_LOG_KEY = 'pf1e_playtest_crash_log_v1';
 export const DEFAULT_PLAYTEST_SHELL_COMMAND =
   'powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ".\\Start-Autosheet-Playtest-Kit.ps1"';
 
+export const DEFAULT_UPDATED_SHELL_COMMAND =
+  'powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\\Updated.ps1"';
+
 export interface PlaytestCrashLogEntry {
   inits: 0 | 1;
   firstRunTriggeredAt?: string;
@@ -227,4 +230,122 @@ export function evaluatePlaytestFirstRunGate(
     syncedFromLauncher: false,
     launcherCommand: runtime.launcherCommand,
   };
+}
+
+export interface DetectedKitEntry {
+  id: string;
+  label: string;
+  path?: string;
+}
+
+export interface PlaytestUpdateStatusClient {
+  ok: boolean;
+  targetDirectory?: string;
+  updaterAvailable: boolean;
+  command: string;
+  detectedKits: DetectedKitEntry[];
+}
+
+export interface PlaytestUpdateClientResult {
+  ok: boolean;
+  dryRun: boolean;
+  offlineFallback?: boolean;
+  targetDirectory?: string;
+  upstream?: string;
+  sourceRevision?: string;
+  detectedKits: string[];
+  updatedKits: string[];
+  notes?: string[];
+  command: string;
+  error?: string;
+}
+
+export async function fetchPlaytestUpdateStatus(): Promise<PlaytestUpdateStatusClient | null> {
+  if (typeof window === 'undefined' || !window.location.protocol.startsWith('http')) {
+    return null;
+  }
+  try {
+    const res = await fetch('/api/playtest/update-status', { method: 'GET' });
+    if (!res.ok) return null;
+    const data = (await res.json()) as Partial<PlaytestUpdateStatusClient>;
+    return {
+      ok: Boolean(data.ok),
+      targetDirectory: data.targetDirectory,
+      updaterAvailable: Boolean(data.updaterAvailable),
+      command: data.command || DEFAULT_UPDATED_SHELL_COMMAND,
+      detectedKits: Array.isArray(data.detectedKits) ? data.detectedKits : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function triggerPlaytestKitUpdate(options?: {
+  dryRun?: boolean;
+  allKits?: boolean;
+}): Promise<PlaytestUpdateClientResult> {
+  const dryRun = Boolean(options?.dryRun);
+  const allKits = Boolean(options?.allKits);
+
+  if (typeof window === 'undefined' || !window.location.protocol.startsWith('http')) {
+    return {
+      ok: false,
+      dryRun,
+      offlineFallback: true,
+      detectedKits: [],
+      updatedKits: [],
+      command: DEFAULT_UPDATED_SHELL_COMMAND,
+      error: 'Static file:// mode cannot run PowerShell directly. Run Updated.bat or copy the Updated shell command below.',
+    };
+  }
+
+  try {
+    const res = await fetch('/api/playtest/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dryRun, allKits }),
+    });
+    const text = await res.text();
+    let parsed: Partial<PlaytestUpdateClientResult> | null = null;
+    try {
+      parsed = JSON.parse(text) as Partial<PlaytestUpdateClientResult>;
+    } catch {
+      parsed = null;
+    }
+
+    if (!parsed || typeof parsed !== 'object') {
+      return {
+        ok: false,
+        dryRun,
+        offlineFallback: true,
+        detectedKits: [],
+        updatedKits: [],
+        command: DEFAULT_UPDATED_SHELL_COMMAND,
+        error: `HTTP ${res.status} on /api/playtest/update. Run Updated.bat in your test folder.`,
+      };
+    }
+
+    return {
+      ok: Boolean(parsed.ok) && res.ok,
+      dryRun: Boolean(parsed.dryRun ?? dryRun),
+      targetDirectory: parsed.targetDirectory,
+      upstream: parsed.upstream,
+      sourceRevision: parsed.sourceRevision,
+      detectedKits: Array.isArray(parsed.detectedKits) ? parsed.detectedKits : [],
+      updatedKits: Array.isArray(parsed.updatedKits) ? parsed.updatedKits : [],
+      notes: Array.isArray(parsed.notes) ? parsed.notes : [],
+      command: parsed.command || DEFAULT_UPDATED_SHELL_COMMAND,
+      error: parsed.error || (!res.ok ? `Update failed with HTTP ${res.status}` : undefined),
+    };
+  } catch (err: unknown) {
+    return {
+      ok: false,
+      dryRun,
+      offlineFallback: true,
+      detectedKits: [],
+      updatedKits: [],
+      command: DEFAULT_UPDATED_SHELL_COMMAND,
+      error: err instanceof Error ? err.message : 'Could not reach local Updated endpoint.',
+    };
+  }
 }

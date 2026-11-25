@@ -168,18 +168,68 @@ function Start-PF1MWStaticServer {
           $true
         )
         $requestLine = $reader.ReadLine()
-        while (($header = $reader.ReadLine()) -and $header.Length -gt 0) {}
+        $contentLength = 0
+        while (($header = $reader.ReadLine()) -and $header.Length -gt 0) {
+          if ($header -match '^Content-Length:\s*(\d+)$') {
+            $contentLength = [Math]::Min(4096, [int]$Matches[1])
+          }
+        }
+        $bodyText = ''
+        if ($contentLength -gt 0) {
+          $charBuf = New-Object char[] $contentLength
+          $readCount = $reader.Read($charBuf, 0, $contentLength)
+          if ($readCount -gt 0) {
+            $bodyText = -join $charBuf[0..($readCount - 1)]
+          }
+        }
 
         $status = '404 Not Found'
         $body = [byte[]]@()
         $contentType = 'text/plain; charset=utf-8'
         $sendBody = $true
 
-        if ($requestLine -match '^(GET|HEAD) /chirpy\.ico(?:\?[^ ]*)? HTTP/1\.[01]$') {
-          $status = '200 OK'
-          $body = $iconBytes
-          $contentType = 'image/x-icon'
-          $sendBody = $Matches[1] -eq 'GET'
+        if ($requestLine -match '^GET /api/playtest/update-status(?:\?[^ ]*)? HTTP/1\.[01]$') {
+          $updaterPath = Join-Path $appDirectory 'Update-PF1MW.ps1'
+          if (Test-Path -LiteralPath $updaterPath -PathType Leaf) {
+            $psExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+            $jsonOut = (& $psExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $updaterPath -TargetDirectory $appDirectory -DryRun -Json 2>$null | Select-Object -Last 1)
+            if ($jsonOut) {
+              $status = '200 OK'
+              $body = [System.Text.Encoding]::UTF8.GetBytes([string]$jsonOut)
+              $contentType = 'application/json; charset=utf-8'
+            }
+          }
+        } elseif ($requestLine -match '^POST /api/playtest/update(?:\?[^ ]*)? HTTP/1\.[01]$') {
+          $updaterPath = Join-Path $appDirectory 'Update-PF1MW.ps1'
+          if (Test-Path -LiteralPath $updaterPath -PathType Leaf) {
+            $psExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+            $updArgs = @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $updaterPath, '-TargetDirectory', $appDirectory, '-Json')
+            if ($bodyText -match '"dryRun"\s*:\s*true') { $updArgs += '-DryRun' }
+            if ($bodyText -match '"allKits"\s*:\s*true') { $updArgs += '-AllKits' }
+            $jsonOut = (& $psExe @updArgs 2>$null | Select-Object -Last 1)
+            if ($jsonOut) {
+              $status = if ($LASTEXITCODE -eq 0) { '200 OK' } else { '500 Internal Server Error' }
+              $body = [System.Text.Encoding]::UTF8.GetBytes([string]$jsonOut)
+              $contentType = 'application/json; charset=utf-8'
+            }
+          }
+        } elseif ($requestLine -match '^(GET|HEAD) /(chirpy\.ico|chirpy-updated\.ico|chirpy-updated\.png)(?:\?[^ ]*)? HTTP/1\.[01]$') {
+          $requestMethod = $Matches[1]
+          $iconAssetName = $Matches[2]
+          $iconAssetPath = Join-Path $appDirectory $iconAssetName
+          if (Test-Path -LiteralPath $iconAssetPath -PathType Leaf) {
+            $status = '200 OK'
+            $body = [System.IO.File]::ReadAllBytes($iconAssetPath)
+            $contentType = if ($iconAssetName.EndsWith('.png')) { 'image/png' } else { 'image/x-icon' }
+            $sendBody = $requestMethod -eq 'GET'
+          } elseif ($iconAssetName -eq 'chirpy.ico') {
+            $status = '200 OK'
+            $body = $iconBytes
+            $contentType = 'image/x-icon'
+            $sendBody = $requestMethod -eq 'GET'
+          } else {
+            $body = [System.Text.Encoding]::UTF8.GetBytes('Not found')
+          }
         } elseif ($requestLine -match '^(GET|HEAD) /runtime-manifest\.json(?:\?[^ ]*)? HTTP/1\.[01]$') {
           $status = '200 OK'
           $body = $runtimeManifestBytes

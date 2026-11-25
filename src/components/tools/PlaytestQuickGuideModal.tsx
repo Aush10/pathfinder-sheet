@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   AlertTriangle,
   BookOpen,
@@ -23,8 +23,13 @@ import {
 } from 'lucide-react';
 import {
   DEFAULT_PLAYTEST_SHELL_COMMAND,
+  DEFAULT_UPDATED_SHELL_COMMAND,
+  fetchPlaytestUpdateStatus,
   readPlaytestCrashLog,
   resetPlaytestInit,
+  triggerPlaytestKitUpdate,
+  type PlaytestUpdateClientResult,
+  type PlaytestUpdateStatusClient,
 } from '../../storage/playtestFirstRun';
 import type { AiServerProbeStatus } from '../../engine/aiService';
 
@@ -40,6 +45,8 @@ export interface PlaytestQuickGuideModalProps {
   onOpenSotPanel?: () => void;
   onConnectSaveArea?: () => void;
   onResetFirstRunFlag?: () => void;
+  externalUpdateResult?: PlaytestUpdateClientResult | null;
+  onUpdateResult?: (result: PlaytestUpdateClientResult) => void;
 }
 
 const GITHUB_REPO_URL = 'https://github.com/Aush10/pathfinder-sheet';
@@ -61,6 +68,8 @@ export const PlaytestQuickGuideModal: React.FC<PlaytestQuickGuideModalProps> = (
   onOpenSotPanel,
   onConnectSaveArea,
   onResetFirstRunFlag,
+  externalUpdateResult,
+  onUpdateResult,
 }) => {
   const [showShellCommand, setShowShellCommand] = useState(isFirstRunGate);
   const [showExplain, setShowExplain] = useState(isFirstRunGate);
@@ -70,6 +79,26 @@ export const PlaytestQuickGuideModal: React.FC<PlaytestQuickGuideModalProps> = (
   const [networkPingReport, setNetworkPingReport] = useState<string | null>(null);
   const [pingCount, setPingCount] = useState(0);
   const [crashInits, setCrashInits] = useState<number>(() => readPlaytestCrashLog().inits);
+  const [updateStatus, setUpdateStatus] = useState<PlaytestUpdateStatusClient | null>(null);
+  const [updateResult, setUpdateResult] = useState<PlaytestUpdateClientResult | null>(externalUpdateResult ?? null);
+  const [isUpdatingKits, setIsUpdatingKits] = useState(false);
+
+  useEffect(() => {
+    if (externalUpdateResult) {
+      setUpdateResult(externalUpdateResult);
+    }
+  }, [externalUpdateResult]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    void fetchPlaytestUpdateStatus().then((status) => {
+      if (!cancelled) setUpdateStatus(status);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -117,6 +146,21 @@ export const PlaytestQuickGuideModal: React.FC<PlaytestQuickGuideModalProps> = (
     onResetFirstRunFlag?.();
   };
 
+  const handleRunUpdated = async (dryRun: boolean) => {
+    setIsUpdatingKits(true);
+    try {
+      const result = await triggerPlaytestKitUpdate({ dryRun });
+      setUpdateResult(result);
+      onUpdateResult?.(result);
+      if (result.ok) {
+        const refreshed = await fetchPlaytestUpdateStatus();
+        if (refreshed) setUpdateStatus(refreshed);
+      }
+    } finally {
+      setIsUpdatingKits(false);
+    }
+  };
+
   const pingMessages = [
     'Pong! 0 packets left your computer. Still nobody listening.',
     'Pong x2! Still just your browser talking to itself.',
@@ -129,7 +173,8 @@ export const PlaytestQuickGuideModal: React.FC<PlaytestQuickGuideModalProps> = (
     { name: 'PLAYTEST_GUIDE.html', desc: 'Standalone "Wait its dangerous out there" quick guide' },
     { name: 'MACRONI_XDX_BIBLE.html', desc: 'Updated Macroni XDX (Macro Native Index) 1.2 reference' },
     { name: 'Start-Autosheet-Playtest-Kit.bat / .ps1', desc: 'Windows chirpy launcher with #inits 0->1 first-run gate' },
-    { name: 'shortcuts/', desc: 'Windows Defender Firewall, Quick Guide, Bible & Keyhole shortcuts' },
+    { name: 'Updated.bat / Updated.ps1 + chirpy-updated.ico', desc: 'Inverted-chirpy "Updated" command pulling latest existing kits' },
+    { name: 'shortcuts/', desc: 'Windows Defender Firewall, Updated, Guide, Bible & Keyhole shortcuts' },
     { name: 'kits/openai-ai-kit.zip', desc: 'Optional local OpenAI API bridge + README' },
     { name: 'kits/gemini-ai-kit.zip', desc: 'Experimental local Gemini API bridge + README' },
     { name: 'kits/api-keyhole.zip', desc: 'Bare .json + .env.local keyhole templates (no API/keys)' },
@@ -299,6 +344,116 @@ export const PlaytestQuickGuideModal: React.FC<PlaytestQuickGuideModalProps> = (
                 </button>
               </div>
             </div>
+          </div>
+
+          {/* Updated App & Existing Kit Sync */}
+          <div className="p-4 rounded-xl bg-slate-950/85 border border-cyan-500/40 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-slate-900 border border-cyan-400/50 flex items-center justify-center shrink-0 overflow-hidden">
+                  <img
+                    src="./chirpy-updated.png"
+                    alt="Updated (Inverted Chirpy)"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                    className="w-8 h-8 object-contain"
+                  />
+                </div>
+                <div>
+                  <h3 className="font-mono font-bold text-xs uppercase tracking-wide text-cyan-300">
+                    Updated — Pull Latest Distros For Existing Kits
+                  </h3>
+                  <p className="text-xs text-slate-300">
+                    Detects which kits are currently in your test folder and pulls the latest <code>Autosheet-PT-KIT</code> distros without overwriting saves or <code>.env.local</code>.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleRunUpdated(false)}
+                  disabled={isUpdatingKits}
+                  className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono font-bold text-xs inline-flex items-center gap-1.5 disabled:opacity-60 shadow-sm"
+                >
+                  <img
+                    src="./chirpy-updated.png"
+                    alt=""
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                    className="w-4 h-4 object-contain"
+                  />
+                  <span>{isUpdatingKits ? 'Updating Kits...' : 'Updated'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleRunUpdated(true)}
+                  disabled={isUpdatingKits}
+                  className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 font-mono font-bold text-xs disabled:opacity-60"
+                >
+                  Dry-Run Check
+                </button>
+              </div>
+            </div>
+
+            {updateStatus && updateStatus.detectedKits.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-mono">
+                <span className="text-slate-400">Existing kits detected:</span>
+                {updateStatus.detectedKits.map((kit) => (
+                  <span
+                    key={kit.id}
+                    className="px-2 py-0.5 rounded bg-slate-900 border border-cyan-500/30 text-cyan-200"
+                    title={kit.path || kit.id}
+                  >
+                    {kit.label}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono">
+              <button
+                type="button"
+                onClick={() => copyText('updated-cmd', updateStatus?.command || DEFAULT_UPDATED_SHELL_COMMAND)}
+                className="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-cyan-300 inline-flex items-center gap-1"
+              >
+                {copiedId === 'updated-cmd' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                <span>{copiedId === 'updated-cmd' ? 'Copied Updated Command' : 'Copy Updated Command'}</span>
+              </button>
+              <a
+                href="./Updated.bat"
+                download
+                className="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-cyan-500/40 text-cyan-200 inline-flex items-center gap-1"
+              >
+                <Download className="w-3 h-3" />
+                <span>Updated.bat App</span>
+              </a>
+              <code className="px-2 py-1 rounded bg-black/70 border border-slate-800 text-emerald-300 break-all">
+                {updateStatus?.command || DEFAULT_UPDATED_SHELL_COMMAND}
+              </code>
+            </div>
+
+            {updateResult && (
+              <div
+                className={`p-2.5 rounded-lg border font-mono text-[11px] space-y-1 ${
+                  updateResult.ok
+                    ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
+                    : 'bg-amber-950/40 border-amber-500/40 text-amber-200'
+                }`}
+              >
+                <div>
+                  <strong>{updateResult.dryRun ? 'Dry-Run' : updateResult.ok ? 'Updated OK' : 'Manual / Offline Note'}:</strong>{' '}
+                  {updateResult.upstream ? `${updateResult.upstream}${updateResult.sourceRevision ? ` (${updateResult.sourceRevision})` : ''}` : 'Local folder'}
+                </div>
+                {updateResult.updatedKits.length > 0 && (
+                  <div>Refreshed kits: {updateResult.updatedKits.join(', ')}</div>
+                )}
+                {updateResult.notes && updateResult.notes.map((n, i) => <div key={i}>{n}</div>)}
+                {updateResult.error && <div>{updateResult.error}</div>}
+              </div>
+            )}
           </div>
 
           {/* SAFETY SECTION */}

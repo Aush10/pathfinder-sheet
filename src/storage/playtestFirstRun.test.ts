@@ -7,11 +7,13 @@ import test from 'node:test';
 import { createBlankCharacter } from '../data/defaultCharacter';
 import { createListenersOffAiSettings } from '../engine/aiService';
 import {
+  DEFAULT_UPDATED_SHELL_COMMAND,
   PLAYTEST_CRASH_LOG_KEY,
   detectPlaytestRuntimeContext,
   evaluatePlaytestFirstRunGate,
   readPlaytestCrashLog,
   resetPlaytestInit,
+  triggerPlaytestKitUpdate,
   type StorageLike,
 } from './playtestFirstRun';
 import { buildZipBuffer } from '../../scripts/lib/zipWriter.mjs';
@@ -25,6 +27,7 @@ import {
   buildMacroniBibleHtml,
   buildPlaytestGuideHtml,
   buildPlaytestLauncherPs1,
+  buildUpdatedAppBat,
 } from '../../scripts/lib/playtestDocs.mjs';
 
 function makeMemoryStorage(): StorageLike {
@@ -163,4 +166,17 @@ test('Playtest Kit builders produce guide, Bible, launcher, and secret-free down
     assert.equal(zip.subarray(0, 2).toString('ascii'), 'PK');
     assert.ok(zip.length > 500);
   }
+
+  assert.match(guideHtml, /Updated\.bat/);
+  assert.match(guideHtml, /chirpy-updated\.png/);
+  assert.match(ps1, /\/api\/playtest\/update/);
+  assert.match(buildUpdatedAppBat(), /Updated\.ps1/);
+});
+
+test('triggerPlaytestKitUpdate falls back cleanly in offline/Node environments', async () => {
+  const res = await triggerPlaytestKitUpdate({ dryRun: true });
+  assert.equal(res.ok, false);
+  assert.equal(res.offlineFallback, true);
+  assert.equal(res.dryRun, true);
+  assert.equal(res.command, DEFAULT_UPDATED_SHELL_COMMAND);
 });

@@ -16,6 +16,7 @@ const packager = readInstaller('Package-PF1MW.ps1');
 const install = readInstaller('Install-PF1MW.ps1');
 const installLocal = readInstaller('Install-PF1MW-Local.ps1');
 const start = readInstaller('Start-PF1MW.ps1');
+const updater = readInstaller('Update-PF1MW.ps1');
 
 const powershell = path.join(
   process.env.SystemRoot || 'C:\\Windows',
@@ -40,6 +41,7 @@ test('all installer scripts parse in Windows PowerShell 5.1', () => {
     'Install-PF1MW.ps1',
     'Install-PF1MW-Local.ps1',
     'Start-PF1MW.ps1',
+    'Update-PF1MW.ps1',
   ]) {
     const scriptPath = path.join(installerDir, name).replace(/'/g, "''");
     const output = runPowerShell(
@@ -53,7 +55,11 @@ test('shared contract allowlist accepts the aligned runtime and rejects secrets 
   const allowed = [
     'index.html',
     'chirpy.ico',
+    'chirpy-updated.ico',
+    'chirpy-updated.png',
     'Start-PF1MW.ps1',
+    'Update-PF1MW.ps1',
+    'Updated.bat',
     'runtime-manifest.json',
     'memory-bank-template/manifest.json',
     'package.json',
@@ -61,6 +67,7 @@ test('shared contract allowlist accepts the aligned runtime and rejects secrets 
     '.env.example',
     'server.ts',
     'server/env.ts',
+    'server/playtestUpdate.ts',
     'server/ingest/ingest.ts',
     'server/ingest/output-schemas.json',
     'assets/aistudio/image_14f1e2fd.png',
@@ -153,6 +160,7 @@ test('none of the installer scripts copy secrets or pfautosheetv3', () => {
     ['install', install],
     ['local', installLocal],
     ['start', start],
+    ['updater', updater],
   ] as const) {
     assert.doesNotMatch(source, /pfautosheetv3/, `${name} mentions pfautosheetv3`);
     assert.doesNotMatch(source, /Copy-Item[^\n]*\.env\.local/, `${name} copies .env.local`);

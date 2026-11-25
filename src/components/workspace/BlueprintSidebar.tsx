@@ -54,6 +54,9 @@ interface BlueprintSidebarProps {
   onInstallAITool?: () => void;
   aiKitStatus?: AiServerProbeStatus;
   onOpenPlaytestGuide?: () => void;
+  onRunUpdatedCommand?: () => void;
+  isUpdatingPlaytest?: boolean;
+  lastUpdateSummary?: string | null;
   onOpenNewSheet?: () => void;
   onOpenImageBrowser?: () => void;
   onExportStandaloneHTML?: () => void;
@@ -83,6 +86,9 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
   onInstallAITool,
   aiKitStatus,
   onOpenPlaytestGuide,
+  onRunUpdatedCommand,
+  isUpdatingPlaytest,
+  lastUpdateSummary,
   onOpenNewSheet,
   onOpenImageBrowser,
   onExportStandaloneHTML: propOnExportStandaloneHTML,
@@ -561,6 +567,30 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
                 <ShieldAlert className="w-3.5 h-3.5 text-amber-400 group-hover:scale-110 transition-transform" />
                 <span>Playtest Kit Quick Guide o7</span>
               </button>
+            )}
+            {onRunUpdatedCommand && (
+              <button
+                type="button"
+                onClick={onRunUpdatedCommand}
+                disabled={isUpdatingPlaytest}
+                className="py-1.5 px-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-cyan-400/60 hover:border-cyan-300 text-cyan-100 font-bold flex items-center justify-center gap-1.5 transition-colors col-span-2 shadow-xs group disabled:opacity-60"
+                title="Updated — Pull latest distros for all existing kits in your test folder"
+              >
+                <img
+                  src="./chirpy-updated.png"
+                  alt=""
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                  }}
+                  className="w-4 h-4 rounded-xs object-contain shrink-0"
+                />
+                <span>{isUpdatingPlaytest ? 'Updated: Pulling...' : 'Updated (Pull Existing Kits)'}</span>
+              </button>
+            )}
+            {lastUpdateSummary && (
+              <div className="col-span-2 px-2 py-1 rounded bg-slate-900/90 border border-cyan-500/30 text-[10px] font-mono text-cyan-200 break-words">
+                {lastUpdateSummary}
+              </div>
             )}
             <a
               href="https://github.com/Aush10/pathfinder-sheet"

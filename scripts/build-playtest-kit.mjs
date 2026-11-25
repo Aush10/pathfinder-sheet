@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { generateUpdatedIconAssets } from './generate-updated-icon.mjs';
 import { buildZipBuffer } from './lib/zipWriter.mjs';
 import {
   createApiKeyholeFiles,
@@ -16,6 +17,7 @@ import {
   buildPlaytestLauncherPs1,
   buildPlaytestReadmeMd,
   buildShortcutsFiles,
+  buildUpdatedAppBat,
 } from './lib/playtestDocs.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -38,13 +40,18 @@ function walkFiles(dir, base = dir) {
   return results.sort((a, b) => a.path.localeCompare(b.path));
 }
 
-function tryCreateWindowsLnkShortcuts(shortcutsDir) {
+function tryCreateWindowsLnkShortcuts(kitRootDir, shortcutsDir) {
   if (process.platform !== 'win32') return;
   const sysRoot = process.env.SystemRoot || 'C:\\Windows';
   const psPath = path.join(sysRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
   if (!fs.existsSync(psPath)) return;
 
+  const escapedRoot = kitRootDir.replace(/'/g, "''");
   const escapedDir = shortcutsDir.replace(/'/g, "''");
+  const updatedIcon = path.join(kitRootDir, 'chirpy-updated.ico');
+  const iconLine = fs.existsSync(updatedIcon)
+    ? `$upd.IconLocation = '${updatedIcon.replace(/'/g, "''")},0'`
+    : '';
   const script = `
 $ErrorActionPreference = 'Stop'
 $shell = New-Object -ComObject WScript.Shell
@@ -60,6 +67,16 @@ try {
   $fwAdv.Arguments = "$env:SystemRoot\\System32\\wf.msc"
   $fwAdv.Description = 'Open Windows Defender Firewall with Advanced Security'
   $fwAdv.Save()
+
+  foreach ($lnkDest in @('${escapedRoot}\\Updated.lnk', '${escapedDir}\\Updated.lnk')) {
+    $upd = $shell.CreateShortcut($lnkDest)
+    $upd.TargetPath = "${psPath.replace(/'/g, "''")}"
+    $upd.Arguments = '-NoProfile -ExecutionPolicy Bypass -File "${escapedRoot}\\Updated.ps1" -WaitOnExit'
+    $upd.WorkingDirectory = '${escapedRoot}'
+    $upd.Description = 'Updated — Pull latest distros for all existing kits in this folder'
+    ${iconLine}
+    $upd.Save()
+  }
 } finally {
   [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell)
 }
@@ -78,6 +95,14 @@ export function buildPlaytestKit() {
     throw new Error(`Expected standalone bundle at ${path.join(outDir, 'index.html')}. Run vite singlefile build first.`);
   }
 
+  generateUpdatedIconAssets(repoRoot);
+  for (const iconName of ['chirpy-updated.ico', 'chirpy-updated.png']) {
+    const iconSrc = path.join(repoRoot, 'public', iconName);
+    if (fs.existsSync(iconSrc)) {
+      fs.copyFileSync(iconSrc, path.join(outDir, iconName));
+    }
+  }
+
   // Copy updated standalone HTML back to public/pathfinder1e_standalone.html for exportStandaloneHTMLBundle & installer
   fs.copyFileSync(
     path.join(outDir, 'index.html'),
@@ -89,7 +114,7 @@ export function buildPlaytestKit() {
     fs.rmSync(nestedStandaloneCopy, { force: true });
   }
 
-  // Top-level Playtest Kit guides, README & Windows chirpy launcher
+  // Top-level Playtest Kit guides, README, Updated app & Windows chirpy launcher
   const playtestGuideHtml = buildPlaytestGuideHtml();
   fs.writeFileSync(path.join(outDir, 'PLAYTEST_GUIDE.html'), playtestGuideHtml, 'utf8');
   fs.writeFileSync(path.join(repoRoot, 'public', 'launch-warning.html'), playtestGuideHtml, 'utf8');
@@ -97,6 +122,11 @@ export function buildPlaytestKit() {
   fs.writeFileSync(path.join(outDir, 'README.md'), buildPlaytestReadmeMd(), 'utf8');
   fs.writeFileSync(path.join(outDir, 'Start-Autosheet-Playtest-Kit.ps1'), buildPlaytestLauncherPs1(), 'utf8');
   fs.writeFileSync(path.join(outDir, 'Start-Autosheet-Playtest-Kit.bat'), buildPlaytestLauncherBat(), 'utf8');
+  const updaterSource = path.join(repoRoot, 'installer', 'Update-PF1MW.ps1');
+  if (fs.existsSync(updaterSource)) {
+    fs.copyFileSync(updaterSource, path.join(outDir, 'Updated.ps1'));
+  }
+  fs.writeFileSync(path.join(outDir, 'Updated.bat'), buildUpdatedAppBat(), 'utf8');
 
   // Downloadable add-on kits
   const kitsDir = path.join(outDir, 'kits');
@@ -112,7 +142,7 @@ export function buildPlaytestKit() {
   for (const sc of buildShortcutsFiles()) {
     fs.writeFileSync(path.join(shortcutsDir, sc.name), sc.content, 'utf8');
   }
-  tryCreateWindowsLnkShortcuts(shortcutsDir);
+  tryCreateWindowsLnkShortcuts(outDir, shortcutsDir);
 
   // Baggage manifest & readable ITEM_LIST.md
   const preManifestFiles = walkFiles(outDir).filter(
