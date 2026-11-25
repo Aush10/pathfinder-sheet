@@ -30,18 +30,55 @@ import {
   parseSrdSkillsAndProficiencies,
   adaptArchetypeIntoGrid,
   DEFAULT_AI_MODULE_SETTINGS,
-  DEFAULT_SOT_CATALOGUE,
   getSessionApiKey,
 } from '../../engine/aiService';
 import {
   extractClassFromSrdDoc,
-  loadAllHostDeviceSrdDocs,
+  getActiveHostSrdOwner,
+  loadHostSrdDocsForCharacter,
 } from '../../engine/sotEngine';
+import {
+  loadSrdIngestArtifacts,
+  srdDocFolderName,
+} from '../../storage/fsAdapter';
 import { AppleEyeIcon } from '../common/AppleEyeIcon';
 import { useCharacter, useOptionalCharacter } from '../../context/CharacterContext';
 import { DEFAULT_CHARACTER } from '../../data/defaultCharacter';
 import { applyCareerProgressionToCharacter } from '../../engine/characterIntegration';
 import { syncCareerAbilitiesToDirectory } from '../../engine/actionDirectory';
+// AF7-PROMOTE: import { CharacterMatrixPanel } from './matrix/CharacterMatrixPanel';
+
+export function nextCollisionFreeClassId(existingGrids: Record<string, CustomClassGrid>): {
+  id: string;
+  num: number;
+} {
+  let num = 1;
+  while (existingGrids[`class${num}`]) {
+    num += 1;
+  }
+  return { id: `class${num}`, num };
+}
+
+export function classifyIngestTablesForArchitect(
+  artifacts: { 'table.json'?: object } | null | undefined
+): {
+  eligibleCount: number;
+  lookupOnly: boolean;
+} {
+  const rawTableObj = (artifacts?.['table.json'] || {}) as {
+    tables?: Array<{ kind?: string }>;
+  };
+  const tables = Array.isArray(rawTableObj.tables) ? rawTableObj.tables : [];
+  if (tables.length === 0) return { eligibleCount: 0, lookupOnly: false };
+  const eligibleCount = tables.filter(
+    (t) => t.kind === 'class-grid' || t.kind === 'extended-grid' || t.kind === 'casting-subgrid'
+  ).length;
+  const lookupCount = tables.filter((t) => t.kind === 'lookup-table').length;
+  return {
+    eligibleCount,
+    lookupOnly: eligibleCount === 0 && lookupCount > 0,
+  };
+}
 
 export interface ClassArchitectModalProps {
   isOpen: boolean;
@@ -50,6 +87,7 @@ export interface ClassArchitectModalProps {
   onUpdateCharacter?: (updater: (prev: PF1Character) => PF1Character) => void;
   onOpenAITool?: (initialTab?: string) => void;
   theme?: string;
+  matrixPanelSlot?: React.ReactNode;
 }
 
 // Robust line-by-line parser for PF1e progression grids (supports tabs, pipes, spaces)
@@ -160,6 +198,7 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
   onUpdateCharacter: propOnUpdateCharacter,
   onOpenAITool,
   theme: propTheme,
+  matrixPanelSlot,
 }) => {
   const ctx = useOptionalCharacter();
   const character = propCharacter ?? ctx?.character ?? DEFAULT_CHARACTER;
@@ -225,7 +264,7 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
   const isAIActive = aiSettings.allowedModules?.addClass !== false;
 
   // Local UI states
-  const [viewMode, setViewMode] = useState<'grid' | 'career'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'career' | 'matrix'>('grid');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
   const [isPasteGridOpen, setIsPasteGridOpen] = useState(false);
@@ -245,10 +284,12 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
   const [editingCell, setEditingCell] = useState<{ rowIdx: number; col: keyof ClassGridRow } | null>(null);
   const [editingCellValue, setEditingCellValue] = useState<string>('');
 
-  // SOT Documents list
+  // SOT Documents list (B9: strictly scoped to active character; zero global fallback)
   const sotDocs = useMemo(() => {
-    const baseDocs = character.sotCatalogue?.overridePages || DEFAULT_SOT_CATALOGUE.overridePages || [];
-    const hostDocs = loadAllHostDeviceSrdDocs();
+    const baseDocs = character.sotCatalogue?.overridePages || [];
+    const ownerId = getActiveHostSrdOwner() || '';
+    const hostDocs =
+      typeof window !== 'undefined' && ownerId ? loadHostSrdDocsForCharacter(ownerId) : [];
     const combined = [...baseDocs];
     for (const h of hostDocs) {
       if (!combined.some((b) => b.id === h.id)) {
@@ -338,10 +379,9 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
     });
   };
 
-  // Add new class
+  // Add new class (B11: collision-free classN ID)
   const handleAddNewClass = () => {
-    const nextNum = Object.keys(classGrids).length + 1;
-    const newId = `class${nextNum}`;
+    const { id: newId, num: nextNum } = nextCollisionFreeClassId(classGrids);
     const newGrid: CustomClassGrid = {
       id: newId,
       className: `Class ${nextNum}`,
@@ -600,10 +640,26 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
     );
   };
 
-  // Populate from SOT SRD Document
-  const handlePopulateFromSot = (docId: string) => {
+  // Populate from SOT SRD Document (with classified lookup-table guard)
+  const handlePopulateFromSot = async (docId: string) => {
     const doc = sotDocs.find((d) => d.id === docId);
     if (!doc) return;
+
+    const ownerId = getActiveHostSrdOwner() || character.name?.trim() || 'session-default';
+    const artifactCheck = await loadSrdIngestArtifacts({
+      characterName: character.name,
+      characterId: ownerId,
+      docFolder: srdDocFolderName(doc.title, doc.id),
+    });
+    if (artifactCheck.ok) {
+      const verdict = classifyIngestTablesForArchitect(artifactCheck.artifacts);
+      if (verdict.lookupOnly) {
+        setNoticeMessage(
+          `"${doc.title}" only contains auxiliary lookup-table tables (Reference Only) and cannot populate Class Architect progression grids. Open it in Journal / SOT Library instead.`
+        );
+        return;
+      }
+    }
 
     const extracted = extractClassFromSrdDoc(doc, currentClass.className);
     const parsedRows =
@@ -626,7 +682,11 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
         rows: parsedRows,
       };
 
-      const currentSot = prev.sotCatalogue || DEFAULT_SOT_CATALOGUE;
+      const currentSot = prev.sotCatalogue || {
+        weblinks: [],
+        overridePages: [],
+        macaroniSuggestions: [],
+      };
       const existingSuggs = currentSot.macaroniSuggestions || [];
       const mergedSuggs = [...existingSuggs];
       for (const s of extracted.macaroniSuggestions) {
@@ -943,6 +1003,17 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
               >
                 Career Timeline (Lvl {careerResult.totalLevel})
               </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('matrix')}
+                className={`px-2.5 py-1 rounded-md transition-colors ${
+                  viewMode === 'matrix'
+                    ? 'bg-emerald-500/20 text-emerald-300 font-bold'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Character Matrix
+              </button>
             </div>
 
             {/* SOT Selector Button */}
@@ -1011,7 +1082,7 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
               {sotDocs.map((doc) => (
                 <button
                   key={doc.id}
-                  onClick={() => handlePopulateFromSot(doc.id)}
+                  onClick={() => void handlePopulateFromSot(doc.id)}
                   className="p-2 rounded-lg bg-slate-950 hover:bg-cyan-950/50 border border-slate-800 hover:border-cyan-500/50 text-left transition-colors flex flex-col justify-between"
                 >
                   <span className="font-bold text-slate-200 truncate">{doc.title}</span>
@@ -1023,9 +1094,24 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
         )}
 
         {/* ========================================================================= */}
-        {/* MAIN BODY: Career Timeline OR Spreadsheet Grid + Class Kit Stat Block     */}
+        {/* MAIN BODY: Character Matrix, Career Timeline OR Class Grid + Kit          */}
         {/* ========================================================================= */}
-        {viewMode === 'career' ? (
+        {viewMode === 'matrix' ? (
+          matrixPanelSlot ? (
+            <div className="flex-1 p-4 overflow-y-auto pf1-theme-scrollbar">{matrixPanelSlot}</div>
+          ) : (
+            <div className="flex-1 p-6 overflow-y-auto text-xs font-mono text-slate-300 space-y-2">
+              <div className="font-bold text-emerald-300 text-sm">
+                Character Matrix &amp; Career Index Workspace (Staged for AF7 Promotion)
+              </div>
+              <p className="text-slate-400">
+                Character Matrix UI components are staged at{' '}
+                <code>pfautosheetv3/v3-staging/antigravity/AG3/CharacterMatrixPanel.tsx</code> and bind directly to CX3{' '}
+                <code>matrixEngine.ts</code>. AF7 promotes them to <code>src/components/tools/matrix/</code> and wires <code>&lt;CharacterMatrixPanel /&gt;</code> here.
+              </p>
+            </div>
+          )
+        ) : viewMode === 'career' ? (
           <div className="flex-1 p-4 overflow-y-auto space-y-4">
             {/* Live Calculated Stats Dashboard */}
             <div className="p-3 rounded-xl bg-slate-900 border border-cyan-500/30 grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2.5 text-center">

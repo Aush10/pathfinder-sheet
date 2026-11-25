@@ -40,6 +40,7 @@ import { CMBTool } from './components/tools/CMBTool';
 import { NewSheetModal } from './components/tools/NewSheetModal';
 import { ImageFileBrowserModal } from './components/tools/ImageFileBrowserModal';
 import { JournalModal } from './components/tools/JournalModal';
+// AF7-PROMOTE: import { SOTPanel } from './components/tools/SOTPanel';
 import { AICompanionModal } from './components/tools/AICompanionModal';
 import { FloatingAlertCard } from './components/common/FloatingAlertCard';
 import { InteractiveQueryModal } from './components/common/InteractiveQueryModal';
@@ -81,6 +82,7 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
   const [isAddClassOpen, setIsAddClassOpen] = useState(false);
   const [isCMBtOpen, setIsCMBtOpen] = useState(false);
   const [isJournalOpen, setIsJournalOpen] = useState(false);
+  const [isSotPanelOpen, setIsSotPanelOpen] = useState(false);
   const [isAIToolOpen, setIsAIToolOpen] = useState(false);
   const [aiToolInitialTab, setAiToolInitialTab] = useState<string>('permissions');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -111,12 +113,16 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
       }
     };
 
+    const handleOpenSot = () => setIsSotPanelOpen(true);
+
     window.addEventListener('macaroni:alert', handleAlert);
     window.addEventListener('macaroni:query', handleQuery);
+    window.addEventListener('pf1e:open-sot-panel', handleOpenSot);
 
     return () => {
       window.removeEventListener('macaroni:alert', handleAlert);
       window.removeEventListener('macaroni:query', handleQuery);
+      window.removeEventListener('pf1e:open-sot-panel', handleOpenSot);
     };
   }, []);
 
@@ -138,6 +144,7 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
         setIsNewSheetOpen(false);
         setIsImageBrowserOpen(false);
         setIsJournalOpen(false);
+        setIsSotPanelOpen(false);
         setIsAIToolOpen(false);
       }
     };
@@ -217,8 +224,13 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
 
   const fontClass = getFontClass();
 
+  useEffect(() => {
+    document.documentElement.setAttribute('data-pf1-theme', layout.theme);
+  }, [layout.theme]);
+
   return (
     <div
+      data-pf1-theme={layout.theme}
       className={`min-h-screen flex flex-col font-sans transition-colors duration-200 ${getCanvasBgClass()} ${
         layout.theme === 'blueprint' || layout.theme === 'mythweavers' ? 'dark' : ''
       }`}
@@ -256,6 +268,7 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
             onOpenAddClass={() => setIsAddClassOpen(true)}
             onOpenCMBt={() => setIsCMBtOpen(true)}
             onOpenJournal={() => setIsJournalOpen(true)}
+            onOpenSotPanel={() => setIsSotPanelOpen(true)}
             onOpenAITool={() => handleOpenAITool('permissions')}
             onOpenCompleteSheet={() => handleOpenAITool('lookup_sot')}
             onInstallAITool={handleInstallAITool}
@@ -280,7 +293,7 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
 
         {/* Center / Main Canvas Viewport */}
         <main
-          className={`flex-1 min-w-0 overflow-y-auto p-4 md:p-8 transition-colors duration-200 ${getCanvasBgClass()}`}
+          className={`flex-1 min-w-0 overflow-y-auto pf1-theme-scrollbar p-4 md:p-8 transition-colors duration-200 ${getCanvasBgClass()}`}
         >
           <div className="max-w-6xl mx-auto space-y-6">
             {isConditionsOpen && (
@@ -389,7 +402,7 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
 
       {isBuffBoxOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-xs p-4">
-          <div className="w-full max-w-5xl max-h-[92vh] overflow-y-auto">
+          <div className="w-full max-w-5xl max-h-[92vh] overflow-y-auto pf1-theme-scrollbar">
             <BuffBoxModule
               fontClass={fontClass}
               isToolModal={true}
@@ -471,6 +484,35 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
         onOpenAITool={(tab) => handleOpenAITool(tab || 'journal_settings')}
         theme={layout.theme}
       />
+
+      {/* AF7-PROMOTE: replace this staged fallback with:
+          <SOTPanel isOpen={isSotPanelOpen} onClose={() => setIsSotPanelOpen(false)} theme={layout.theme} /> */}
+      {isSotPanelOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/65"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Source of Truth Library"
+        >
+          <div className="max-w-lg w-full rounded-xl border-2 border-cyan-500/40 bg-slate-900 text-slate-100 p-5 shadow-2xl space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="font-bold text-base text-cyan-300">Source of Truth (SOT) Library</h2>
+              <button
+                onClick={() => setIsSotPanelOpen(false)}
+                className="px-2 py-0.5 text-xs font-mono rounded bg-slate-800 hover:bg-slate-700"
+              >
+                Close
+              </button>
+            </div>
+            <p className="text-xs text-slate-300">
+              Loaded per-character SOT documents:{' '}
+              <strong>{character.sotCatalogue?.overridePages?.length || 0}</strong>.
+              Full standalone SOTPanel is staged in{' '}
+              <code>pfautosheetv3/v3-staging/antigravity/AG1/SOTPanel.tsx</code> for AF7 promotion.
+            </p>
+          </div>
+        </div>
+      )}
 
       <AICompanionModal
         isOpen={isAIToolOpen}

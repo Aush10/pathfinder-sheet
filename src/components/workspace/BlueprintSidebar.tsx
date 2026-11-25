@@ -47,6 +47,7 @@ interface BlueprintSidebarProps {
   onOpenAddClass: () => void;
   onOpenCMBt: () => void;
   onOpenJournal?: () => void;
+  onOpenSotPanel?: () => void;
   onOpenAITool?: () => void;
   onOpenCompleteSheet?: () => void;
   onInstallAITool?: () => void;
@@ -74,6 +75,7 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
   onOpenAddClass,
   onOpenCMBt,
   onOpenJournal,
+  onOpenSotPanel,
   onOpenAITool,
   onOpenCompleteSheet,
   onInstallAITool,
@@ -96,7 +98,7 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
   const activeGlyphStyle: GlyphStyle = layout.glyphStyle ?? '01-flat-enamel';
 
   return (
-    <aside className="w-80 shrink-0 self-stretch bg-slate-900/95 border-r border-cyan-500/30 text-slate-200 flex flex-col min-h-full shadow-2xl overflow-y-auto select-none print:hidden">
+    <aside className="w-80 shrink-0 self-stretch bg-slate-900/95 border-r border-cyan-500/30 text-slate-200 flex flex-col min-h-full shadow-2xl overflow-y-auto pf1-theme-scrollbar select-none print:hidden">
       {/* Top Section: Layout, Color & Font */}
       <div className="p-4 border-b border-cyan-500/20 bg-slate-950/70">
         <div className="flex items-center justify-between mb-3">
@@ -271,7 +273,7 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
       </div>
 
       {/* Middle & Bottom Section: Toolbox moved into the former Modules Available area */}
-      <div className="p-4 flex-1 overflow-y-auto space-y-3">
+      <div className="p-4 flex-1 overflow-y-auto pf1-theme-scrollbar space-y-3">
         {/* Tools grid */}
         <div className="grid grid-cols-2 gap-2">
           {/* Deck (Card deck simulator) */}
@@ -351,6 +353,28 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
                 </div>
                 <div className="text-[10px] font-mono text-amber-400/80 truncate">
                   Campaign Chronicle • Pencil Sketches
+                </div>
+              </div>
+            </button>
+          )}
+
+          {/* Standalone Source of Truth (SOT) Library */}
+          {onOpenSotPanel && (
+            <button
+              onClick={onOpenSotPanel}
+              className="p-2 rounded-lg bg-cyan-950/50 hover:bg-cyan-900/70 border border-cyan-600/50 hover:border-cyan-400 text-left transition-colors flex items-center gap-2 col-span-2 shadow-sm"
+              title="Source of Truth Library: Batch import rulebook pages and inspect deterministic tables, links, text, and index outputs without AI"
+            >
+              <BookOpen className="w-4 h-4 text-cyan-400 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-cyan-300">Source of Truth (SOT)</span>
+                  <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300">
+                    {character.sotCatalogue?.overridePages?.length || 0} DOCS
+                  </span>
+                </div>
+                <div className="text-[10px] font-mono text-cyan-400/80 truncate">
+                  Non-AI Batch Upload • 4-Output Viewer
                 </div>
               </div>
             </button>

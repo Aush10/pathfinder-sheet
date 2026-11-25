@@ -30,7 +30,16 @@ import {
   completeSheetConverse,
 } from '../../engine/aiService';
 import { TAP_TEST_STEPS, isTapTestCommand, type TapTestTurn } from '../../engine/tapTest';
-import { sanitizeSrdDocument } from '../../engine/sotEngine';
+import {
+  getActiveHostSrdOwner,
+  sanitizeSrdDocument,
+  saveSrdDocForCharacter,
+} from '../../engine/sotEngine';
+import {
+  persistSrdIngestArtifacts,
+  srdDocFolderName,
+  type SrdIngestArtifacts,
+} from '../../storage/fsAdapter';
 import { AppleEyeIcon } from '../common/AppleEyeIcon';
 import { useCharacter } from '../../context/CharacterContext';
 
@@ -115,11 +124,15 @@ export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = (
   const [tapTestRun, setTapTestRun] = useState<TapTestRun | null>(null);
   const tapTestRunRef = useRef<TapTestRun | null>(null);
 
-  // Quick SOT Upload Drawer state
+  // Quick SOT Upload Drawer state (I5 batch quick-save)
   const [isQuickSotOpen, setIsQuickSotOpen] = useState(false);
   const [quickSotTitle, setQuickSotTitle] = useState('');
   const [quickSotCategory, setQuickSotCategory] = useState<SOTCategory>('Archetype');
   const [quickSotText, setQuickSotText] = useState('');
+  const [quickSotBatch, setQuickSotBatch] = useState<
+    Array<{ id: string; title: string; category: SOTCategory; text: string }>
+  >([]);
+  const [quickSotNotice, setQuickSotNotice] = useState<string | null>(null);
 
   useEffect(() => {
     characterRef.current = character;
@@ -381,25 +394,85 @@ export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = (
     });
   };
 
-  // Submit quick SOT upload
-  const handleSaveQuickSot = () => {
-    if (!quickSotText.trim() || !quickSotTitle.trim() || busyRef.current) return;
-    const activeCharacter = characterRef.current;
+  const handleQueueQuickSot = () => {
+    const cleanTitle = quickSotTitle.trim();
+    const cleanText = quickSotText.trim();
+    if (!cleanTitle) {
+      setQuickSotNotice('Please enter a non-blank title before queuing this SOT page.');
+      return;
+    }
+    if (!cleanText) {
+      setQuickSotNotice('Please paste SRD text or HTML before queuing.');
+      return;
+    }
+    setQuickSotBatch((prev) => [
+      ...prev,
+      {
+        id: `q-sot-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+        title: cleanTitle,
+        category: quickSotCategory,
+        text: cleanText,
+      },
+    ]);
+    setQuickSotTitle('');
+    setQuickSotText('');
+    setQuickSotNotice(`Queued "${cleanTitle}" for batch save.`);
+  };
 
-    const sanitized = sanitizeSrdDocument(quickSotText.trim());
-    const newPage: SOTRichTextPage = {
-      id: `sot-page-${Date.now()}`,
-      title: quickSotTitle.trim(),
-      category: quickSotCategory,
-      htmlContent: sanitized.sanitizedHtml,
-      plainText: sanitized.sanitizedPlainText,
-      isOverride: true,
-      isReadOnly: true,
-      tags: [quickSotCategory, quickSotTitle.trim()],
-      updatedAt: Date.now(),
-      incidentalLinks: sanitized.incidentalLinks,
-      securityAudit: sanitized.securityAudit,
-    };
+  // Submit quick SOT batch upload
+  const handleSaveQuickSot = async () => {
+    if (busyRef.current) return;
+    const pendingDrafts = [...quickSotBatch];
+    if (quickSotTitle.trim() || quickSotText.trim()) {
+      pendingDrafts.push({
+        id: `q-sot-cur-${Date.now()}`,
+        title: quickSotTitle.trim(),
+        category: quickSotCategory,
+        text: quickSotText.trim(),
+      });
+    }
+    if (pendingDrafts.length === 0) {
+      setQuickSotNotice('Add at least one titled SOT page before saving.');
+      return;
+    }
+    const blankTitleItem = pendingDrafts.find((item) => !item.title.trim());
+    if (blankTitleItem) {
+      setQuickSotNotice('Every queued SOT page requires a non-blank title.');
+      return;
+    }
+    const emptyTextItem = pendingDrafts.find((item) => !item.text.trim());
+    if (emptyTextItem) {
+      setQuickSotNotice(`SOT page "${emptyTextItem.title}" has empty content.`);
+      return;
+    }
+
+    const activeCharacter = characterRef.current;
+    const ownerId = getActiveHostSrdOwner() || activeCharacter.name?.trim() || 'session-default';
+    const now = Date.now();
+    const newPages: SOTRichTextPage[] = pendingDrafts.map((draft, idx) => {
+      const sanitized = sanitizeSrdDocument(draft.text.trim());
+      return {
+        id: `sot-page-${now}-${idx}-${Math.random().toString(36).slice(2, 5)}`,
+        title: draft.title.trim(),
+        category: draft.category,
+        htmlContent: sanitized.sanitizedHtml,
+        plainText: sanitized.sanitizedPlainText,
+        isOverride: true,
+        isReadOnly: true,
+        tags: [draft.category, draft.title.trim()],
+        updatedAt: now + idx,
+        incidentalLinks: sanitized.incidentalLinks,
+        securityAudit: sanitized.securityAudit,
+      };
+    });
+
+    newPages.forEach((page) => {
+      try {
+        saveSrdDocForCharacter(ownerId, page);
+      } catch {
+        // Ignore host storage quota failure here; character copy still updates.
+      }
+    });
 
     const updatedCharWithSot: PF1Character = {
       ...activeCharacter,
@@ -408,7 +481,7 @@ export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = (
         macaroniSuggestions: activeCharacter.sotCatalogue?.macaroniSuggestions || [],
         overridePages: [
           ...(activeCharacter.sotCatalogue?.overridePages || []),
-          newPage,
+          ...newPages,
         ],
       },
     };
@@ -416,14 +489,46 @@ export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = (
     characterRef.current = updatedCharWithSot;
     onUpdateCharacter(() => updatedCharWithSot);
 
-    setIsQuickSotOpen(false);
-    setQuickSotText('');
+    // Best-effort deterministic ingest + 4-output artifact persistence
+    if (typeof fetch === 'function') {
+      for (let i = 0; i < newPages.length; i++) {
+        const page = newPages[i];
+        const rawDraft = pendingDrafts[i];
+        try {
+          const resp = await fetch('/api/sot/ingest', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: `${page.title}.html`, content: rawDraft.text }),
+          });
+          if (resp.ok) {
+            const payload = (await resp.json()) as { artifacts?: SrdIngestArtifacts };
+            if (payload.artifacts) {
+              await persistSrdIngestArtifacts({
+                characterName: updatedCharWithSot.name,
+                characterId: ownerId,
+                docFolder: srdDocFolderName(page.title, page.id),
+                artifacts: payload.artifacts,
+              });
+            }
+          }
+        } catch {
+          // Offline/static mode keeps read-only SOT page without blocking chat continuation.
+        }
+      }
+    }
 
+    setIsQuickSotOpen(false);
+    setQuickSotTitle('');
+    setQuickSotText('');
+    setQuickSotBatch([]);
+    setQuickSotNotice(null);
+
+    const summaryTitles = newPages.map((p) => `"${p.title}"`).join(', ');
     // A source upload resumes the same paused test step with its write boundary.
     if (tapTestRunRef.current?.status === 'paused') {
       void runTapTest(
         true,
-        `I've uploaded "${newPage.title}" to my SOT documents. Continue this tap-test step using that source and keep the same character.`,
+        `I've uploaded ${summaryTitles} to my SOT documents. Continue this tap-test step using those sources and keep the same character.`,
         updatedCharWithSot
       );
       return;
@@ -431,7 +536,7 @@ export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = (
 
     // Trigger normal AI continuation automatically with the updated character.
     handleSendMessage(
-      `I've uploaded "${newPage.title}" to my SOT documents! Please check it and adapt its abilities into my sheet now.`,
+      `I've uploaded ${summaryTitles} (${newPages.length} SOT ${newPages.length === 1 ? 'document' : 'documents'})! Please check them and adapt their abilities into my sheet now.`,
       false,
       updatedCharWithSot
     );
@@ -746,7 +851,7 @@ export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = (
                 type="text"
                 value={quickSotTitle}
                 onChange={(e) => setQuickSotTitle(e.target.value)}
-                placeholder="e.g. Stygian Slayer Archetype"
+                placeholder="e.g. Core Class or Archetype Rules"
                 className="w-full px-2 py-1 bg-slate-950 border border-slate-700 rounded text-xs text-white focus:border-cyan-400 focus:outline-none"
               />
             </div>
@@ -782,21 +887,84 @@ export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = (
             />
           </div>
 
-          <div className="flex justify-end gap-2 pt-1">
+          {quickSotNotice && (
+            <div className="flex items-center justify-between gap-2 px-2 py-1 rounded bg-amber-500/15 border border-amber-500/40 text-amber-200 text-[11px]">
+              <span>{quickSotNotice}</span>
+              <button
+                onClick={() => setQuickSotNotice(null)}
+                className="underline font-mono shrink-0"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
+          {quickSotBatch.length > 0 && (
+            <div className="space-y-1 bg-slate-950/70 border border-slate-800 rounded p-2">
+              <div className="text-[10px] font-mono text-cyan-300 font-bold">
+                Batch Queue ({quickSotBatch.length})
+              </div>
+              {quickSotBatch.map((q) => (
+                <div
+                  key={q.id}
+                  className="flex items-center justify-between gap-2 text-[11px] text-slate-300"
+                >
+                  <span className="truncate">
+                    {q.title} ({q.category})
+                  </span>
+                  <button
+                    onClick={() =>
+                      setQuickSotBatch((prev) => prev.filter((item) => item.id !== q.id))
+                    }
+                    className="text-red-400 hover:underline font-mono shrink-0"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between gap-2 pt-1 flex-wrap">
             <button
-              onClick={() => setIsQuickSotOpen(false)}
-              className="px-2.5 py-1 text-slate-400 hover:text-slate-200 text-xs font-mono"
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  window.dispatchEvent(new CustomEvent('pf1e:open-sot-panel'));
+                }
+              }}
+              className="px-2 py-1 text-cyan-300 hover:text-cyan-200 text-[11px] font-mono underline"
             >
-              Cancel
+              Open Standalone SOT Library
             </button>
-            <button
-              onClick={handleSaveQuickSot}
-              disabled={!quickSotTitle.trim() || !quickSotText.trim() || isLoading}
-              className="px-3 py-1 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs"
-            >
-              <CheckCircle2 className="w-3 h-3" />
-              Save & Feed to AI
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsQuickSotOpen(false)}
+                className="px-2.5 py-1 text-slate-400 hover:text-slate-200 text-xs font-mono"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleQueueQuickSot}
+                disabled={isLoading}
+                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/40 rounded text-xs font-semibold flex items-center gap-1"
+              >
+                <Plus className="w-3 h-3" />
+                Queue Page
+              </button>
+              <button
+                onClick={() => void handleSaveQuickSot()}
+                disabled={
+                  (quickSotBatch.length === 0 && (!quickSotTitle.trim() || !quickSotText.trim())) ||
+                  isLoading
+                }
+                className="px-3 py-1 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs"
+              >
+                <CheckCircle2 className="w-3 h-3" />
+                {quickSotBatch.length > 0
+                  ? `Save Batch (${quickSotBatch.length + (quickSotTitle.trim() && quickSotText.trim() ? 1 : 0)}) & Feed to AI`
+                  : 'Save & Feed to AI'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -823,27 +991,19 @@ export const CompleteSheetChatWindow: React.FC<CompleteSheetChatWindowProps> = (
         </button>
         <button
           onClick={() =>
-            handleSendMessage('Let\'s build an agile Slayer using my loaded Slayer SRD document!')
+            handleSendMessage('Inspect my loaded SOT documents and summarize what rules apply to this character.')
           }
           className="px-2 py-0.5 rounded bg-slate-800 hover:bg-cyan-950 hover:border-cyan-500/50 border border-slate-700 text-slate-300 shrink-0 transition-colors"
         >
-          Build Slayer from SOT
+          Summarize Loaded SOT
         </button>
         <button
           onClick={() =>
-            handleSendMessage('What feats and actions should we take for dual-wielding kukris?')
+            handleSendMessage('Review my current stats, feats, and actions and suggest valid upgrades.')
           }
           className="px-2 py-0.5 rounded bg-slate-800 hover:bg-cyan-950 hover:border-cyan-500/50 border border-slate-700 text-slate-300 shrink-0 transition-colors"
         >
-          Dual-Wield Feats
-        </button>
-        <button
-          onClick={() =>
-            handleSendMessage('Can we add the Stygian Slayer archetype to my sheet?')
-          }
-          className="px-2 py-0.5 rounded bg-slate-800 hover:bg-cyan-950 hover:border-cyan-500/50 border border-slate-700 text-slate-300 shrink-0 transition-colors"
-        >
-          Test Missing SOT (Stygian)
+          Audit Sheet &amp; Upgrades
         </button>
       </div>
 

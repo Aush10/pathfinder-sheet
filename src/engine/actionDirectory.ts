@@ -10,6 +10,7 @@ import type { DerivedCombatStats } from './pf1eMath';
 import type { CalculatedCareerResult } from './multiclassCalculator';
 import { buildFormulaContext, evaluateFormula } from './formula';
 import { executeMacaroni } from './macaroni';
+import type { MacaroniExecutionResult } from './macaroni/types';
 
 export const DEFAULT_ABILITY_TYPES = ['Racial', 'Class Feature'] as const;
 
@@ -252,7 +253,11 @@ export function evaluateDirectoryMacroValue(
   expr: string | undefined,
   character: PF1Character,
   derived?: DerivedCombatStats,
-  stepCount?: number
+  stepCount?: number,
+  options?: {
+    stepperStore?: Record<string, number>;
+    stepperScopeId?: string;
+  }
 ): { display: string; numeric: number | null; rollable: boolean } {
   const raw = (expr || '').trim();
   if (!raw) return { display: '', numeric: null, rollable: false };
@@ -281,6 +286,8 @@ export function evaluateDirectoryMacroValue(
       character,
       formulaContext: context,
       stepCount,
+      stepperStore: options?.stepperStore,
+      stepperScopeId: options?.stepperScopeId,
     });
     if (!mac.isError) {
       const out = mac.fullOutput.trim();
@@ -308,13 +315,121 @@ export function evaluateDirectoryMacroValue(
 }
 
 /**
+ * Evaluates a Counter entry for read-only display without mutating `!` stepper state.
+ * Counters that include `!` reflect their persisted `macaroniStepperStore` step (defaulting to 0 pre-click).
+ */
+export function evaluateCounterDisplayValue(
+  entry: CharacterActionItem,
+  character: PF1Character,
+  derived?: DerivedCombatStats
+): { display: string; numeric: number | null; rollable: boolean; currentStep: number; hasBang: boolean } {
+  const raw = (entry.totalCountMacro || '').trim();
+  if (!raw.includes('!')) {
+    const base = evaluateDirectoryMacroValue(raw, character, derived);
+    return { ...base, currentStep: 0, hasBang: false };
+  }
+
+  const scopeId = `counter-${entry.id}`;
+  const persisted = character.macaroniStepperStore || {};
+  const scopePrefix = `${scopeId}::`;
+  let maxStep = 0;
+  const peekStore: Record<string, number> = {};
+  for (const [key, val] of Object.entries(persisted)) {
+    if (key.startsWith(scopePrefix) && typeof val === 'number' && Number.isFinite(val)) {
+      maxStep = Math.max(maxStep, val);
+      peekStore[key] = Math.max(0, Math.floor(val) - 1);
+    }
+  }
+
+  if (maxStep <= 0) {
+    return {
+      display: '0',
+      numeric: 0,
+      rollable: false,
+      currentStep: 0,
+      hasBang: true,
+    };
+  }
+
+  const evalAtCurrent = evaluateDirectoryMacroValue(raw, character, derived, maxStep, {
+    stepperStore: peekStore,
+    stepperScopeId: scopeId,
+  });
+  return {
+    ...evalAtCurrent,
+    currentStep: maxStep,
+    hasBang: true,
+  };
+}
+
+/**
+ * Executes a Counter entry's `!` stepper macro against a cloned stepperStore and returns
+ * the full MacaroniExecutionResult so callers can project persisted snapshots via `projectMacaroniResult`.
+ */
+export function stepCounterBangAction(
+  entry: CharacterActionItem,
+  character: PF1Character,
+  derived?: DerivedCombatStats
+): {
+  display: string;
+  numeric: number | null;
+  currentStep: number;
+  macaroniResult: MacaroniExecutionResult;
+  feedback: string;
+} {
+  const raw = (entry.totalCountMacro || '0').trim() || '0';
+  const hasV12Sigil = /^(?:<<|==|<>|<\?>|<\^>|<!>|>[a-zA-Z0-9_{}]+\s*<[+\-*/=])/.test(raw);
+  const macaroniExpr = hasV12Sigil ? raw : `<<${raw}`;
+  const scopeId = `counter-${entry.id}`;
+  const storeCopy: Record<string, number> = { ...(character.macaroniStepperStore || {}) };
+  const prevStep = storeCopy[`${scopeId}::bang-1`] || 0;
+  const context = buildFormulaContext(
+    character,
+    { strPenalty: 0, dexPenalty: 0, attackPenalty: 0 },
+    derived
+  );
+  context.step = prevStep + 1;
+
+  const mac = executeMacaroni(macaroniExpr, {
+    character,
+    formulaContext: context,
+    stepCount: prevStep + 1,
+    stepperStore: storeCopy,
+    stepperScopeId: scopeId,
+  });
+
+  const currentStep = mac.stepperSnapshots?.[0]?.step ?? prevStep + 1;
+  const out = mac.fullOutput.trim();
+  const numMatch = out.match(/^-?\d+(\.\d+)?$/);
+  return {
+    display: mac.isError ? 'Err' : out || String(currentStep),
+    numeric: numMatch ? Number(numMatch[0]) : null,
+    currentStep,
+    macaroniResult: mac,
+    feedback: mac.isError
+      ? `${entry.name}: ${mac.errorMessage || 'Stepper error'}`
+      : `${entry.name} (step #${currentStep}): ${out || String(currentStep)}`,
+  };
+}
+
+/**
  * Runs a Resource Bar's stepper macro to compute its next current value and step count.
  */
 export function stepResourceBarValue(
   entry: CharacterActionItem,
   character: PF1Character,
-  derived?: DerivedCombatStats
-): { nextCurrent: number; nextMax: number; nextStepCount: number; feedback: string } {
+  derived?: DerivedCombatStats,
+  options?: {
+    stepperScopeId?: string;
+    stepperStore?: Record<string, number>;
+  }
+): {
+  nextCurrent: number;
+  nextMax: number;
+  nextStepCount: number;
+  feedback: string;
+  macaroniResult?: MacaroniExecutionResult;
+} {
   const maxVal = Math.max(
     1,
     (() => {
@@ -329,7 +444,24 @@ export function stepResourceBarValue(
   );
 
   const curVal = Math.max(0, Math.min(maxVal, entry.resourceCurrent ?? maxVal));
-  const nextStepCount = (entry.stepperStepCount || 0) + 1;
+  const defaultSpellDigits =
+    entry.id.startsWith('spell-slot-action-') || entry.id.startsWith('spell-slot-level-')
+      ? entry.id.replace(/\D+/g, '')
+      : '';
+  const scopeId =
+    options?.stepperScopeId ||
+    (defaultSpellDigits ? `spell-slot-${defaultSpellDigits}` : `resource-${entry.id}`);
+  const bang1Key = `${scopeId}::bang-1`;
+  const storeCopy: Record<string, number> = {
+    ...(character.macaroniStepperStore || {}),
+    ...(options?.stepperStore || {}),
+  };
+  if (storeCopy[bang1Key] === undefined && typeof entry.stepperStepCount === 'number' && entry.stepperStepCount > 0) {
+    storeCopy[bang1Key] = entry.stepperStepCount;
+  }
+
+  const prevStepCount = storeCopy[bang1Key] ?? entry.stepperStepCount ?? 0;
+  const nextStepCount = prevStepCount + 1;
   const rawStepper = (entry.stepperMacro || '').trim();
 
   // Default stepper when none is specified: spend 1 use
@@ -356,24 +488,8 @@ export function stepResourceBarValue(
     };
   }
 
-  // Stepper pattern with ! token, e.g. "<<[6+!*1]" or "[10-!*1]" or "10-1!"
+  // Evaluate via Macaroni with stateful stepperStore & stepperScopeId first
   const cleanStepper = rawStepper.startsWith('<<') ? rawStepper.slice(2).trim() : rawStepper;
-  const bangStepMatch = cleanStepper.match(/(\d+)\s*([+-])\s*(?:!\s*\*?\s*(\d*)|(\d+)\s*!)/);
-  if (bangStepMatch) {
-    const base = parseInt(bangStepMatch[1], 10);
-    const op = bangStepMatch[2];
-    const mult = parseInt(bangStepMatch[3] || bangStepMatch[4] || '1', 10) || 1;
-    const computed = op === '-' ? base - mult * nextStepCount : base + mult * nextStepCount;
-    const nextCurrent = Math.max(0, Math.min(maxVal, computed));
-    return {
-      nextCurrent,
-      nextMax: maxVal,
-      nextStepCount,
-      feedback: `${entry.name} (step #${nextStepCount}): ${nextCurrent}/${maxVal}`,
-    };
-  }
-
-  // General expression referencing current / this / #KEY
   const context = buildFormulaContext(
     character,
     { strPenalty: 0, dexPenalty: 0, attackPenalty: 0 },
@@ -393,16 +509,46 @@ export function stepResourceBarValue(
     formulaContext: context,
     thisValue: curVal,
     stepCount: nextStepCount,
+    stepperStore: storeCopy,
+    stepperScopeId: scopeId,
   });
 
   const numFromMac = mac.fullOutput.match(/-?\d+/);
   if (!mac.isError && numFromMac) {
+    const resolvedStep =
+      mac.stepperSnapshots?.[mac.stepperSnapshots.length - 1]?.step ?? nextStepCount;
     const nextCurrent = Math.max(0, Math.min(maxVal, parseInt(numFromMac[0], 10)));
     return {
       nextCurrent,
       nextMax: maxVal,
+      nextStepCount: resolvedStep,
+      feedback: `${entry.name}${rawStepper.includes('!') ? ` (step #${resolvedStep})` : ''}: ${nextCurrent}/${maxVal}`,
+      macaroniResult: mac,
+    };
+  }
+
+  // Shorthand ! fallback (e.g. legacy "10-1!" notation), still tracking bang step snapshot
+  const bangStepMatch = cleanStepper.match(/(\d+)\s*([+-])\s*(?:!\s*\*?\s*(\d*)|(\d+)\s*!)/);
+  if (bangStepMatch) {
+    const base = parseInt(bangStepMatch[1], 10);
+    const op = bangStepMatch[2];
+    const mult = parseInt(bangStepMatch[3] || bangStepMatch[4] || '1', 10) || 1;
+    const computed = op === '-' ? base - mult * nextStepCount : base + mult * nextStepCount;
+    const nextCurrent = Math.max(0, Math.min(maxVal, computed));
+    return {
+      nextCurrent,
+      nextMax: maxVal,
       nextStepCount,
-      feedback: `${entry.name}: ${nextCurrent}/${maxVal}`,
+      feedback: `${entry.name} (step #${nextStepCount}): ${nextCurrent}/${maxVal}`,
+      macaroniResult: {
+        raw: stepperExpr,
+        fullOutput: String(nextCurrent),
+        slots: [],
+        isError: false,
+        tokens: [],
+        rollable: false,
+        stepperSnapshots: [{ bangId: bang1Key, step: nextStepCount }],
+      },
     };
   }
 

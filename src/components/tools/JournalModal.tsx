@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   BookOpen,
   Calendar,
@@ -19,6 +19,7 @@ import {
   Check,
   Wand2,
   ExternalLink,
+  Table2,
 } from 'lucide-react';
 import {
   PF1Character,
@@ -37,7 +38,54 @@ import {
   evaluateDirectoryMacroValue,
   getAvailableDirectorySpells,
 } from '../../engine/actionDirectory';
-import { useCharacter } from '../../context/CharacterContext';
+import { getActiveHostSrdOwner } from '../../engine/sotEngine';
+import { blankCharacterWithEmptySot, SPELL_BOOK_JOURNAL_TITLE, SPELL_BOOK_TAG, characterHasStructuredCasting } from '../../storage/characterState';
+import {
+  loadSrdIngestArtifacts,
+  srdDocFolderName,
+  type SrdIngestArtifacts,
+} from '../../storage/fsAdapter';
+import { useOptionalCharacter } from '../../context/CharacterContext';
+
+export interface JournalLookupTableRef {
+  id: string;
+  docTitle: string;
+  caption: string;
+  headers: string[];
+  rows: string[][];
+}
+
+export function extractLookupTablesFromArtifacts(
+  docTitle: string,
+  artifacts: SrdIngestArtifacts | null | undefined
+): JournalLookupTableRef[] {
+  if (!artifacts) return [];
+  const rawTableObj = (artifacts['table.json'] || {}) as {
+    tables?: Array<Record<string, unknown>>;
+  };
+  const tables = Array.isArray(rawTableObj.tables) ? rawTableObj.tables : [];
+  return tables
+    .filter((t) => String(t.kind || '') === 'lookup-table')
+    .map((t, idx) => ({
+      id: String(t.id || `${docTitle}-lookup-${idx}`),
+      docTitle,
+      caption: String(t.caption || t.id || `Lookup Table ${idx + 1}`),
+      headers: Array.isArray(t.headers) ? t.headers.map(String) : [],
+      rows: Array.isArray(t.rows)
+        ? (t.rows as unknown[]).map((r) =>
+            Array.isArray(r) ? r.map((c) => String(c ?? '')) : []
+          )
+        : [],
+    }));
+}
+
+export function resolveJournalModalTitle(character: PF1Character): string {
+  const entries = character.journal || [];
+  const hasSpellBook =
+    entries.some((e) => e.tags?.includes(SPELL_BOOK_TAG)) ||
+    characterHasStructuredCasting(character);
+  return hasSpellBook ? SPELL_BOOK_JOURNAL_TITLE : `${character.name}’s Session Journal & Chronicle`;
+}
 
 interface JournalModalProps {
   isOpen: boolean;
@@ -46,6 +94,7 @@ interface JournalModalProps {
   onUpdateCharacter?: (updater: (prev: PF1Character) => PF1Character) => void;
   onOpenAITool?: (initialTab?: string) => void;
   theme?: ThemeMode;
+  lookupTables?: JournalLookupTableRef[];
 }
 
 export const JournalModal: React.FC<JournalModalProps> = ({
@@ -55,16 +104,55 @@ export const JournalModal: React.FC<JournalModalProps> = ({
   onUpdateCharacter: propOnUpdateCharacter,
   onOpenAITool,
   theme: propTheme,
+  lookupTables: propLookupTables,
 }) => {
-  const ctx = useCharacter();
-  const character = propCharacter ?? ctx.character;
-  const onUpdateCharacter = propOnUpdateCharacter ?? ctx.updateCharacter;
-  const theme = propTheme ?? ctx.layout.theme;
+  const ctx = useOptionalCharacter();
+  const character = propCharacter ?? ctx?.character ?? blankCharacterWithEmptySot();
+  const onUpdateCharacter = propOnUpdateCharacter ?? ctx?.updateCharacter ?? (() => {});
+  const theme = propTheme ?? ctx?.layout.theme ?? 'parchment';
 
   const entries: JournalEntry[] = character.journal || [];
+  const hasSpellBook =
+    entries.some((e) => e.tags?.includes(SPELL_BOOK_TAG)) ||
+    characterHasStructuredCasting(character);
+  const spellBookPages = entries.filter((e) => e.tags?.includes(SPELL_BOOK_TAG));
   const [selectedEntryId, setSelectedEntryId] = useState<string>(() => {
     return entries.length > 0 ? entries[0].id : '';
   });
+  const [loadedLookupTables, setLoadedLookupTables] = useState<JournalLookupTableRef[]>([]);
+  const [selectedLookupTableId, setSelectedLookupTableId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen || propLookupTables) return;
+    const docs = character.sotCatalogue?.overridePages || [];
+    if (docs.length === 0) {
+      setLoadedLookupTables([]);
+      return;
+    }
+    let cancelled = false;
+    const ownerId = getActiveHostSrdOwner() || character.name?.trim() || 'session-default';
+    void Promise.all(
+      docs.map((doc) =>
+        loadSrdIngestArtifacts({
+          characterName: character.name,
+          characterId: ownerId,
+          docFolder: srdDocFolderName(doc.title, doc.id),
+        }).then((res) => (res.ok ? extractLookupTablesFromArtifacts(doc.title, res.artifacts) : []))
+      )
+    ).then((chunks) => {
+      if (!cancelled) {
+        setLoadedLookupTables(chunks.flat());
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, character.name, character.sotCatalogue?.overridePages, propLookupTables]);
+
+  const lookupTables = propLookupTables ?? loadedLookupTables;
+  const activeLookupTable = selectedLookupTableId
+    ? lookupTables.find((t) => t.id === selectedLookupTableId) || null
+    : null;
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTag, setSelectedTag] = useState<string>('all');
   const [isEditing, setIsEditing] = useState(false);
@@ -350,16 +438,25 @@ export const JournalModal: React.FC<JournalModalProps> = ({
               <BookOpen className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="font-serif font-bold text-lg tracking-wide">
-                  {character.name}’s Session Journal &amp; Chronicle
+                  {hasSpellBook
+                    ? SPELL_BOOK_JOURNAL_TITLE
+                    : `${character.name}’s Session Journal & Chronicle`}
                 </h2>
+                {hasSpellBook && (
+                  <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-600 dark:text-purple-300 font-semibold">
+                    {character.name} • {spellBookPages.length} Pages
+                  </span>
+                )}
                 <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-300 font-semibold">
                   {entries.length} Entries
                 </span>
               </div>
               <p className="text-xs opacity-75 font-serif">
-                Session logs, recall notes, field pencil sketches, and in-character chronicles
+                {hasSpellBook
+                  ? 'Spell Book level pages (levels 1–9), session logs, reference lookup tables, and field sketches'
+                  : 'Session logs, recall notes, field pencil sketches, and in-character chronicles'}
               </p>
             </div>
           </div>
@@ -559,6 +656,43 @@ export const JournalModal: React.FC<JournalModalProps> = ({
               )}
             </div>
 
+            {/* Reference Lookup Tables (Read-Only auxiliary tables from SOT ingest) */}
+            {lookupTables.length > 0 && (
+              <div
+                className={`p-3 border-t space-y-2 shrink-0 ${
+                  isDark ? 'border-amber-500/30 bg-amber-950/20' : 'border-amber-300 bg-amber-50/70'
+                }`}
+              >
+                <div className="flex items-center justify-between text-[11px] font-mono font-bold text-amber-600 dark:text-amber-300 uppercase tracking-wider">
+                  <span className="flex items-center gap-1.5">
+                    <Table2 className="w-3.5 h-3.5" />
+                    <span>Reference Lookup Tables ({lookupTables.length})</span>
+                  </span>
+                  <span className="text-[9px] opacity-75">Read-Only</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pf1-theme-scrollbar">
+                  {lookupTables.map((tbl) => (
+                    <button
+                      key={tbl.id}
+                      type="button"
+                      onClick={() =>
+                        setSelectedLookupTableId((cur) => (cur === tbl.id ? null : tbl.id))
+                      }
+                      className={`px-2 py-1 rounded text-[11px] font-mono border transition-colors ${
+                        activeLookupTable?.id === tbl.id
+                          ? 'bg-amber-600 text-white border-amber-500 font-bold'
+                          : isDark
+                          ? 'bg-slate-900 border-amber-500/35 text-amber-200 hover:border-amber-400'
+                          : 'bg-white border-amber-300 text-amber-900 hover:border-amber-500'
+                      }`}
+                    >
+                      {tbl.caption}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* B3: Available Spells Linked from Action Directory */}
             {availableSpells.length > 0 && (
               <div
@@ -574,7 +708,7 @@ export const JournalModal: React.FC<JournalModalProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      ctx.updateLayout({ activeSheet: 2, showAllSheets: false });
+                      ctx?.updateLayout({ activeSheet: 2, showAllSheets: false });
                       onClose();
                     }}
                     className="text-[10px] hover:underline flex items-center gap-0.5"
@@ -634,7 +768,7 @@ export const JournalModal: React.FC<JournalModalProps> = ({
                           evaluateDirectoryMacroValue(
                             activeAvailableSpell.saveDC,
                             character,
-                            ctx.derived
+                            ctx?.derived
                           ).display
                         }
                       </span>
@@ -644,7 +778,7 @@ export const JournalModal: React.FC<JournalModalProps> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        ctx.updateLayout({ activeSheet: 2, showAllSheets: false });
+                        ctx?.updateLayout({ activeSheet: 2, showAllSheets: false });
                         onClose();
                       }}
                       className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-purple-600 hover:bg-purple-500 text-white flex items-center gap-1"
@@ -664,6 +798,58 @@ export const JournalModal: React.FC<JournalModalProps> = ({
                 <p className="text-xs font-sans leading-relaxed whitespace-pre-wrap opacity-90">
                   {activeAvailableSpell.description}
                 </p>
+              </div>
+            )}
+            {activeLookupTable && (
+              <div
+                className={`p-4 rounded-xl border space-y-2 shadow-sm ${
+                  isDark
+                    ? 'bg-amber-950/25 border-amber-500/40 text-amber-100'
+                    : 'bg-amber-50 border-amber-300 text-stone-900'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Table2 className="w-4 h-4 text-amber-500" />
+                    <span className="font-serif font-bold text-sm">{activeLookupTable.caption}</span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-500/35">
+                      lookup-table • {activeLookupTable.docTitle} • Read-Only
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedLookupTableId(null)}
+                    className="p-1 opacity-60 hover:opacity-100"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="overflow-x-auto pf1-theme-scrollbar">
+                  <table className="min-w-full text-[11px] border-collapse">
+                    {activeLookupTable.headers.length > 0 && (
+                      <thead>
+                        <tr className="border-b border-black/15 dark:border-white/15 text-left">
+                          {activeLookupTable.headers.map((h, i) => (
+                            <th key={i} className="px-2 py-1 font-mono font-bold whitespace-nowrap">
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                    )}
+                    <tbody>
+                      {activeLookupTable.rows.map((row, rIdx) => (
+                        <tr key={rIdx} className="border-b border-black/10 dark:border-white/10">
+                          {row.map((cell, cIdx) => (
+                            <td key={cIdx} className="px-2 py-1 align-top">
+                              {cell}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
             {/* LOCAL IN-CHARACTER JOURNAL ENTRY GENERATOR (Visible only when journalVoice permission is enabled) */}
