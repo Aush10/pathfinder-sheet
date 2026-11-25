@@ -1,5 +1,8 @@
 # PF1 Modular Workspace
 
+Playtesters: start with [`pt-kit/README.md`](pt-kit/README.md). That is the
+plain-English kit guide. This file is the developer readme.
+
 Local-first character-sheet workspace for Pathfinder 1e. The app combines live
 combat calculations, actions and resources, equipment and downtime, print
 output, save-tree persistence, a Character Matrix, SOT ingest, and the Macaroni

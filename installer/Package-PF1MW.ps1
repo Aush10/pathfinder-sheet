@@ -173,6 +173,27 @@ try {
     }
   }
 
+  $ptKitDirectory = Join-Path $repositoryDirectory 'pt-kit'
+  if (-not (Test-Path -LiteralPath $ptKitDirectory -PathType Container)) {
+    throw "Required playtest kit folder is missing: $ptKitDirectory"
+  }
+  Get-ChildItem -LiteralPath $ptKitDirectory -Recurse -File | ForEach-Object {
+    $relative = 'pt-kit/' + $_.FullName.Substring($ptKitDirectory.Length + 1).Replace('\', '/')
+    if ($relative -match '/out/') {
+      return
+    }
+    if (Test-PF1MWAllowedRuntimeEntry -Path $relative) {
+      Copy-PF1MWStagedFile -Source $_.FullName -RelativeName $relative
+    }
+  }
+
+  foreach ($warningName in @('launch-warning.html')) {
+    $warningSource = Join-Path $repositoryDirectory (Join-Path 'public' $warningName)
+    if (Test-Path -LiteralPath $warningSource -PathType Leaf) {
+      Copy-PF1MWStagedFile -Source $warningSource -RelativeName $warningName
+    }
+  }
+
   $runtimeManifest = [ordered]@{
     format = 'pf1mw-runtime-manifest'
     schemaVersion = 1
