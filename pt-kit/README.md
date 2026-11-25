@@ -33,10 +33,14 @@ The sheet still opens without Node. You just will not get `/api` features.
 
 ## Install and start
 
-From a local zip:
+To install a prebuilt runtime zip:
 
-1. Run `installer\Install-PF1MW-Local.ps1`  
-   or `installer\Install-PF1MW.ps1 -PackagePath .\dist\pf1mw-runtime.zip`
+1. Obtain this repository's `installer` folder (not included in the runtime zip).
+   Keep `PF1MW-RuntimeContract.ps1` beside `Install-PF1MW.ps1`, and keep
+   `pf1mw-runtime.zip.sha256` beside `pf1mw-runtime.zip`.
+   From the folder containing `installer`, run
+   `.\installer\Install-PF1MW.ps1 -PackagePath 'C:\path\to\pf1mw-runtime.zip'`
+   using the actual path to your zip.
 2. Use the desktop shortcut **Pathfinder 1e Modular Workspace**
 3. The app opens in a small browser window at `http://127.0.0.1:38173/`
 
