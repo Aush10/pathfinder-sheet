@@ -86,8 +86,8 @@ preserved in the external CP2 archive noted in the handoff.
 
 Known naming drift:
 
-- The release preparation in CP1 still owns the package rename from
-  `react-example`.
+- The package and lockfile use `pathfinder-1e-modular-workspace` version
+  `1.3.0`.
 - `getSessionApiKey` implies a browser key, but it returns an empty string;
   `OPENAI_API_KEY` belongs to the server environment.
 - The sidebar label "All 3 Pages" does not describe the fourth Formula Studio

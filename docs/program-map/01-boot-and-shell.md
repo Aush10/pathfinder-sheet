@@ -2,7 +2,10 @@
 
 ## Process entry
 
-`package.json` names the package `react-example` at version `0.0.0`. `dev` and `start` are the same command: `node --experimental-strip-types server.ts`. Neither script sets `NODE_ENV`, so `server.ts` takes the Vite branch.
+`package.json` names the package `pathfinder-1e-modular-workspace` at version
+`1.3.0`. `dev` and `start` are the same command:
+`node --experimental-strip-types server.ts`. Neither script sets `NODE_ENV`,
+so `server.ts` takes the Vite branch.
 
 `server.ts` 6–40:
 
@@ -62,11 +65,14 @@ Macaroni UI events `macaroni:alert` and `macaroni:query` are listened for on `wi
 
 | Script | What it does |
 | --- | --- |
-| `installer/Start-PF1MW.ps1` | Default URL `http://127.0.0.1:38173/`. With `-Server`, a `TcpListener` on loopback serves `index.html`, the icon, `runtime-manifest.json`, the memory-bank template, glyph PNGs, and `assets/aistudio/*.png` (`61–94`, `118–166`). Without `-Server`, it starts that host if needed and runs Edge or Chrome with `--app=` (`226`). It refuses to start if the manifest, memory template, or AI Studio asset directory is missing (`61–68`). |
-| `installer/Package-PF1MW.ps1` | Stages standalone HTML, the launcher, character-sheet icons, `assets/aistudio`, `memory-bank-template`, and a generated `runtime-manifest.json`, then zips `dist/pf1mw-runtime.zip` plus a SHA-256 file (`97–144`). |
-| `installer/Install-PF1MW.ps1` | Downloads that zip from the latest stable GitHub release into `%LOCALAPPDATA%\pf1mw`, then **rejects any entry** that is not `index.html`, `chirpy.ico`, `Start-PF1MW.ps1`, or a PNG under `character-sheet-icons/` (`92–98`). The manifest, memory template, and AI Studio images that the packager adds fail this check. |
-| `installer/Install-PF1MW-Local.ps1` | Copies `public/pathfinder1e_standalone.html` to `index.html`, the icon, the launcher, and character-sheet PNGs (`35–48`). It does not copy `runtime-manifest.json`, the memory template, or `assets/aistudio`, which `Start-PF1MW.ps1` then requires. |
+| `installer/Start-PF1MW.ps1` | Prefers `NODE_ENV=production PORT=38173 node --experimental-strip-types server.ts`; the health check is `/api/openai/status`. If Node.js 22+ or dependencies are unavailable, it serves the standalone HTML with a loopback `TcpListener` and opens Edge or Chrome. |
+| `installer/Package-PF1MW.ps1` | Stages the standalone app, launcher, icon assets, server sources, manifest, package metadata, and production `dist/`, then writes `dist/pf1mw-runtime.zip` plus SHA-256. It excludes secrets, `node_modules`, `src/`, and `pfautosheetv3/`. |
+| `installer/Install-PF1MW.ps1` | Accepts the same runtime contract from GitHub or `-PackagePath`, installs beneath `%LOCALAPPDATA%\pf1mw`, and runs `npm ci` when Node.js is available. |
+| `installer/Install-PF1MW-Local.ps1` | Builds through `Package-PF1MW.ps1`, then reuses `Install-PF1MW.ps1` for local installation. |
 
 `npm run build:standalone` builds with `vite.singlefile.config.ts` (`outDir: dist-standalone`, `vite-plugin-singlefile`) and copies the HTML to `public/pathfinder1e_standalone.html`. `npm run dist:runtime` runs that and then `Package-PF1MW.ps1` via PowerShell, so it is a Windows script.
 
-`.github/workflows/release-pf1mw.yml` runs on tags `v*`, on `windows-latest`: `npm ci`, `npm run lint`, `npm run build:standalone`, `Package-PF1MW.ps1`, and publishes `dist/pf1mw-runtime.zip` and its checksum. It does not run `npm test`.
+`.github/workflows/release-pf1mw.yml` runs on tags `v*`, on
+`windows-latest`: `npm ci`, `npm run lint`, `npm run build:standalone`,
+`Package-PF1MW.ps1`, and publishes `dist/pf1mw-runtime.zip` and its checksum.
+It does not run `npm test`; CP3 runs that gate before tag publication.

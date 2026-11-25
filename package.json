@@ -1,7 +1,7 @@
 {
-  "name": "react-example",
+  "name": "pathfinder-1e-modular-workspace",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.3.0",
   "type": "module",
   "scripts": {
     "dev": "node --experimental-strip-types server.ts",
