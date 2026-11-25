@@ -33,13 +33,7 @@ import {
   type SheetWriteContext,
 } from './sheetFieldWrites';
 import { formatSpellTablesForCompleteSheet } from '../storage/characterState';
-
-// Legacy no-op helpers kept for backward compatibility with existing module imports
-export function getSessionApiKey(): string {
-  return '';
-}
-export function setSessionApiKey(_key: string): void {}
-export function clearSessionApiKey(): void {}
+import { parseClassSkills, parseProficiencies } from './classExtraction';
 
 export const DEFAULT_AI_MODULE_SETTINGS: AIModuleSettings = {
   isInstalled: true,
@@ -1182,7 +1176,6 @@ export async function generateJournalEntryInVoice(
   prompt: string,
   voiceSetting: string,
   character: PF1Character,
-  _apiKey?: string
 ): Promise<GeneratedJournalResult> {
   const voice = voiceSetting.trim() || 'Terse, serious, no-nonsense, short sentences, gruff veteran';
 
@@ -1244,7 +1237,6 @@ export interface GeneratedSketchResult {
 export async function generatePencilSketch(
   prompt: string,
   quality: SketchDetailQuality,
-  _apiKey?: string
 ): Promise<GeneratedSketchResult> {
   const proceduralDataUrl = generateProceduralPencilSketch({
     subject: prompt,
@@ -2363,96 +2355,34 @@ export function parseSrdSkillsAndProficiencies(rawInput: string): ParsedSrdClass
     };
   }
 
-  let detectedHitDie: number | undefined;
-  const hdMatch = text.match(/(?:hit\s*die|hd)\s*[:=-]?\s*d(6|8|10|12)/i);
-  if (hdMatch) {
-    detectedHitDie = parseInt(hdMatch[1], 10);
-  }
+  const looksLikeFullSrd = /\bTable\s*:/i.test(text) || text.length > 2000;
+  const labeledSkills = parseClassSkills(text);
+  const skills = labeledSkills.skills.length || looksLikeFullSrd
+    ? labeledSkills
+    : parseClassSkills(`Class Skills: ${text}`);
+  const labeledProf = parseProficiencies(text);
+  const cleanedProficiencies = labeledProf || looksLikeFullSrd
+    ? labeledProf
+    : parseProficiencies(`Weapon and Armor Proficiency: ${text}`);
 
-  let detectedSkillRanksPerLevel: number | undefined;
-  const spMatch = text.match(/(?:skill\s*(?:ranks|points)\s*(?:per\s*level)?\s*[:=-]?\s*)?([2468])\s*\+\s*int/i);
-  if (spMatch) {
-    detectedSkillRanksPerLevel = parseInt(spMatch[1], 10);
-  }
-
-  const lower = text.toLowerCase();
-  const matchedSkills = new Set<string>();
-
-  if (/knowledge\s*\(\s*all\s*\)/i.test(text)) {
-    PF1E_CANONICAL_SKILLS.filter((s) => s.startsWith('Knowledge')).forEach((k) => matchedSkills.add(k));
-  }
-
-  for (const canonical of PF1E_CANONICAL_SKILLS) {
-    const baseName = canonical.toLowerCase();
-    if (lower.includes(baseName)) {
-      matchedSkills.add(canonical);
-    } else if (canonical.startsWith('Knowledge (')) {
-      const subType = canonical.replace(/Knowledge\s*\((.+)\)/i, '$1').toLowerCase();
-      const knowBlockMatch = text.match(/knowledge\s*\(([^)]+)\)/gi);
-      if (knowBlockMatch) {
-        for (const kb of knowBlockMatch) {
-          if (kb.toLowerCase().includes(subType)) {
-            matchedSkills.add(canonical);
-          }
-        }
-      }
+  const cleanedSkillsList = [...skills.skills];
+  if (/knowledge\s*\(\s*all\s*\)/i.test(skills.text || '')) {
+    for (const skill of PF1E_CANONICAL_SKILLS.filter((item) => item.startsWith('Knowledge'))) {
+      if (!cleanedSkillsList.includes(skill)) cleanedSkillsList.push(skill);
     }
   }
 
-  const sentences = text
-    .replace(/\r?\n/g, ' ')
-    .split(/(?<=[.!?])\s+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const hdMatch = text.match(/(?:^|\n)\s*Hit Die\s*:?\s*d(6|8|10|12)\b/im)
+    || text.match(/(?:hit\s*die|hd)\s*[:=-]?\s*d(6|8|10|12)/i);
+  const spMatch = text.match(/(?:^|\n)\s*Skill Ranks?(?: Per Level)?\s*:\s*([0-9]+)\s*\+\s*Int\b/im)
+    || text.match(/skill\s*(?:ranks|points)\s*(?:per\s*level)?\s*[:=-]?\s*([0-9]+)\s*\+\s*int/i);
 
-  const profSentences: string[] = [];
-  let ignoredCount = 0;
-
-  for (const s of sentences) {
-    const sl = s.toLowerCase();
-    if (
-      sl.includes('class skills') ||
-      sl.includes('skill ranks per level') ||
-      sl.includes('arcane spell failure') ||
-      sl.includes('starting wealth')
-    ) {
-      ignoredCount++;
-      continue;
-    }
-
-    if (
-      sl.includes('proficient') ||
-      sl.includes('proficiency') ||
-      sl.includes('weapons') ||
-      sl.includes('armor') ||
-      sl.includes('shields') ||
-      sl.includes('longsword') ||
-      sl.includes('rapier') ||
-      sl.includes('crossbow') ||
-      sl.includes('simple') ||
-      sl.includes('martial')
-    ) {
-      const cleaned = s
-        .replace(/^weapon\s+and\s+armor\s+proficiency\s*:\s*/i, '')
-        .replace(/^A\s+[a-zA-Z\s]+?\s+is\s+proficient\s+with\s+/i, 'Proficient with ')
-        .trim();
-      profSentences.push(cleaned);
-    } else {
-      ignoredCount++;
-    }
-  }
-
-  const cleanedSkillsList = Array.from(matchedSkills);
   return {
     cleanedSkillsList,
     cleanedSkillsText: cleanedSkillsList.join(', '),
-    cleanedProficiencies: profSentences.join(' '),
-    detectedSkillRanksPerLevel,
-    detectedHitDie,
-    ignoredFillerSummary:
-      ignoredCount > 0
-        ? `Filtered ${ignoredCount} non-field rules/flavor sentence(s) automatically.`
-        : undefined,
+    cleanedProficiencies,
+    detectedSkillRanksPerLevel: spMatch ? Number(spMatch[1]) : undefined,
+    detectedHitDie: hdMatch ? Number(hdMatch[1]) : undefined,
   };
 }
 
@@ -2468,7 +2398,6 @@ export async function adaptArchetypeIntoGrid(
   description: string,
   className: string,
   currentRows: ClassGridRow[],
-  _apiKey?: string
 ): Promise<AdaptedArchetypeResult> {
   const cleanDesc = description.trim();
   const existingFeaturesByLevel = currentRows

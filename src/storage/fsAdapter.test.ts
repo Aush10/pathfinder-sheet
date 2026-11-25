@@ -400,7 +400,7 @@ test('explains when browser sharing intercepts the native directory picker', asy
         'AbortError',
       );
     },
-    handleStore: new MemoryHandleStore(root),
+    handleStore: new MemoryHandleStore(),
   });
 
   const result = await adapter.pickFolderAndOpen();
@@ -415,17 +415,18 @@ test('explains when browser sharing intercepts the native directory picker', asy
 
 test('treats an ordinary directory picker cancellation separately and preserves the selected folder', async () => {
   const root = new MemoryDirectoryHandle('Chosen Storage');
+  let pickerCalls = 0;
   const adapter = createFsStorageAdapter({
     folderPicker: async () => {
+      pickerCalls += 1;
       throw new DOMException('The user aborted a request.', 'AbortError');
     },
     handleStore: new MemoryHandleStore(root),
   });
 
   const result = await adapter.pickFolderAndOpen();
-  assert.equal(result.ok, false);
-  if (!result.ok) assert.equal(result.error.code, 'PICKER_CANCELLED');
-  assert.equal(root.children.size, 0, 'cancelling must not create or replace storage folders');
+  assert.equal(pickerCalls, 0);
+  assert.equal(result.ok, true);
   const status = await adapter.getStatus();
   assert.ok(status.ok && status.selected && status.permission === 'granted');
   if (status.ok) assert.equal(status.rootName, root.name);
@@ -455,7 +456,7 @@ for (const [exceptionName, expectedCode] of [
       folderPicker: async () => {
         throw new DOMException('Native browser picker rejected this request.', exceptionName);
       },
-      handleStore: new MemoryHandleStore(root),
+      handleStore: new MemoryHandleStore(),
     });
 
     const result = await adapter.pickFolderAndOpen();
@@ -614,11 +615,29 @@ test('connecting a tree whose character listing fails never mistakes it for an e
   assert.ok(crash.ok && crash.character === null);
 });
 
-test('cancelling Connect does not create folders or bootstrap a sheet', async () => {
+test('Connect reuses a stored handle without opening the picker', async () => {
+  const root = new MemoryDirectoryHandle('Chosen Storage');
+  let pickerCalls = 0;
+  const adapter = createFsStorageAdapter({
+    folderPicker: async () => {
+      pickerCalls += 1;
+      throw new DOMException('The user cancelled.', 'AbortError');
+    },
+    handleStore: new MemoryHandleStore(root),
+  });
+
+  const result = await connectSheetToFolder(adapter, sampleCharacter('Current Hero', 'Alice'));
+  assert.equal(pickerCalls, 0);
+  assert.equal(result.ok, true);
+  const status = await adapter.getStatus();
+  assert.ok(status.ok && status.selected && status.rootName === root.name);
+});
+
+test('cancelling Connect without a stored handle does not create folders or bootstrap a sheet', async () => {
   const root = new MemoryDirectoryHandle('Chosen Storage');
   const adapter = createFsStorageAdapter({
     folderPicker: async () => { throw new DOMException('The user cancelled.', 'AbortError'); },
-    handleStore: new MemoryHandleStore(root),
+    handleStore: new MemoryHandleStore(),
   });
 
   const result = await connectSheetToFolder(adapter, sampleCharacter('Current Hero', 'Alice'));
@@ -626,7 +645,7 @@ test('cancelling Connect does not create folders or bootstrap a sheet', async ()
   if (!result.ok) assert.equal(result.error.code, 'PICKER_CANCELLED');
   assert.equal(root.children.size, 0);
   const status = await adapter.getStatus();
-  assert.ok(status.ok && status.selected && status.rootName === root.name);
+  assert.ok(status.ok && !status.selected);
 });
 
 test('Connect reports denied bootstrap writes instead of claiming that the sheet was saved', async () => {

@@ -56,7 +56,10 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
     setLayout,
     autosaveState,
     showCrashRecoveredBanner,
+    crashBannerMode,
     dismissCrashRecoveredBanner,
+    restorePendingCrash,
+    keepNamedSaveInsteadOfCrash,
     installAICompanion,
     applyImageSelection,
     exportStandaloneHTML,
@@ -233,7 +236,10 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
 
       <CrashRecoveryBanner
         visible={showCrashRecoveredBanner}
+        mode={crashBannerMode}
         onDismiss={dismissCrashRecoveredBanner}
+        onRestore={restorePendingCrash}
+        onKeepNamedSave={keepNamedSaveInsteadOfCrash}
       />
 
       {/* Hidden PrintSheet rendered automatically if user triggers native Ctrl+P from workspace */}

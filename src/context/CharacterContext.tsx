@@ -67,6 +67,7 @@ import { emitStorageToastError, useStorage } from '../storage/StorageContext';
 import {
   blankCharacterWithEmptySot,
   restoreSheetFromStorage,
+  type PendingCrashSnapshot,
 } from '../storage/characterState';
 import { setActiveHostSrdOwner } from '../engine/sotEngine';
 import { AutosaveState, useAutosave } from '../storage/useAutosave';
@@ -128,7 +129,10 @@ export interface CharacterContextValue {
   /** Crash autosave & recovery state */
   autosaveState: AutosaveState;
   showCrashRecoveredBanner: boolean;
+  crashBannerMode: 'recovered' | 'pending';
   dismissCrashRecoveredBanner: () => void;
+  restorePendingCrash: () => void;
+  keepNamedSaveInsteadOfCrash: () => void;
 }
 
 const CharacterContext = createContext<CharacterContextValue | null>(null);
@@ -153,6 +157,7 @@ export const CharacterProvider: React.FC<CharacterProviderProps> = ({
   );
   const [layout, setLayout] = useState<WorkspaceLayout>(() => loadInitialLayoutState());
   const [showCrashRecoveredBanner, setShowCrashRecoveredBanner] = useState(false);
+  const [pendingCrashChoice, setPendingCrashChoice] = useState<PendingCrashSnapshot | null>(null);
   const [isExportingHTML, setIsExportingHTML] = useState(false);
   const sessionSrdOwnerRef = useRef(
     typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `session-${Date.now()}`
@@ -175,18 +180,11 @@ export const CharacterProvider: React.FC<CharacterProviderProps> = ({
         if (restored.characterId) sessionSrdOwnerRef.current = restored.characterId;
         setActiveHostSrdOwner(sessionSrdOwnerRef.current);
         let next = restored.character;
-        if (restored.pendingCrash && typeof window !== 'undefined') {
-          const accept = window.confirm(
-            'A newer crash autosave exists for this character. Restore the crash snapshot instead of the last Save?',
-          );
-          if (accept) {
-            next = restored.pendingCrash.character;
-            setShowCrashRecoveredBanner(true);
-          } else {
-            setShowCrashRecoveredBanner(false);
-            void storage.dismissCrash();
-          }
+        if (restored.pendingCrash) {
+          setPendingCrashChoice(restored.pendingCrash);
+          setShowCrashRecoveredBanner(true);
         } else {
+          setPendingCrashChoice(null);
           setShowCrashRecoveredBanner(restored.recoveredFromCrash);
         }
         setCharacter(syncOddLevelFeats(next));
@@ -351,6 +349,7 @@ export const CharacterProvider: React.FC<CharacterProviderProps> = ({
 
   const dismissCrashRecoveredBanner = useCallback(() => {
     setShowCrashRecoveredBanner(false);
+    setPendingCrashChoice(null);
     void storage.dismissCrash().then(() =>
       restoreSheetFromStorage(storage).then((restored) => {
         if (restored.character) {
@@ -360,6 +359,19 @@ export const CharacterProvider: React.FC<CharacterProviderProps> = ({
         }
       }),
     );
+  }, [storage]);
+
+  const restorePendingCrash = useCallback(() => {
+    if (!pendingCrashChoice) return;
+    setCharacter(syncOddLevelFeats(pendingCrashChoice.character));
+    setPendingCrashChoice(null);
+    setShowCrashRecoveredBanner(true);
+  }, [pendingCrashChoice]);
+
+  const keepNamedSaveInsteadOfCrash = useCallback(() => {
+    setPendingCrashChoice(null);
+    setShowCrashRecoveredBanner(false);
+    void storage.dismissCrash();
   }, [storage]);
 
   const contextValue = useMemo<CharacterContextValue>(
@@ -393,7 +405,10 @@ export const CharacterProvider: React.FC<CharacterProviderProps> = ({
       exportCSV,
       autosaveState,
       showCrashRecoveredBanner,
+      crashBannerMode: pendingCrashChoice ? 'pending' : 'recovered',
       dismissCrashRecoveredBanner,
+      restorePendingCrash,
+      keepNamedSaveInsteadOfCrash,
     }),
     [
       character,
@@ -419,7 +434,10 @@ export const CharacterProvider: React.FC<CharacterProviderProps> = ({
       exportCSV,
       autosaveState,
       showCrashRecoveredBanner,
+      pendingCrashChoice,
       dismissCrashRecoveredBanner,
+      restorePendingCrash,
+      keepNamedSaveInsteadOfCrash,
     ]
   );
 

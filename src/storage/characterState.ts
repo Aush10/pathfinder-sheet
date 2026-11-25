@@ -14,6 +14,8 @@ import type {
   SpellSlotLevel,
 } from '../types/character';
 import type { LoadedCharacter, StorageAdapter } from './types';
+import type { IngestTable } from '../../server/ingest/ingest';
+import { collectSpellProgressionTables } from '../engine/spellTables';
 
 export const AUTOSAVE_DEBOUNCE_MS = 2500;
 
@@ -388,6 +390,17 @@ export function persistCollectedSpellTables(
     ...character,
     ...(merged ? { spellTables: merged } : {}),
   });
+}
+
+/** Collect classified spell tables from ingest output, then persist Spell Book / slot bars. */
+export function persistSpellTablesFromIngest(
+  character: PF1Character,
+  tables: IngestTable[],
+  documentId?: string,
+): PF1Character {
+  const collected = collectSpellProgressionTables(tables, documentId);
+  if (!collected.spellsPerDay && !collected.spellsKnown) return character;
+  return persistCollectedSpellTables(character, collected);
 }
 
 /**

@@ -1704,14 +1704,30 @@ export function createFsStorageAdapter(options: FsStorageAdapterOptions = {}): S
 
   return {
     async pickFolderAndOpen(): Promise<StorageResult<{ rootName: string }>> {
-      let selected: FsDirectoryHandleLike;
       try {
+        if (!rememberedHandle) rememberedHandle = await handleStore.get();
+        if (rememberedHandle) {
+          try {
+            await ensureReadWritePermission(rememberedHandle);
+            const tree = await ensureBaseTree(rememberedHandle);
+            handlePersistenceWarning = undefined;
+            try {
+              await handleStore.set(rememberedHandle);
+            } catch {
+              handlePersistenceWarning = 'Connected for this session. This browser could not remember the folder; reconnect it next time.';
+            }
+            return { ok: true, rootName: tree.managedRoot.name };
+          } catch {
+            rememberedHandle = undefined;
+          }
+        }
         assert(folderPicker, 'API_UNSUPPORTED', 'Folder storage requires Edge or Chrome with the File System Access API.');
-        selected = await folderPicker({ mode: 'readwrite' });
-      } catch (error) {
-        return toFailure(error, 'picker');
-      }
-      try {
+        let selected: FsDirectoryHandleLike;
+        try {
+          selected = await folderPicker({ mode: 'readwrite' });
+        } catch (error) {
+          return toFailure(error, 'picker');
+        }
         await ensureReadWritePermission(selected);
         const tree = await ensureBaseTree(selected);
         rememberedHandle = selected;
@@ -1719,7 +1735,6 @@ export function createFsStorageAdapter(options: FsStorageAdapterOptions = {}): S
         try {
           await handleStore.set(selected);
         } catch {
-          // Remembering a handle is optional; the granted handle still works now.
           handlePersistenceWarning = 'Connected for this session. This browser could not remember the folder; reconnect it next time.';
         }
         return { ok: true, rootName: tree.managedRoot.name };
