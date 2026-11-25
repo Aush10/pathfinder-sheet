@@ -5,6 +5,9 @@ import path from 'path';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+  define: {
+    'import.meta.env.VITE_PLAYTEST_KIT': JSON.stringify('1'),
+  },
   plugins: [
     react(),
     tailwindcss(),

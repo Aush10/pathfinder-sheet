@@ -67,6 +67,7 @@ import {
   DEFAULT_SOT_CATALOGUE,
   lookupRulesWithSOT,
   RulesLookupResult,
+  type AiServerProbeStatus,
 } from '../../engine/aiService';
 import {
   sanitizeSrdDocument,
@@ -145,6 +146,7 @@ interface AICompanionModalProps {
   onNavigateToDSLPage?: () => void;
   initialTab?: string;
   theme?: ThemeMode;
+  aiKitStatus?: AiServerProbeStatus;
 }
 
 const MODULE_PERMISSION_DEFINITIONS: Array<{
@@ -274,6 +276,7 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
   onOpenAddClass,
   initialTab = 'permissions',
   theme: propTheme,
+  aiKitStatus,
 }) => {
   const ctx = useCharacter();
   const character = propCharacter ?? ctx.character;
@@ -1253,6 +1256,29 @@ export const AICompanionModal: React.FC<AICompanionModalProps> = ({
           {/* ================================================================= */}
           {activeTab === 'permissions' && (
             <div className="max-w-5xl mx-auto space-y-6">
+              {/* Playtest Kit AI Listener Notice */}
+              <div
+                className={`p-3 rounded-xl border text-xs font-mono flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
+                  aiKitStatus?.available
+                    ? isDark
+                      ? 'bg-emerald-950/35 border-emerald-500/40 text-emerald-200'
+                      : 'bg-emerald-50 border-emerald-600/40 text-emerald-900'
+                    : isDark
+                    ? 'bg-amber-950/35 border-amber-500/40 text-amber-200'
+                    : 'bg-amber-50 border-amber-700/30 text-amber-950'
+                }`}
+              >
+                <div>
+                  <strong>
+                    {aiKitStatus?.available
+                      ? `AI API Kit Connected (${aiKitStatus.provider || 'openai'})`
+                      : 'No AI API Server Detected (Offline / Playtest Kit Mode)'}
+                  </strong>{' '}
+                  — AI listeners start <strong>OFF</strong> by default when installed. Enable the
+                  specific module listeners and sheet sections below that you want to test.
+                </div>
+              </div>
+
               {/* Top Summary & Batch Blind Spot Controls */}
               <div
                 className={`p-4 rounded-xl border flex flex-col md:flex-row md:items-center justify-between gap-4 ${

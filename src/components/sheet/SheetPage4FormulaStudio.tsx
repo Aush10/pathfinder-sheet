@@ -67,21 +67,26 @@ export const SheetPage4FormulaStudio: React.FC<SheetPage4FormulaStudioProps> = (
   const theme = propTheme ?? ctx.layout.theme;
   const onUpdateCharacter = propOnUpdateCharacter ?? ctx.updateCharacter;
   const [activeTab, setActiveTab] = useState<'macros' | 'ui_styler' | 'bible'>('macros');
-  const [testExpression, setTestExpression] = useState('MageArmor:|<^{7:2}+4>|$');
+  const [testExpression, setTestExpression] = useState('<<[{d20}+#BAB+#STR] "to hit!"');
   const [lastQuirkyNote, setLastQuirkyNote] = useState<string>(
-    'Hover any stat for 3s to copy its #CALL, or run a <^...> buff macro below!'
+    'Hover any stat for 3s to copy its #CALL, or run a <^> Name | Stat | Type | [Value] buff macro below!'
   );
   const [copiedRecipe, setCopiedRecipe] = useState<string | null>(null);
   const [scratchpadText, setScratchpadText] = useState(
-    `# Example Macaroni Vocabulary
-- Primary Strike: [d20 + #BAB + #STR] & [1d12 + round(#STR * 1.5)] "slashing"
-- Sustained Buff: MageArmor:|<^{7:2}+4>|$
-- Build Planner: What should I make for this game>>#AI$
-- Dragon breath: {firebreath}
-- Combined combo: {mainattack_with_fire}
-- Stepper countdown: this: 10-1! | this=0 | $
-- UI Make Trigger: <11"Dragonfire Critical!">\n- Decision query: <? "Proceed?" | yes / no / #HP / [] >`
+    `# Example Macaroni (Marconi XdX) 1.2 Vocabulary
+- Primary Strike: <<[{d20}+#BAB+#STR] "to hit" | [{2d8}+#STR] "slashing"
+- Calculate: <<[[10+5]+5*[10+1]]
+- Capsulate & Dice: <<{firebreath} | <<{Xd8}
+- Sustained Buff: <^> Mage Armor | ac | Enhancement | [4]
+- Stepper Escalate: <!>[10-!*1]
+- Interactive Insinuate: <?> "Proceed?" | "Yes"={firebreath} | "Roll d20"={d20}`
   );
+
+  React.useEffect(() => {
+    const handleOpenBible = () => setActiveTab('bible');
+    window.addEventListener('pf1e:open-macroni-bible', handleOpenBible);
+    return () => window.removeEventListener('pf1e:open-macroni-bible', handleOpenBible);
+  }, []);
 
   const handleRunScratchpadAI = async () => {
     const aiSettings = character.installedModules?.aiSettings || DEFAULT_AI_MODULE_SETTINGS;
@@ -663,140 +668,168 @@ export const SheetPage4FormulaStudio: React.FC<SheetPage4FormulaStudioProps> = (
         </div>
       )}
 
-      {/* Tab 3: Macaroni Syntax Bible */}
+      {/* Tab 3: Macroni XDX Bible */}
       {activeTab === 'bible' && (
-        <div className={`border rounded-lg p-4 ${cardBg} space-y-4`}>
-          <div className="flex items-center justify-between border-b pb-2 border-black/10 dark:border-white/10">
-            <h4 className="font-bold text-sm text-amber-400 flex items-center gap-2">
-              <Code className="w-4 h-4" />
-              <span>The Macaroni Macro Vocabulary Bible</span>
-            </h4>
-            <span className="text-xs font-mono opacity-70">PF1e Cheese-Friendly Spec</span>
+        <div className={`border rounded-lg p-4 ${cardBg} space-y-5`}>
+          <div className="flex items-center justify-between border-b pb-3 border-black/10 dark:border-white/10 flex-wrap gap-2">
+            <div>
+              <h4 className="font-bold text-sm text-amber-400 flex items-center gap-2">
+                <Code className="w-4 h-4" />
+                <span>Macroni XDX Bible — Marconi (Macro Native Index)</span>
+              </h4>
+              <p className="text-xs opacity-80 mt-1 font-sans">
+                <strong>1. Marconi = Macro Native Index.</strong>{' '}
+                <strong>2. This particular version is called XdX</strong> because it is built for players and dice rolls (<code>&lt;&lt;&#123;d20&#125;</code>, <code>&#123;Xd8&#125;</code>).
+              </p>
+            </div>
+            <span className="text-xs font-mono opacity-75 px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/30">
+              Macroni 1.2 · XdX Edition
+            </span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-mono">
-            {[
-              {
-                sym: '#',
-                name: 'Reference Field / Constant',
-                ex: '#HP, #STR, #BAB, #FORT, #AC',
-                desc: 'Accesses a defined character field or ability score. Hover any field for 3s to copy.',
-              },
-              {
-                sym: '[]',
-                name: 'Evaluate Calculation',
-                ex: '[1d4 + #STR], [d20 + #BAB]',
-                desc: 'Evaluates dice rolls and mathematical equations strictly within brackets.',
-              },
-              {
-                sym: '<<',
-                name: 'Listen / Pull External Macro',
-                ex: '<<firebreath, <<mainattack',
-                desc: 'Invokes and pulls in another saved macro or object.',
-              },
-              {
-                sym: ':',
-                name: 'Name / Definition',
-                ex: 'firebolt: 2d6 & "burn" 1d8',
-                desc: 'Labels a macro name for subsequent calls.',
-              },
-              {
-                sym: '{}',
-                name: 'Mathematical Context Call',
-                ex: '{firebreath}',
-                desc: 'Calls the numerical result of a macro while cleanly stripping any text or dialogue.',
-              },
-              {
-                sym: '""',
-                name: 'Written Text / Flavor Dialogue',
-                ex: '"to hit +", "fire damage"',
-                desc: 'Text to print in rolls. Ignored inside math calculations {}.',
-              },
-              {
-                sym: '^',
-                name: 'Delta Mutator / Increase',
-                ex: 'HP^-d6, rounds^-1, HP^+10',
-                desc: 'Adjusts a called field by the specified formula.',
-              },
-              {
-                sym: '>>',
-                name: 'Send to Remote Target',
-                ex: '>>HP-5, >>THP+10',
-                desc: 'Sends a value to a remote sheet area without changing the source formula.',
-              },
-              {
-                sym: '<>',
-                name: 'Make UI Construct / Tagged Alert',
-                ex: '<11"Dragonfire Critical!">, <^>',
-                desc: 'Renders a styled alert card modal using defined UI Make presets.',
-              },
-              {
-                sym: '<?>',
-                name: 'Make Interactive Decision Query',
-                ex: '<? "Choose tactic" | yes / no / #HP / [] >',
-                desc: 'Prompts the user with choice buttons or custom formula input.',
-              },
-              {
-                sym: '&',
-                name: 'Multi-Slot Separator',
-                ex: 'firebolt: 2d6 & "burn" 1d8',
-                desc: 'Runs multiple macro slots together. Address slots with .1, .2 (e.g. #(firebolt.2)).',
-              },
-              {
-                sym: '|',
-                name: 'Conditional Pipeline / Branch',
-                ex: 'd20 | 20 | <"Crit!">, this=0 | $',
-                desc: 'Branching and if-then evaluation.',
-              },
-              {
-                sym: '!',
-                name: 'Stepper Trigger Advancement',
-                ex: 'this: 10-1!',
-                desc: 'Advances stepper counter by 1 step. Can be self-altering.',
-              },
-              {
-                sym: '$',
-                name: 'Finished / Absolute Termination',
-                ex: 'this: 10-1! | this=0 | $',
-                desc: 'Marks a macro or expiring buff as finished and terminates execution.',
-              },
-              {
-                sym: '~',
-                name: 'External Context Scoping',
-                ex: '~target[#AC], ~companion[#HP]',
-                desc: 'Runs a calculation within the scope of an external target or companion.',
-              },
-              {
-                sym: 'this',
-                name: 'Self-Referencing Stepper Value',
-                ex: 'this: 10-1! | this=0 | $',
-                desc: 'Refers to the macro object itself in self-altering stepper countdowns.',
-              },
-              {
-                sym: '<^...>',
-                name: 'Make Buff in Buff Box',
-                ex: 'MageArmor:|<^{7:2}+4>|$, <^AC.Armor+4>, <^ENHANCEMENTBONUSTOAC+4>',
-                desc: 'Creates/toggles a named Buff Box effect or populates the 19x19 matrix directly. Append |$ to lock once.',
-              },
-            ].map((item, idx) => (
-              <div
-                key={idx}
-                className="p-3 rounded-lg border border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 space-y-1"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-base font-black text-amber-400 font-mono">
-                    {item.sym}
-                  </span>
-                  <span className="text-[10px] uppercase font-bold text-slate-400">
-                    {item.name}
-                  </span>
+          {/* Named Sigils & Verbs */}
+          <div className="space-y-2">
+            <h5 className="font-mono font-bold text-xs uppercase tracking-wider text-cyan-400">
+              Named Sigils &amp; Fields
+            </h5>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-xs font-mono">
+              {[
+                {
+                  sym: '=',
+                  verb: 'instate',
+                  sigilSyntax: '==[10+5]  ·  [10-!]=0',
+                  desc: 'Instates a neutral stored object (==) without printing, or compares/assigns values inside expressions (=).',
+                },
+                {
+                  sym: '<<',
+                  verb: 'populate',
+                  sigilSyntax: '<<[{d20}+#BAB+#STR]  ·  <<{firebreath}',
+                  desc: 'Pulls and populates the evaluated result directly over the field or macro box.',
+                },
+                {
+                  sym: '<>',
+                  verb: 'Elevate',
+                  sigilSyntax: '<>[{2d6}+5]  ·  <11"Dragonfire Crit!">',
+                  desc: 'Elevates the output into a popup card or styled UI Make alert modal.',
+                },
+                {
+                  sym: '><',
+                  verb: 'copulate',
+                  sigilSyntax: '>strength<+{strdmg}  ·  >{firebreath}<+{morefire}',
+                  desc: 'Combines/merges values into a writable sheet field or non-mutating object composition (>target<op value).',
+                },
+                {
+                  sym: '>>',
+                  verb: 'agitate',
+                  sigilSyntax: '>> (reserved remote activation)',
+                  desc: 'Reserved in Macroni 1.2 for future remote sheet activation; rejected safely if used as a live sigil.',
+                },
+                {
+                  sym: '!',
+                  verb: 'escalate',
+                  sigilSyntax: '<!>[6+!*1]',
+                  desc: 'Escalates a per-! hidden stepper counter (0 → 1 on first run) across repeated triggers.',
+                },
+                {
+                  sym: '?',
+                  verb: 'insinuate',
+                  sigilSyntax: '<?> "Fire or Ice"|"Fire"={fire}|"Ice"={ice}',
+                  desc: 'Insinuates an interactive decision query with clickable sigil-aware option buttons.',
+                },
+              ].map((item) => (
+                <div
+                  key={item.verb}
+                  className="p-3 rounded-lg border border-black/10 dark:border-white/10 bg-black/5 dark:bg-white/5 space-y-1.5 flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-lg font-black text-amber-400 font-mono">{item.sym}</span>
+                      <span className="text-xs uppercase font-bold px-2 py-0.5 rounded bg-cyan-950/60 text-cyan-300 border border-cyan-500/30">
+                        {item.verb}
+                      </span>
+                    </div>
+                    <div className="mt-1.5 p-1.5 rounded bg-black/30 text-emerald-300 text-[11px] break-all">
+                      <code>{item.sigilSyntax}</code>
+                    </div>
+                    <p className="text-[11px] opacity-80 font-sans mt-1.5 leading-snug">{item.desc}</p>
+                  </div>
                 </div>
-                <div className="p-1 rounded bg-black/20 text-cyan-300 text-xs">
-                  <code>{item.ex}</code>
-                </div>
-                <p className="text-[11px] opacity-75">{item.desc}</p>
-              </div>
-            ))}
+              ))}
+            </div>
+          </div>
+
+          {/* Example Macro Boxes: Calculate, Capsulate, Yapulate, {Xd8} */}
+          <div className="space-y-2">
+            <h5 className="font-mono font-bold text-xs uppercase tracking-wider text-amber-400">
+              Core Containers &amp; Example Macro Boxes
+            </h5>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-mono">
+              {[
+                {
+                  title: 'calculate',
+                  container: '[ ... ]',
+                  example: '<<[[10+5]+5*[10+1]]',
+                  desc: 'Strict PEMDAS calculation boundary. Brackets resolve innermost-outward; math outside [...] never evaluates.',
+                },
+                {
+                  title: '{capsulate}',
+                  container: '{ ... }',
+                  example: '<<[{firebreath}+{d8}]',
+                  desc: 'Capsulates saved objects ({firebreath}), 1-based arrays ({fire&2}), or fresh dice ({d20}) inside math or text.',
+                },
+                {
+                  title: '"Yapulate"',
+                  container: '" ... "',
+                  example: '<<[{d20}+#BAB+#STR] "to hit!"',
+                  desc: 'Prints flavor text or callout dialogue alongside rolls. Ignored cleanly inside pure math calls.',
+                },
+                {
+                  title: '{Xd8} Dice Shorthand',
+                  container: '{Xd8}',
+                  example: '<<[{2d8}+#STR] "radiant"',
+                  desc: 'Uncached fresh dice roll object ({d20}, {2d8}, {Xd8}). dN names are reserved strictly for live dice rolls.',
+                },
+              ].map((box) => {
+                const live = executeMacaroni(box.example, {
+                  character,
+                  formulaContext: context,
+                  uiPresets,
+                });
+                return (
+                  <div
+                    key={box.title}
+                    className="p-3 rounded-lg border border-amber-500/35 bg-slate-950/60 space-y-2"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-bold text-amber-300 text-xs">{box.title}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-200 border border-amber-500/30">
+                        {box.container}
+                      </span>
+                    </div>
+                    <div className="p-2 rounded bg-black/50 border border-slate-800 space-y-1">
+                      <div className="text-[10px] text-slate-400 uppercase">Example Macro Box</div>
+                      <div className="flex items-center justify-between gap-2">
+                        <code className="text-cyan-300 font-bold break-all">{box.example}</code>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTestExpression(box.example);
+                            setActiveTab('macros');
+                          }}
+                          className="px-2 py-0.5 rounded bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-[10px] shrink-0"
+                        >
+                          Try in Studio
+                        </button>
+                      </div>
+                      <div className="text-[10px] text-emerald-300">
+                        ➜ Output: <strong>{live.fullOutput || '(run to roll)'}</strong>
+                      </div>
+                    </div>
+                    <p className="text-[11px] opacity-80 font-sans leading-snug">{box.desc}</p>
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           {/* Standard Buffs & Conditions Macaroni Recipe Guide */}

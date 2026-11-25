@@ -1,10 +1,12 @@
 param(
-  [switch]$Server
+  [switch]$Server,
+  [switch]$ResetFirstRun
 )
 
 $ErrorActionPreference = 'Stop'
 $port = 38173
 $appDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
+$playtestStatePath = Join-Path $appDirectory 'playtest-state.json'
 $htmlPath = Join-Path $appDirectory 'index.html'
 $iconPath = Join-Path $appDirectory 'chirpy.ico'
 $runtimeManifestPath = Join-Path $appDirectory 'runtime-manifest.json'
@@ -274,6 +276,32 @@ if ($runtimeVersion -notmatch '^[0-9A-Za-z][0-9A-Za-z._+-]{0,63}$') {
   throw "The installed runtime manifest has an invalid release version: $runtimeManifestPath"
 }
 
+if ($ResetFirstRun) {
+  [System.IO.File]::WriteAllText($playtestStatePath, '{"inits":0}' + "`n", [System.Text.UTF8Encoding]::new($false))
+  Write-Output 'Reset playtest #inits to 0. Next launch will open the first-run warning in a private window.'
+  return
+}
+
+function Get-PF1MWPlaytestInits {
+  if (-not (Test-Path -LiteralPath $playtestStatePath -PathType Leaf)) {
+    return 0
+  }
+  try {
+    $parsed = Get-Content -LiteralPath $playtestStatePath -Raw | ConvertFrom-Json -ErrorAction Stop
+    if ([int]$parsed.inits -ge 1) { return 1 }
+    return 0
+  } catch {
+    return 0
+  }
+}
+
+function Set-PF1MWPlaytestInits {
+  param([int]$Value)
+  $clamped = if ($Value -ge 1) { 1 } else { 0 }
+  $payload = (@{ inits = $clamped; updatedAt = [DateTime]::UtcNow.ToString('o') } | ConvertTo-Json) + "`n"
+  [System.IO.File]::WriteAllText($playtestStatePath, $payload, [System.Text.UTF8Encoding]::new($false))
+}
+
 $useApiServer = Get-PF1MWUseApiServer
 
 if ($Server) {
@@ -321,4 +349,16 @@ if (-not $hostReady) {
   }
 }
 
-Start-Process -FilePath $browserPath -ArgumentList "--app=$address"
+$playtestInits = Get-PF1MWPlaytestInits
+$launcherCommandText = "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$PSCommandPath`""
+$encodedLauncherCmd = [System.Uri]::EscapeDataString($launcherCommandText)
+
+if ($playtestInits -eq 0) {
+  Set-PF1MWPlaytestInits -Value 1
+  $firstRunUrl = "${address}?playtest=1&firstRun=1&cmd=$encodedLauncherCmd"
+  $privateFlag = if ([System.IO.Path]::GetFileName($browserPath) -match 'chrome\.exe') { '--incognito' } else { '--inprivate' }
+  Start-Process -FilePath $browserPath -ArgumentList @($privateFlag, "--app=$firstRunUrl")
+} else {
+  $regularUrl = "${address}?playtest=1&kitInit=1&cmd=$encodedLauncherCmd"
+  Start-Process -FilePath $browserPath -ArgumentList "--app=$regularUrl"
+}

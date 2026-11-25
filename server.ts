@@ -1,5 +1,6 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
+import fs from 'node:fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { lockFileMiddleware, registerLockFileMime } from './server/lockFiles.ts';
@@ -26,6 +27,11 @@ async function startServer() {
   // source string itself at 5 MiB and never executes request content.
   app.use(express.json({ limit: '10mb' }));
   registerApiRoutes(app);
+
+  const playtestKitDir = path.join(__dirname, 'dist-standalone');
+  if (fs.existsSync(playtestKitDir)) {
+    app.use(express.static(playtestKitDir, { index: false }));
+  }
 
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({

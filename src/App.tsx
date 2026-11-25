@@ -40,19 +40,29 @@ import { ImageFileBrowserModal } from './components/tools/ImageFileBrowserModal'
 import { JournalModal } from './components/tools/JournalModal';
 import { SOTPanel } from './components/tools/SOTPanel';
 import { AICompanionModal } from './components/tools/AICompanionModal';
+import { PlaytestQuickGuideModal } from './components/tools/PlaytestQuickGuideModal';
 import { FloatingAlertCard } from './components/common/FloatingAlertCard';
 import { InteractiveQueryModal } from './components/common/InteractiveQueryModal';
 import { CrashRecoveryBanner } from './components/storage/CrashRecoveryBanner';
+import { probeAiServerStatus, type AiServerProbeStatus } from './engine/aiService';
+import { useStorage } from './storage/StorageContext';
+import { connectSheetToFolder } from './storage/connectFolder';
+import {
+  detectPlaytestRuntimeContext,
+  evaluatePlaytestFirstRunGate,
+} from './storage/playtestFirstRun';
 
 export interface AppProps {
   readOnly?: boolean;
 }
 
 function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
+  const storage = useStorage();
   const {
     character,
     layout,
     setLayout,
+    applyLoadedCharacter,
     autosaveState,
     showCrashRecoveredBanner,
     crashBannerMode,
@@ -66,6 +76,17 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
     importJSON,
     exportCSV,
   } = useCharacter();
+
+  const [initialGateDecision] = useState(() =>
+    evaluatePlaytestFirstRunGate(detectPlaytestRuntimeContext())
+  );
+  const [isPlaytestGuideOpen, setIsPlaytestGuideOpen] = useState(() => initialGateDecision.gate);
+  const [isPlaytestFirstRunGate, setIsPlaytestFirstRunGate] = useState(() => initialGateDecision.gate);
+  const [aiKitStatus, setAiKitStatus] = useState<AiServerProbeStatus>({
+    checked: false,
+    available: false,
+    configured: false,
+  });
 
   // Tool & Modal Visibility State
   const [isDiceOpen, setIsDiceOpen] = useState(false);
@@ -125,6 +146,16 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    void probeAiServerStatus().then((status) => {
+      if (!cancelled) setAiKitStatus(status);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Global Ctrl+X or Escape listener to close all open tools/modals
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -143,11 +174,14 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
         setIsJournalOpen(false);
         setIsSotPanelOpen(false);
         setIsAIToolOpen(false);
+        if (!isPlaytestFirstRunGate) {
+          setIsPlaytestGuideOpen(false);
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [isPlaytestFirstRunGate]);
 
   if (isReadOnlyMode) {
     return <PrintSheet isReadOnlySnapshot={true} />;
@@ -271,6 +305,11 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
             onOpenAITool={() => handleOpenAITool('permissions')}
             onOpenCompleteSheet={() => handleOpenAITool('lookup_sot')}
             onInstallAITool={handleInstallAITool}
+            aiKitStatus={aiKitStatus}
+            onOpenPlaytestGuide={() => {
+              setIsPlaytestFirstRunGate(false);
+              setIsPlaytestGuideOpen(true);
+            }}
             onOpenNewSheet={() => setIsNewSheetOpen(true)}
             onOpenImageBrowser={() =>
               handleOpenImageBrowser({
@@ -485,6 +524,34 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
         }}
         initialTab={aiToolInitialTab as any}
         theme={layout.theme}
+        aiKitStatus={aiKitStatus}
+      />
+
+      <PlaytestQuickGuideModal
+        isOpen={isPlaytestGuideOpen}
+        isFirstRunGate={isPlaytestFirstRunGate}
+        launcherCommand={initialGateDecision.launcherCommand}
+        aiKitStatus={aiKitStatus}
+        onClose={() => {
+          setIsPlaytestFirstRunGate(false);
+          setIsPlaytestGuideOpen(false);
+        }}
+        onOpenBible={() => {
+          setLayout((prev) => ({ ...prev, activeSheet: 4, showAllSheets: false }));
+          window.setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('pf1e:open-macroni-bible'));
+          }, 0);
+        }}
+        onOpenLoadout={() => setIsLoadoutOpen(true)}
+        onOpenAddClass={() => setIsAddClassOpen(true)}
+        onOpenSotPanel={() => setIsSotPanelOpen(true)}
+        onConnectSaveArea={() => {
+          void connectSheetToFolder(storage, character).then((res) => {
+            if (res.ok && res.action === 'loaded' && res.character) {
+              applyLoadedCharacter(res.character, { recoveredFromCrash: res.recoveredFromCrash });
+            }
+          });
+        }}
       />
 
       {floatingAlerts.map((alert) => (

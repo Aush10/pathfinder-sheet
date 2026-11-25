@@ -26,11 +26,13 @@ import {
   BookOpen,
   Cpu,
   Bug,
+  ShieldAlert,
 } from 'lucide-react';
 import { ThemeMode, SheetFont, WorkspaceLayout, PF1Character } from '../../types/character';
 import { GLYPH_STYLE_OPTIONS, getGlyphUrl, type GlyphStyle } from '../../data/glyphs';
 import { AppleEyeIcon } from '../common/AppleEyeIcon';
 import { useCharacter } from '../../context/CharacterContext';
+import type { AiServerProbeStatus } from '../../engine/aiService';
 
 interface BlueprintSidebarProps {
   layout?: WorkspaceLayout;
@@ -50,6 +52,8 @@ interface BlueprintSidebarProps {
   onOpenAITool?: () => void;
   onOpenCompleteSheet?: () => void;
   onInstallAITool?: () => void;
+  aiKitStatus?: AiServerProbeStatus;
+  onOpenPlaytestGuide?: () => void;
   onOpenNewSheet?: () => void;
   onOpenImageBrowser?: () => void;
   onExportStandaloneHTML?: () => void;
@@ -77,6 +81,8 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
   onOpenAITool,
   onOpenCompleteSheet,
   onInstallAITool,
+  aiKitStatus,
+  onOpenPlaytestGuide,
   onOpenNewSheet,
   onOpenImageBrowser,
   onExportStandaloneHTML: propOnExportStandaloneHTML,
@@ -378,13 +384,13 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
             </button>
           )}
 
-          {/* Standalone AI Companion Module Tool */}
+          {/* Standalone AI Companion Module Tool (Empty slot until AI test kit is installed) */}
           {character.installedModules?.aiCompanion ? (
             <div className="p-2.5 rounded-lg bg-gradient-to-r from-cyan-950/90 to-blue-950/90 border border-cyan-400/80 shadow-md col-span-2 space-y-2">
               <div
                 onClick={onOpenAITool}
                 className="flex items-center gap-2.5 cursor-pointer group"
-                title="AI Companion Tool: Plain English to DSL macros, in-character voice journal, pencil sketches & module permissions"
+                title="AI Companion Tool: Turn on listeners, Plain English to DSL macros, voice journal & module permissions"
               >
                 <Cpu className="w-4 h-4 text-cyan-400 group-hover:scale-110 transition-transform shrink-0" />
                 <div className="min-w-0 flex-1">
@@ -392,12 +398,18 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
                     <span className="text-xs font-bold font-mono text-cyan-200 group-hover:text-cyan-100">
                       AI Companion Tool
                     </span>
-                    <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                      ACTIVE
+                    <span
+                      className={`text-[9px] font-mono px-1.5 py-0.2 rounded border ${
+                        aiKitStatus?.available
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                          : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                      }`}
+                    >
+                      {aiKitStatus?.available ? 'API READY' : 'OFFLINE'}
                     </span>
                   </div>
                   <div className="text-[10px] font-mono text-cyan-400/80 truncate">
-                    DSL Macros • Voice • Pencil Sketches
+                    Listeners &amp; Blind Spots · Macros
                   </div>
                 </div>
               </div>
@@ -413,29 +425,49 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
                 </button>
               )}
             </div>
-          ) : (
-            onInstallAITool && (
-              <button
-                onClick={onInstallAITool}
-                className="p-2 rounded-lg bg-slate-900/60 hover:bg-cyan-950/40 border border-dashed border-slate-700 hover:border-cyan-500/50 text-left transition-colors flex items-center gap-2 col-span-2 group"
-                title="Install the standalone AI Companion module"
-              >
-                <Cpu className="w-4 h-4 text-slate-500 group-hover:text-cyan-400 shrink-0" />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-slate-400 group-hover:text-cyan-300">
-                      + Install AI Companion
-                    </span>
-                    <span className="text-[9px] font-mono px-1 rounded bg-slate-800 text-slate-500">
-                      OPTIONAL
-                    </span>
-                  </div>
-                  <div className="text-[10px] font-mono text-slate-500 truncate">
-                    Standalone Assistant Module
-                  </div>
+          ) : aiKitStatus?.available && onInstallAITool ? (
+            <button
+              onClick={onInstallAITool}
+              className="p-2 rounded-lg bg-slate-900/60 hover:bg-cyan-950/40 border border-dashed border-cyan-500/50 hover:border-cyan-400 text-left transition-colors flex items-center gap-2 col-span-2 group"
+              title="Install the standalone AI Companion module (listeners start OFF by default)"
+            >
+              <Cpu className="w-4 h-4 text-cyan-400 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-cyan-300">
+                    + Install AI Companion
+                  </span>
+                  <span className="text-[9px] font-mono px-1 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/30">
+                    KIT READY
+                  </span>
                 </div>
-              </button>
-            )
+                <div className="text-[10px] font-mono text-slate-400 truncate">
+                  Listeners OFF by default
+                </div>
+              </div>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onOpenPlaytestGuide}
+              className="p-2 rounded-lg bg-slate-950/50 hover:bg-slate-900 border border-dashed border-slate-700/90 text-left transition-colors flex items-center gap-2 col-span-2 group"
+              title="Empty AI Companion slot — AI is not included in the Playtest Kit. Click for AI Test Kit & API Keyhole instructions."
+            >
+              <Cpu className="w-4 h-4 text-slate-600 group-hover:text-amber-400 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-mono font-semibold text-slate-500 group-hover:text-slate-300">
+                    AI Companion Slot
+                  </span>
+                  <span className="text-[9px] font-mono px-1 rounded bg-slate-900 text-slate-500 border border-slate-800">
+                    EMPTY
+                  </span>
+                </div>
+                <div className="text-[10px] font-mono text-slate-500 truncate">
+                  No AI Test Kit installed
+                </div>
+              </div>
+            </button>
           )}
 
           {/* CMBt: Combat Maneuvers & Grapple Track Tool */}
@@ -517,6 +549,17 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
               >
                 <FileCode className="w-3.5 h-3.5 text-emerald-400 group-hover:scale-110 transition-transform" />
                 <span>Export Standalone HTML (.html)</span>
+              </button>
+            )}
+            {onOpenPlaytestGuide && (
+              <button
+                type="button"
+                onClick={onOpenPlaytestGuide}
+                className="py-1.5 px-2 rounded-lg bg-amber-950/70 hover:bg-amber-900 border border-amber-500/50 hover:border-amber-400 text-amber-200 font-bold flex items-center justify-center gap-1.5 transition-colors col-span-2 shadow-xs group"
+                title="Open Autosheet Playtest Kit Quick Guide, Safety Briefing, Kits & Windows Shortcuts"
+              >
+                <ShieldAlert className="w-3.5 h-3.5 text-amber-400 group-hover:scale-110 transition-transform" />
+                <span>Playtest Kit Quick Guide o7</span>
               </button>
             )}
             <a

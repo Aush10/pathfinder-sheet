@@ -85,6 +85,101 @@ export const DEFAULT_AI_MODULE_SETTINGS: AIModuleSettings = {
   defaultSketchQuality: 'tasteful',
 };
 
+/**
+ * Playtest-kit default: all AI listeners & sheet blind spots start OFF so testers
+ * explicitly enable only the listeners they want in the AI Companion Tool.
+ */
+export function createListenersOffAiSettings(): AIModuleSettings {
+  return {
+    ...DEFAULT_AI_MODULE_SETTINGS,
+    isInstalled: true,
+    allowedFields: {
+      hp: false,
+      conditions: false,
+      currency: false,
+      inventory: false,
+      notes: false,
+      journal: false,
+      customFormulas: false,
+      coreIdentity: false,
+      abilities: false,
+      armorClass: false,
+      saves: false,
+      attacksAndWeapons: false,
+      armorAndGear: false,
+      actionsAndResources: false,
+      feats: false,
+      skills: false,
+      spellsAndMagic: false,
+      companionsAndMount: false,
+      bioAndProfile: false,
+    },
+    allowedModules: {
+      stepper: false,
+      buffBox: false,
+      dslStudio: false,
+      addClass: false,
+      journalVoice: false,
+      journalSketch: false,
+      scratchpad: false,
+      sotCatalogue: false,
+      deckTool: false,
+      xdxTool: false,
+      cmbTool: false,
+      pointBuy: false,
+      loadoutTool: false,
+      imageBrowser: false,
+    },
+  };
+}
+
+export interface AiServerProbeStatus {
+  checked: boolean;
+  available: boolean;
+  configured: boolean;
+  provider?: string;
+  models?: string[];
+}
+
+export async function probeAiServerStatus(timeoutMs = 1500): Promise<AiServerProbeStatus> {
+  if (typeof fetch !== 'function') {
+    return { checked: true, available: false, configured: false };
+  }
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer =
+    controller && typeof setTimeout === 'function'
+      ? setTimeout(() => controller.abort(), timeoutMs)
+      : undefined;
+  try {
+    const res = await fetch('/api/openai/status', {
+      method: 'GET',
+      ...(controller ? { signal: controller.signal } : {}),
+    });
+    if (!res.ok) {
+      return { checked: true, available: false, configured: false };
+    }
+    const payload = (await res.json()) as {
+      configured?: unknown;
+      provider?: unknown;
+      models?: unknown;
+    };
+    const configured = Boolean(payload?.configured);
+    return {
+      checked: true,
+      available: configured,
+      configured,
+      provider: typeof payload?.provider === 'string' ? payload.provider : undefined,
+      models: Array.isArray(payload?.models)
+        ? payload.models.filter((m): m is string => typeof m === 'string')
+        : undefined,
+    };
+  } catch {
+    return { checked: true, available: false, configured: false };
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 /** Historical seed content retained only for migration/debugging; it is never a blank-sheet fallback. */
 const LEGACY_DEMO_SOT_CATALOGUE: SOTCatalogueData = {
   weblinks: [

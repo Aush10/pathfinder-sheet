@@ -70,6 +70,7 @@ import {
   type PendingCrashSnapshot,
 } from '../storage/characterState';
 import { setActiveHostSrdOwner } from '../engine/sotEngine';
+import { createListenersOffAiSettings } from '../engine/aiService';
 import { AutosaveState, useAutosave } from '../storage/useAutosave';
 
 export interface CharacterContextValue {
@@ -314,13 +315,19 @@ export const CharacterProvider: React.FC<CharacterProviderProps> = ({
   }, []);
 
   const installAITool = useCallback(() => {
-    setCharacter((prev) => ({
-      ...prev,
-      installedModules: {
-        ...prev.installedModules,
-        aiCompanion: true,
-      },
-    }));
+    setCharacter((prev) => {
+      const existingSettings = prev.installedModules?.aiSettings;
+      return {
+        ...prev,
+        installedModules: {
+          ...prev.installedModules,
+          aiCompanion: true,
+          aiSettings: existingSettings?.isInstalled
+            ? existingSettings
+            : createListenersOffAiSettings(),
+        },
+      };
+    });
   }, []);
 
   const exportStandaloneHTML = useCallback(async () => {

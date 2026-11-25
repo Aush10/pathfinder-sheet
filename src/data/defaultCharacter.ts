@@ -306,9 +306,9 @@ export function createBlankCharacter(): PF1Character {
     },
     activeStorageTab: 'worn',
     installedModules: {
-      aiCompanion: true,
+      aiCompanion: false,
       aiSettings: {
-        isInstalled: true,
+        isInstalled: false,
         allowedFields: {
           hp: true,
           conditions: true,
