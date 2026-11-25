@@ -14,8 +14,6 @@ Also exported:
 - `computeNaiveBuffTotals` — sums without stacking. Nothing outside this file imports it.
 - `SIZE_MODIFIERS` — used inside the derived pass.
 
-`DSLBibleDrawer` calls `computeDerivedCharacterStats` itself. That drawer is not mounted (part 4).
-
 ## `formula.ts`
 
 `buildFormulaContext` fills names the macros can see: level, BAB, caster level, ability scores and mods, HP, AC if `derived` was passed, saves, CMB/CMD, skills, custom objects, XDX macros, and resource pools. Callers that omit `derived` use raw ability sums minus condition penalties, not the stacked buff totals.

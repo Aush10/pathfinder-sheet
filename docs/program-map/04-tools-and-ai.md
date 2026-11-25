@@ -42,17 +42,24 @@ Single-page SOT snapshots call `POST /api/sot/fetch-readonly-page` (about 700–
 
 ## Complete Sheet
 
-`CompleteSheetChatWindow.sendTurn` calls `completeSheetConverse` and, only when `appliedActions.length > 0`, replaces the character (`onUpdateCharacter(() => result.updatedCharacter)`). A quick SOT upload in the chat writes `sotCatalogue.overridePages` directly after `sanitizeSrdDocument`. Typing `tap test` sets `tapTest: { step, budget }` on later turns.
+`CompleteSheetChatWindow.sendTurn` calls `completeSheetConverse` and, only when
+`appliedActions.length > 0`, replaces the character. A quick SOT upload in the
+chat writes `sotCatalogue.overridePages` directly after `sanitizeSrdDocument`.
+Typing `tap test` sets `tapTest: { step, budget }` on later turns.
 
 The client does **not** POST the whole `PF1Character`. `completeSheetConverse` sends (`aiService.ts` around 3022–3033):
 
 - `conversation` (role and text)
 - `characterSummary` (a text digest built on the client)
-- `sotOverridePages` and `sotWeblinks` (full saved pages and links, unless `allowedModules.sotCatalogue` is false, in which case `buildSOTContextForAI` returns empty)
+- `sotOverridePages` / `sotDocuments` and `sotWeblinks` for server-side
+  classification, indexing, and bounded excerpt selection
 - `allowedFields`
 - optional `tapTest`
 
-The server returns `{ rawText }`. The client parses JSON and calls `runCompleteSheetWrites`, which calls `applyStructuredSheetUpdates` and the English parser, then `filterTapTestUpdates` when a tap-test step is active.
+The server selects only index-matched or explicit excerpts within its 12,000
+character SOT budget and returns `{ rawText }`. The client parses JSON and calls
+`runCompleteSheetWrites`, `applyStructuredSheetUpdates`, and the English parser,
+then `filterTapTestUpdates` for an active tap-test step.
 
 ## HTTP API
 
@@ -62,8 +69,8 @@ Registered in `server/routes.ts` 286–298. There is no session or bearer check.
 | --- | --- | --- | --- |
 | `GET /api/openai/status` | — | provider, whether a key is set, model list | Public |
 | `POST /api/openai/generate` | `prompt` (required), `systemInstruction`, `responseMimeType`, `urls` | `{ text }` | At most 20 URLs are appended to the prompt (`routes.ts` 31–34). If URLs are present the handler sets `config.tools = [{ urlContext: {} }]`. `generateContentWithFallback` never reads `tools` or `responseMimeType`; it only sends chat `messages` (`openai.ts`). |
-| `POST /api/openai/lookup` | `query`, `category`, `modifiers`, `sotOverridePages`, `sotWeblinks`, `characterSummary` | `{ text, sourceUrls }` | System prompt `LOOKUP_SYSTEM_INSTRUCTION` (`prompts.ts`). Full SOT text via `formatOverridePages`. |
-| `POST /api/openai/complete-sheet` | conversation, summary, SOT pages, weblinks, `allowedFields`, `tapTest` | `{ rawText }` | System prompt from `buildCompleteSheetSystemInstruction`, including `formatBlindSpots` and `formatCompleteSheetOverridePages`. |
+| `POST /api/openai/lookup` | `query`, `category`, `modifiers`, SOT documents, links, `characterSummary` | `{ text, sourceUrls }` | System prompt `LOOKUP_SYSTEM_INSTRUCTION` with bounded excerpts from `formatOverridePages`. |
+| `POST /api/openai/complete-sheet` | conversation, summary, SOT documents, links, `allowedFields`, `tapTest` | `{ rawText }` | Bounded excerpts from `formatCompleteSheetOverridePages`, plus the request allowlist and blind-spot instructions. |
 | `POST /api/sot/fetch-readonly-page` | `{ url }` | sanitized HTML/text and an audit | Requires `http:` or `https:`. Rejects strings that look like webhooks. 7s timeout. Caps HTML and text length. Strips script, iframe, style, nav, and footer. **No host allowlist**: the server GETs the URL the browser sends (`routes.ts` handler `handleSotFetchReadonlyPage`). |
 
 `server/openai.ts` POSTs `https://api.openai.com/v1/chat/completions`. Model order is `OPENAI_MODEL` if set, then `gpt-4o-mini`, then `gpt-4o` (1–6). A failed model is retried on the next name. Tests in `server/openai.test.ts` lock this to the OpenAI host (a key error does not switch providers).

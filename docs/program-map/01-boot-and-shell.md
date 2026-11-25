@@ -10,7 +10,9 @@
 2. Express listens on **3000**, bound to `0.0.0.0`.
 3. Middleware order: lock-file MIME registration, `lockFileMiddleware`, `express.json({ limit: '10mb' })`, `registerApiRoutes`, then either Vite or static files.
 
-`server/lockFiles.ts` forces `Content-Type: text/plain` for paths ending in `.lock`. The comment says AI Studio polls sibling lock files. The repo's `bun.lock` is a package-manager file, not one of those poll files. The same middleware is installed again as the Vite plugin `serve-lock-files` (`vite.config.ts` 13–17).
+`server/lockFiles.ts` forces `Content-Type: text/plain` for paths ending in
+`.lock`. The same middleware is installed as the Vite plugin
+`serve-lock-files`.
 
 Non-production uses Vite `middlewareMode` and `appType: 'spa'`. Production serves `dist/` and falls through `app.get('*all', ...)` to `dist/index.html` (`server.ts` 23–34). `npm run build` writes that `dist/`. `npm run preview` is Vite's own preview server, not `server.ts`, so it does not mount the API.
 

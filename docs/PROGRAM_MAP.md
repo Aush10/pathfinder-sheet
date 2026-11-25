@@ -83,9 +83,10 @@ sequenceDiagram
   participant Model as OpenAI chat completions
   participant Writes as applyStructuredSheetUpdates
 
-  UI->>Client: conversation, character summary, SOT pages, weblinks, allowedFields, optional tapTest
+  UI->>Client: conversation, character summary, SOT documents, links, fields, optional tapTest
   Client->>Route: same JSON, not the whole PF1Character
-  Route->>Model: system prompt plus full SOT text plus history
+  Route->>Route: select indexed/bounded SOT excerpts within the 12k character budget
+  Route->>Model: system prompt plus bounded SOT evidence plus capped history
   Model-->>Route: raw text
   Route-->>Client: rawText
   Client->>Writes: parse JSON sheetUpdates on the local character
@@ -104,7 +105,7 @@ aliases are not registered. See [part 4](program-map/04-tools-and-ai.md).
 | Dev app | `npm run dev` serves the SPA and API on port 3000. `tsc --noEmit` and `vite build` succeed. | One JS chunk is about 1.1 MB. Production mode expects a prebuilt `dist/`. | No request auth on `/api`. |
 | Sheet play | Pages 1, 2 (actions/skills), 3 (bio/storage), and 4 (formula studio) edit one `PF1Character`. Combat numbers on screen come from `computeDerivedCharacterStats`. | Spell-related controls and remaining Spell Book/Journal integration are still staged across the character model and UI. | Complete the deferred templates and remaining playtest polish. |
 | Tools | Dice, point buy, buff box, deck, XDX, Macro Debug, loadout, Class Architect ("Add Class"), Character Matrix, SOT Panel, CMB, Journal, new sheet, image browser, and AI companion. | The SOT and Matrix surfaces continue to depend on imported structured source data. | Final release playtest and deferred templates. |
-| AI | Complete Sheet proposes JSON; the client applies it through an allowlist and blind spots. Tap Test constrains that apply path and is tested. | Every saved SOT page's full text goes out on lookup and Complete Sheet. `/api/sot/fetch-readonly-page` fetches whatever `http(s)` URL the client sends. `urlContext` is set on generate and ignored by the OpenAI caller. | Compact retrieval. A host allowlist on the fetch proxy. |
+| AI | Complete Sheet proposes JSON; the client applies it through an allowlist and blind spots. Tap Test constrains that apply path and is tested. Bounded SOT retrieval limits model context. | `/api/sot/fetch-readonly-page` fetches whatever `http(s)` URL the client sends. `urlContext` is set on generate and ignored by the OpenAI caller. | A host allowlist on the fetch proxy. |
 | Save | With a granted folder, `character.json` round-trips. Connect on an empty folder writes the current named sheet and a matching crash copy. | Startup still paints `localStorage` first. A crash whose checksum differs from the named save still wins. SRD "host" copies are `localStorage`, and `SRD/` only gets `README.txt`. | Image bytes and SRD originals in the tree. Re-prompt of a stored handle before any await. |
 | Desktop runtime | `Start-PF1MW.ps1` can serve a standalone HTML file in an app window when the files it requires are present. | `Package-PF1MW.ps1` puts `runtime-manifest.json`, a memory-bank template, and AI Studio PNGs in the zip. `Install-PF1MW.ps1` rejects those paths. `Install-PF1MW-Local.ps1` does not copy the files `Start-PF1MW.ps1` requires. | One installer path that matches the packager. |
 
