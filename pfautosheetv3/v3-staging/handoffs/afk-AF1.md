@@ -4,7 +4,7 @@
 
 Phase 1 / AF1 (B1, B2, B9, I1, I2, B4). Named saves win. Crash recovery only applies when it is the same `characterId` and newer, and then only after a confirm. Autosave is a serialized queue with a 2.5s debounce. Crash writes skip projections after the first crash snapshot exists. Host SRDs are scoped per character. Blank sheets get an empty `sotCatalogue`. Quota errors on the session cache are toasted instead of swallowed.
 
-B1 fixture used: `C:\Users\Austin\Documents\test folder\pfautotest4\AIgamesheet\pfmusers\Crash\character.json` (Control / aush, all ability bases 0, savedAt 2026-11-24T08:57:10.375Z). Healthy comparison: `pfmodulartest` Crash Thorne 15 / 14 / 12 / 10 / 8 / 10.
+B1 fixture used: `<user-home>\Documents\test folder\pfautotest4\AIgamesheet\pfmusers\Crash\character.json` (Control / aush, all ability bases 0, savedAt 2026-11-24T08:57:10.375Z). Healthy comparison: `pfmodulartest` Crash Thorne 15 / 14 / 12 / 10 / 8 / 10.
 
 ## Files altered
 

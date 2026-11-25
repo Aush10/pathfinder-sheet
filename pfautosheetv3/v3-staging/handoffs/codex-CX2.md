@@ -13,7 +13,7 @@ Each call deterministically emits the required four artifacts:
 
 The pure classifier uses the approved header rules: BAB/Base Attack Bonus, Fort/Ref/Will aliases, Level, and HD only when it contains level counts. The first full class-shaped table wins `class-grid`; numeric extras remain named columns. Stacked PFSRD spell headers are flattened to `spd_*` / `sk_*`, omit the group row, and classify as an `extended-grid` when level-keyed. Other tables cannot become a class grid.
 
-The source engine was subsequently located at `C:\Users\Austin\Documents\lazy as fuck\lazyafpf1builds\sheet-engine`. CX2 now mirrors its important ingest contract: heading-aware sections/TOC, stable table markers, raw span-preserving table cells plus expanded grids, link records, keyword provenance-ready output, and a local retrieval index. The staging implementation remains dependency-free; AF2 may promote the source engine's Cheerio/Turndown/MiniSearch implementations instead if it brings their dependencies into the server bundle and preserves CX2's PF1-specific classification contract.
+The source engine was subsequently located at `<user-home>\Documents\lazy as fuck\lazyafpf1builds\sheet-engine`. CX2 now mirrors its important ingest contract: heading-aware sections/TOC, stable table markers, raw span-preserving table cells plus expanded grids, link records, keyword provenance-ready output, and a local retrieval index. The staging implementation remains dependency-free; AF2 may promote the source engine's Cheerio/Turndown/MiniSearch implementations instead if it brings their dependencies into the server bundle and preserves CX2's PF1-specific classification contract.
 
 ## Files created
 

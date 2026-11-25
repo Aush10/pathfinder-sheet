@@ -7,6 +7,8 @@ coverage/
 *.log
 .env*
 !.env.example
+*.sec.pgp
+*.sec.gpg
 .vscode/
 AIgamesheet/
 pfautosheetv3/

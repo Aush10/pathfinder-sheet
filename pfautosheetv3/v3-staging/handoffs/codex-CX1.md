@@ -37,7 +37,7 @@ The CX2 preamble is now retained as its own section, fixing the source-document 
 
 1. AF7 must promote the adapter into `src/engine/sotEngine.ts` and replace the legacy line/prose grid parser. `parseSrdSkillsAndProficiencies` in `src/engine/aiService.ts` should adopt the scoped parser rules from this adapter.
 2. The current `ExtractedSrdClassData` and `ClassGridRow` types cannot represent arbitrary named columns. CX3 owns the generic Matrix grid model and should map `columns`/`values` losslessly there.
-3. CX2's staging parser was improved after locating `C:\Users\Austin\Documents\lazy as fuck\lazyafpf1builds\sheet-engine`; AF2 should prefer that engine's Cheerio/Turndown/MiniSearch implementation if its dependencies are adopted, while retaining the PF1 classification layer.
+3. CX2's staging parser was improved after locating `<user-home>\Documents\lazy as fuck\lazyafpf1builds\sheet-engine`; AF2 should prefer that engine's Cheerio/Turndown/MiniSearch implementation if its dependencies are adopted, while retaining the PF1 classification layer.
 4. No source files under `src/` were changed; promotion remains AF7's responsibility.
 
 ## Do not include secrets

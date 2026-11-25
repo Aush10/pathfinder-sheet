@@ -6,7 +6,7 @@ Sources:
 - PAut-3's internals notes: `Paut-3notes.txt`
 - The earlier audit: `botjot.txt`
 
-Repo: `C:\Users\Austin\Documents\PROJECTS\pathfinder-1e-modular-workspace`, shortened to APP below. GitHub: Aush10/pathfinder-sheet.
+Repo: `<user-home>\Documents\PROJECTS\pathfinder-1e-modular-workspace`, shortened to APP below. GitHub: Aush10/pathfinder-sheet.
 
 Labels:
 - **[confirmed]**: verified in code or run on real data.

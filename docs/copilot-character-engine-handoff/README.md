@@ -26,7 +26,7 @@ The existing folder-storage adapter has not yet been reliable enough. Treat repa
 
 ## Current repository
 
-`C:\Users\Austin\Documents\PROJECTS\pathfinder-1e-modular-workspace`
+`<user-home>\Documents\PROJECTS\pathfinder-1e-modular-workspace`
 
 Useful existing code:
 
@@ -37,7 +37,7 @@ Useful existing code:
 
 ## Reference skeleton
 
-`C:\Users\Austin\Documents\test folder\pf1 agent skeleton\sheet-engine\sheet-engine`
+`<user-home>\Documents\test folder\pf1 agent skeleton\sheet-engine\sheet-engine`
 
 It contains a useful prototype for deterministic ingestion, provenance checks, and a build engine. Treat it as reference architecture; do not copy it wholesale or replace current application behavior without adapting it to this project.
 

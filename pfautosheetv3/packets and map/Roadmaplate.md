@@ -1,7 +1,7 @@
 # Roadmaplate.md — PF1 Autosheet v3 (version 1.3.0)
 
 **Status: DRAFT FOR AUSTIN'S APPROVAL.** Nothing has been delegated. No repo files have been changed.
-Repo: `Aush10/pathfinder-sheet`. Local copy: `C:\Users\Austin\Documents\PROJECTS\pathfinder-1e-modular-workspace` (called **APP** below).
+Repo: `Aush10/pathfinder-sheet`. Local copy: `<user-home>\Documents\PROJECTS\pathfinder-1e-modular-workspace` (called **APP** below).
 Inputs: `combined-issues.md` (main), `pfautopt5.txt` (Austin's spec, the source of truth for notation), `Paut-3notes.txt` (root causes), `botjot.txt` (audit), and Austin's 2026-11-22 table-classification notes (t33u, t34u stacked PFSRD spell headers). Written 2026-11-22 (CT); revised later the same evening for table kinds and stacked spell headers.
 
 **Open decisions (full list at the end):** Matrix row cap (20 vs 40); count after `fighter4`; spells merge; templates deferred?; SRD originals in the save tree, and which pf1mod folder is canonical; scratchpad directives vs Macaroni; whether the old SOT UI in AICompanionModal stays; installer in 1.3.0?; staging gitignore; two maybe-orphans; hidden caster tables in 1.3.0?; extended-grid row count for prestige classes; two class-shaped tables in one SRD; HD as a Level synonym vs a Hit Dice column.

@@ -2,6 +2,11 @@
 
 This guide explains how to share your character sheet as a single self-contained HTML file and how to host it on the web for free.
 
+Use the generic build output for public hosting. A character export embeds the
+active sheet and layout. Give a character export only to its intended recipients
+after reviewing the sheet for private content, including notes, portraits and
+saved rule material.
+
 ---
 
 ## 1. How the Standalone HTML File Works
@@ -22,27 +27,22 @@ When you click **"Export Standalone HTML (.html)"** (found in the top navigation
 If you'd like your friends to bookmark a web URL rather than downloading files, you can host the application in under 2 minutes:
 
 ### Option A: Netlify Drop (Easiest — No Git or Coding Required)
-1. In your project, run `npm run build:standalone` (or download the exported `.html`).
-2. Rename the exported file or `dist-standalone/index.html` to `index.html`.
-3. Put `index.html` inside an empty folder called `my-character-sheet`.
-4. Go to **[app.netlify.com/drop](https://app.netlify.com/drop)** in your web browser.
-5. Drag and drop the `my-character-sheet` folder into the Netlify Drop box.
-6. Netlify will immediately provide a live `https://your-app-name.netlify.app` link that you can share with your gaming group.
+1. In your project, run `npm run build:standalone`.
+2. Copy `dist-standalone/index.html` into an empty folder called `my-character-sheet`.
+3. Go to **[app.netlify.com/drop](https://app.netlify.com/drop)** in your web browser.
+4. Upload the `my-character-sheet` folder and share the deployment link with your group.
 
 ---
 
 ### Option B: GitHub Pages (Free Permanent Hosting)
-1. Create a free repository on GitHub (e.g. `pathfinder-sheet`).
-2. Push your codebase or upload the `dist-standalone/index.html` directly to the repository as `index.html`.
-3. In GitHub, go to **Settings > Pages**.
-4. Under **Branch**, select `main` (root) and click **Save**.
-5. Within 60 seconds, GitHub will publish your site at `https://<your-username>.github.io/<repo-name>/`.
+Run `npm run build:standalone` and deploy the `dist-standalone` output from a
+dedicated Pages branch or workflow. Use the deployment URL shown by GitHub Pages.
 
 ---
 
 ### Option C: Cloudflare Pages
 1. Go to the Cloudflare dashboard > **Workers & Pages** > **Create application** > **Pages**.
-2. Connect your Git repository or choose **Upload assets** and drop the `dist-standalone` folder.
+2. Configure your Git build to publish `dist-standalone`, or choose **Upload assets** and upload that folder.
 3. Your sheet will be instantly deployed across Cloudflare's global edge network with automatic HTTPS.
 
 ---

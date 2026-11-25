@@ -1,12 +1,12 @@
 PAUT-3 NOTES - internals side of pfautopt5 (playtest 11-22)
 Written by PAut-3, Sun Nov 22 2026, about 5:30 PM CT
-Matches: C:\Users\Austin\Documents\notes 2\pfautopt5.txt
+Matches: <user-home>\Documents\notes 2\pfautopt5.txt
 Code basis: copy of APP taken at 1 PM today. The only commit since then touched a notes txt, so the
 code below is current.
 
 Short names
-  APP  = C:\Users\Austin\Documents\PROJECTS\pathfinder-1e-modular-workspace
-  LAZY = C:\Users\Austin\Documents\lazy as fuck\lazyafpf1builds
+  APP  = <user-home>\Documents\PROJECTS\pathfinder-1e-modular-workspace
+  LAZY = <user-home>\Documents\lazy as fuck\lazyafpf1builds
 Labels: CONFIRMED = I read the code path or ran it on real data. LIKELY = the code strongly
 suggests it but I didn't reproduce it. GUESS = a plausible explanation that still needs a check.
 

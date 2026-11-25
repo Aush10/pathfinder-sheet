@@ -57,7 +57,7 @@ through `handleRollFormula`.
 
 Header (`src/components/workspace/WorkspaceHeader.tsx`): collapse sidebar, open the image browser, new sheet, and `SaveButton`.
 
-Sidebar tools that do call through: deck, XDX, macro debug ("Trace"), point buy, buff box, journal, AI companion, Complete Sheet (opens the AI modal on the lookup tab), CMB, image browser, loadout, Add Class, new sheet, standalone HTML export, a download link to `/pathfinder_sheet_latest.zip`, JSON export/import, CSV, and print view (`BlueprintSidebar.tsx` 277–540).
+Sidebar tools include deck, XDX, macro debug ("Trace"), point buy, buff box, journal, AI companion, Complete Sheet, CMB, image browser, loadout, Add Class, new sheet, standalone HTML export, the GitHub source link, JSON export/import, CSV, and print view (`BlueprintSidebar.tsx`).
 
 Macaroni UI events `macaroni:alert` and `macaroni:query` are listened for on `window` and shown as `FloatingAlertCard` and `InteractiveQueryModal` (`src/App.tsx` 100–120, 489–514).
 

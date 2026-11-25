@@ -520,13 +520,14 @@ export const BlueprintSidebar: React.FC<BlueprintSidebarProps> = ({
               </button>
             )}
             <a
-              href="/pathfinder_sheet_latest.zip"
-              download="pathfinder_sheet_latest.zip"
+              href="https://github.com/Aush10/pathfinder-sheet"
+              target="_blank"
+              rel="noopener noreferrer"
               className="py-1.5 px-2 rounded-lg bg-cyan-950/70 hover:bg-cyan-900 border border-cyan-500/50 hover:border-cyan-400 text-cyan-300 font-bold flex items-center justify-center gap-1.5 transition-colors col-span-2 shadow-xs group text-center"
-              title="Download entire project source code zip to sync directly into your local folder or GitHub"
+              title="Open the project source and release instructions on GitHub"
             >
-              <Download className="w-3.5 h-3.5 text-cyan-400 group-hover:scale-110 transition-transform" />
-              <span>Download Full Source Code (.zip)</span>
+              <FileCode className="w-3.5 h-3.5 text-cyan-400 group-hover:scale-110 transition-transform" />
+              <span>Source Code on GitHub</span>
             </a>
             <button
               onClick={onExportJSON}

@@ -7,17 +7,17 @@ Scope / how this was done
   test suites, ran a type-check and a build, and started the dev server once on my own machine
   (Linux, Node 24). I did not click through the UI in a browser. Every claim below comes from a file
   I read or a command I ran. Where something is a prediction, I say so.
-- Not inspected: C:\Users\Austin\Documents\pf1mod and C:\Users\Austin\Documents\PROJECTS\pf1mod (not
+- Not inspected: <user-home>\Documents\pf1mod and <user-home>\Documents\PROJECTS\pf1mod (not
   copied over).
-- C:\Users\Austin\Documents\test folder\pf1 agent skeleton\sheet-engine came over EMPTY. The Copilot
+- <user-home>\Documents\test folder\pf1 agent skeleton\sheet-engine came over EMPTY. The Copilot
   handoff doc points to ...\pf1 agent skeleton\sheet-engine\sheet-engine (a nested folder). That
   nested folder either didn't copy or only held node_modules. Worth a look.
 - Nothing was deleted or changed on your PC.
 
 Short names used below
-  APP  = C:\Users\Austin\Documents\PROJECTS\pathfinder-1e-modular-workspace
-  LAZY = C:\Users\Austin\Documents\lazy as fuck\lazyafpf1builds
-  SKEL = C:\Users\Austin\Documents\test folder\pf1 agent skeleton
+  APP  = <user-home>\Documents\PROJECTS\pathfinder-1e-modular-workspace
+  LAZY = <user-home>\Documents\lazy as fuck\lazyafpf1builds
+  SKEL = <user-home>\Documents\test folder\pf1 agent skeleton
 
 
 ======================================================================
@@ -385,8 +385,8 @@ Build output and binary artifacts
 - APP\New_Adventurer_pf1e_sheet.json: a sample, not loaded by code.
 - APP\.env.local: exists and holds OPENAI_API_KEY (gitignored by ".env*"). Value not copied here.
   APP\.env.example keys: OPENAI_API_KEY (placeholder), OPENAI_MODEL (commented), APP_URL.
-- Data duplicates: C:\Users\Austin\Documents\pf1mod and
-  C:\Users\Austin\Documents\PROJECTS\pf1mod are two copies of the homebrew *.srd.json set plus the
+- Data duplicates: <user-home>\Documents\pf1mod and
+  <user-home>\Documents\PROJECTS\pf1mod are two copies of the homebrew *.srd.json set plus the
   Hanzo/Kirin/test_character sheets. Pick one canonical folder before ingestion work.
 - SKEL\sheet-engine: empty in my copy (see Scope). LAZY\sheet-engine is the surviving copy.
 
@@ -448,7 +448,7 @@ LAZY
 - sheet-engine\README.md (11-11): the engine's design and integration notes. Still needed, but
   update its "Plugging into Complete Sheet" section for the current sotContext.ts.
 
-SKEL (C:\Users\Austin\Documents\test folder\pf1 agent skeleton)
+SKEL (<user-home>\Documents\test folder\pf1 agent skeleton)
 - the problem.txt (11-11): problem statement (full SOT per turn, token blowup). Still accurate;
   fold it into the roadmap, then archive.
 - 1.Send no rules text for structured.txt (11-11): design principles (structured data, step

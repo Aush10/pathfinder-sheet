@@ -5,7 +5,7 @@ Use this before any SOT ingest or minimization work. The local `AIgamesheet` tre
 ## Repo
 
 - GitHub: https://github.com/Aush10/pathfinder-sheet
-- Local checkout, if present: `C:\Users\Austin\Documents\PROJECTS\pathfinder-1e-modular-workspace`
+- Local checkout, if present: `<user-home>\Documents\PROJECTS\pathfinder-1e-modular-workspace`
 - Read first: `docs/SAVE_STATE_DIAGNOSIS.md` on `main` (merged in [PR #4](https://github.com/Aush10/pathfinder-sheet/pull/4)). Also read `docs/STORAGE_TREE.md`. The Copilot handoff and `STORAGE_TREE.md` do not describe the same system, and the running app matches neither completely. When they conflict, trust the diagnosis.
 - Leave alone: any local uncommitted change in `src/components/tools/AICompanionModal.tsx`. It is pre-existing and not part of this job.
 

@@ -38,7 +38,7 @@ Connection layer: server, API and AI routes, storage and file IO, folder connect
 
 **Before connecting work (AF7), you must:**
 
-1. Read the **full** Roadmaplate (tracking issue and `/workspace/pf1-handoff/Roadmaplate.md`, also `C:\Users\Austin\Documents\notes 2\Roadmaplate.md`).
+1. Read the **full** Roadmaplate (tracking issue and `/workspace/pf1-handoff/Roadmaplate.md`, also `<user-home>\Documents\notes 2\Roadmaplate.md`).
 2. Read every **Codex** agent handoff under `APP\v3-staging\handoffs\`.
 3. Read every **Antigravity** agent handoff under `APP\v3-staging\handoffs\`.
 4. Then form a plan, debug, and connect the work. You are the only agent that moves files out of staging into `src\` or `server\`.
