@@ -422,6 +422,12 @@ export function formatCompleteSheetOverridePages(
   return result.text === 'None saved.' ? 'None saved in SOT Catalogue.' : result.text;
 }
 
+export function boundClientSotEvidence(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  // Preserve table formatting while keeping client text inside the prompt block.
+  return value.slice(0, SOT_CONTEXT_CHAR_BUDGET).replaceAll('<<<', '‹‹‹');
+}
+
 export function asUntrustedContent(label: string, body: string): string {
   return `<<<BEGIN ${label} CONTENT>>>\n${body}\n<<<END ${label} CONTENT>>>`;
 }

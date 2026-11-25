@@ -4,6 +4,7 @@ import { LOOKUP_SYSTEM_INSTRUCTION, buildCompleteSheetSystemInstruction } from '
 import {
   activeWeblinks,
   asUntrustedContent,
+  boundClientSotEvidence,
   boundConversation,
   formatBlindSpots,
   formatBoundConversation,
@@ -168,6 +169,7 @@ async function handleOpenAILookup(req: Request, res: Response) {
       query,
       category = 'All',
       modifiers = {},
+      sotEvidence,
       sotDocuments,
       sotOverridePages = [],
       sotWeblinks = [],
@@ -180,7 +182,7 @@ async function handleOpenAILookup(req: Request, res: Response) {
 
     const activeLinks = activeWeblinks(sotWeblinks);
     const documents = sotDocuments ?? sotOverridePages;
-    const overrideContext = formatOverridePages(documents, query);
+    const overrideContext = boundClientSotEvidence(sotEvidence) ?? formatOverridePages(documents, query);
     const weblinksContext = formatWeblinks(activeLinks, true);
     const modifiersContext = formatModifiers(modifiers);
 
@@ -239,6 +241,7 @@ async function handleCompleteSheet(req: Request, res: Response) {
       conversation = [],
       characterSummary = '',
       query = '',
+      sotEvidence,
       sotDocuments,
       sotOverridePages = [],
       sotWeblinks = [],
@@ -258,7 +261,8 @@ async function handleCompleteSheet(req: Request, res: Response) {
       : retrievalQueryFromConversation(history);
     const activeLinks = activeWeblinks(sotWeblinks);
     const documents = sotDocuments ?? sotOverridePages;
-    const overrideContext = formatCompleteSheetOverridePages(documents, retrievalQuery, history);
+    const overrideContext = boundClientSotEvidence(sotEvidence)
+      ?? formatCompleteSheetOverridePages(documents, retrievalQuery, history);
     const weblinksContext = formatWeblinks(activeLinks);
     const blindSpotsContext = formatBlindSpots(allowedFields);
 

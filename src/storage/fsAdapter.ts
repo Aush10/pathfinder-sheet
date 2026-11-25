@@ -1,4 +1,4 @@
-import type { PF1Character } from '../types/character';
+import type { PF1Character, SOTRichTextPage } from '../types/character';
 import {
   LEGACY_GLOBAL_HOST_SRD_DOC_PREFIX,
   LEGACY_GLOBAL_HOST_SRD_INDEX_KEY,
@@ -1241,6 +1241,17 @@ export async function persistSrdIngestArtifacts(
   }
 }
 
+async function readStoredSrdArtifacts(directory: FsDirectoryHandleLike): Promise<SrdIngestArtifacts> {
+  const [table, links, text, index] = await Promise.all([
+    readTextIfPresent(directory, 'table.json'),
+    readTextIfPresent(directory, 'links.json'),
+    readTextIfPresent(directory, 'text.md'),
+    readTextIfPresent(directory, 'index.json'),
+  ]);
+  assert(table && links && text !== null && index, 'NOT_FOUND', 'This SRD document is missing ingest artifacts.');
+  return parseStoredArtifacts({ 'table.json': table, 'links.json': links, 'text.md': text, 'index.json': index });
+}
+
 export async function loadSrdIngestArtifacts(params: {
   player?: string;
   characterName?: string;
@@ -1257,21 +1268,11 @@ export async function loadSrdIngestArtifacts(params: {
     if (handle && params.player && params.characterName) {
       const layout = await characterLayoutFromRoot(handle, params.player, params.characterName);
       const docDir = await getInternalDirectory(layout.srd, docFolder, false);
-      const table = await readTextIfPresent(docDir, 'table.json');
-      const links = await readTextIfPresent(docDir, 'links.json');
-      const text = await readTextIfPresent(docDir, 'text.md');
-      const index = await readTextIfPresent(docDir, 'index.json');
-      assert(table && links && text !== null && index, 'NOT_FOUND', 'This SRD document is missing ingest artifacts.');
       return {
         ok: true,
         stored: 'folder',
         relativePath: `SRD/${docFolder}`,
-        artifacts: parseStoredArtifacts({
-          'table.json': table,
-          'links.json': links,
-          'text.md': text,
-          'index.json': index,
-        }),
+        artifacts: await readStoredSrdArtifacts(docDir),
       };
     }
     const store = params.artifactStore ?? createIndexedDbSrdArtifactStore();
@@ -1285,6 +1286,51 @@ export async function loadSrdIngestArtifacts(params: {
     };
   } catch (error) {
     return toFailure(error);
+  }
+}
+
+/** Resolve a page's classified source for the active character without opening a picker or writing files. */
+export async function loadSrdPageIngestArtifacts(params: {
+  player?: string;
+  characterName: string;
+  characterId: string;
+  page: Pick<SOTRichTextPage, 'id' | 'title' | 'hostSavedKey'>;
+  handleStore?: DirectoryHandleStore;
+  artifactStore?: SrdArtifactStore;
+}): Promise<SrdIngestArtifacts | undefined> {
+  const { characterId, page } = params;
+  const reference = typeof page.hostSavedKey === 'string' ? page.hostSavedKey : '';
+  const indexedPrefix = `idb:${characterId}/`;
+  try {
+    const indexedFolder = reference.startsWith(indexedPrefix) ? reference.slice(indexedPrefix.length) : '';
+    const docFolder = indexedFolder && isSafeStoredSegment(indexedFolder)
+      ? indexedFolder
+      : srdDocFolderName(page.title, page.id);
+    const result = await loadSrdIngestArtifacts({ characterId, docFolder, artifactStore: params.artifactStore });
+    if (result.ok) return result.artifacts;
+  } catch {
+    // An old page may have an invalid document ID and a valid folder reference.
+  }
+
+  const folderPrefix = 'folder:SRD/';
+  if (!reference.startsWith(folderPrefix) || !params.characterName?.trim()) return;
+  const docFolder = reference.slice(folderPrefix.length);
+  if (!isSafeStoredSegment(docFolder)) return;
+
+  try {
+    const root = await (params.handleStore ?? createIndexedDbHandleStore()).get();
+    if (!root || await root.queryPermission?.({ mode: 'readwrite' }) !== 'granted') return;
+    const managedRoot = await getManagedRoot(root, false);
+    const users = await getInternalDirectory(managedRoot, STORAGE_USERS_NAME, false);
+    const player = await getNamedDirectory(users, params.player?.trim() || 'Player 1', 'player', false);
+    const character = await getNamedDirectory(player.directory, params.characterName, 'character', false);
+    const envelope = await readCharacterEnvelopeIfPresent(character.directory, DEFAULT_SCHEMA_VERSION);
+    if (envelope?.characterId !== characterId) return;
+    const srd = await getInternalDirectory(character.directory, 'SRD', false);
+    const directory = await getInternalDirectory(srd, docFolder, false);
+    return await readStoredSrdArtifacts(directory);
+  } catch {
+    // Continue with the page excerpt when storage is unavailable or invalid.
   }
 }
 
