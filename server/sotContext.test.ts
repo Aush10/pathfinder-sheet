@@ -137,6 +137,24 @@ test('empty or stop-word queries send catalogue only; unmatched queries keep the
   assert.doesNotMatch(miss.text, /Bonus feat at first level/);
 });
 
+test('catalogue text shares the SOT context budget in query and no-query modes', () => {
+  const pages = [{
+    id: 'very-long-title',
+    title: 'Fighter '.repeat(SOT_CONTEXT_CHAR_BUDGET + 100),
+    category: 'Class',
+    excerpt: 'Weapon training grants a bonus on attack rolls.',
+  }];
+
+  const noQuery = selectBoundedSotContext({ documents: pages });
+  assert.ok(noQuery.text.length <= SOT_CONTEXT_CHAR_BUDGET);
+  assert.equal(noQuery.truncated, true);
+
+  const matchingQuery = selectBoundedSotContext({ documents: pages, query: 'weapon training' });
+  assert.ok(matchingQuery.text.length <= SOT_CONTEXT_CHAR_BUDGET);
+  assert.equal(matchingQuery.truncated, true);
+  assert.match(matchingQuery.text, /Weapon training grants a bonus/);
+});
+
 test('packing never splits an ingest section and stays within the 12k budget', () => {
   const keepBody = `Keepmarker uniquekeep. ${'keepbody '.repeat(80)}`;
   const skipBody = `SkipStartMarker ${'skipbody '.repeat(2500)} SkipEndMarker`;

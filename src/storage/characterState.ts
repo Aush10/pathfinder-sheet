@@ -253,6 +253,7 @@ function ensureSpellSlotBars(character: PF1Character): {
   const macaroniStepperStore = { ...(character.macaroniStepperStore || {}) };
 
   if (table && row) {
+    const activeSpellLevels = new Set<number>();
     for (const column of table.columns) {
       const match = /^spd_(\d+)$/.exec(column);
       if (!match) continue;
@@ -260,6 +261,7 @@ function ensureSpellSlotBars(character: PF1Character): {
       if (spellLevel < 0 || spellLevel > SPELL_CIRCLE_MAX) continue;
       const count = parseSlotCount(row.values[column] || '');
       if (count === undefined) continue;
+      activeSpellLevels.add(spellLevel);
 
       const resourceId = spellSlotResourceId(spellLevel);
       const actionId = spellSlotActionId(spellLevel);
@@ -335,6 +337,27 @@ function ensureSpellSlotBars(character: PF1Character): {
         const bangId = `${spellSlotStepperScopeId(spellLevel)}::bang-1`;
         if (!(bangId in macaroniStepperStore)) macaroniStepperStore[bangId] = 0;
       }
+    }
+
+    // A level row can explicitly mark a spell circle as unavailable (for
+    // example after lowering the character level).  Generated bars use stable
+    // IDs, so remove only those rather than touching unrelated user resources.
+    const isInactiveSpellLevel = (id: string, prefix: string): boolean => {
+      const match = new RegExp(`^${prefix}(\\d+)$`).exec(id);
+      return Boolean(match) && !activeSpellLevels.has(Number(match?.[1]));
+    };
+    for (let index = trackers.length - 1; index >= 0; index -= 1) {
+      if (isInactiveSpellLevel(trackers[index].id, 'spell-slot-level-')) trackers.splice(index, 1);
+    }
+    for (let index = actions.length - 1; index >= 0; index -= 1) {
+      if (isInactiveSpellLevel(actions[index].id, 'spell-slot-action-')) actions.splice(index, 1);
+    }
+    for (let index = spellSlots.length - 1; index >= 0; index -= 1) {
+      if (!activeSpellLevels.has(spellSlots[index].level)) spellSlots.splice(index, 1);
+    }
+    for (const key of Object.keys(macaroniStepperStore)) {
+      const match = /^spell-slot-(\d+)::bang-1$/.exec(key);
+      if (match && !activeSpellLevels.has(Number(match[1]))) delete macaroniStepperStore[key];
     }
   }
 

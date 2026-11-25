@@ -9,6 +9,7 @@ import { createBlankCharacter } from '../data/defaultCharacter';
 import { connectSheetToFolder } from './connectFolder';
 import {
   createFsStorageAdapter,
+  persistSrdIngestArtifacts,
   type DirectoryHandleStore,
   type FsDirectoryHandleLike,
   type FsFileHandleLike,
@@ -762,4 +763,44 @@ test('uses a real Windows temp folder without reserved-name, trailing-dot, long-
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
   }
+});
+
+test('SRD ingest artifacts use document ids by default and require confirmation before overwrite', async () => {
+  const root = new MemoryDirectoryHandle('root');
+  const createArtifacts = (documentId: string, text: string) => ({
+    'table.json': { documentId, tables: [] },
+    'links.json': { links: [] },
+    'text.md': text,
+    'index.json': { document: { id: documentId, title: 'Fighter' }, sections: [] },
+  });
+  const base = {
+    player: 'Alice',
+    characterName: 'Hero',
+    characterId: 'hero-id',
+    handle: root,
+  };
+
+  const first = await persistSrdIngestArtifacts({ ...base, artifacts: createArtifacts('fighter-core', 'core fighter') });
+  const second = await persistSrdIngestArtifacts({ ...base, artifacts: createArtifacts('fighter-alt', 'alternate fighter') });
+  assert.ok(first.ok);
+  assert.ok(second.ok);
+  if (!first.ok || !second.ok) return;
+  assert.equal(first.docFolder, 'fighter-core');
+  assert.equal(second.docFolder, 'fighter-alt');
+
+  const duplicate = await persistSrdIngestArtifacts({ ...base, artifacts: createArtifacts('fighter-core', 'replacement fighter') });
+  assert.equal(duplicate.ok, false);
+  if (!duplicate.ok) {
+    assert.equal(duplicate.error.code, 'SRD_ARTIFACT_EXISTS');
+    assert.match(duplicate.error.message, /Do you want to overwrite/);
+  }
+
+  const replaced = await persistSrdIngestArtifacts({
+    ...base,
+    artifacts: createArtifacts('fighter-core', 'replacement fighter'),
+    overwrite: true,
+  });
+  assert.equal(replaced.ok, true);
+  const srdDirectory = await memoryDirectory(root, 'AIgamesheet', 'pfmusers', 'Alice', 'Hero', 'SRD', 'fighter-core');
+  assert.equal(await (await srdDirectory.getFileHandle('text.md')).getFile().then((file) => file.text()), 'replacement fighter');
 });
