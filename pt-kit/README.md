@@ -79,7 +79,7 @@ AI Companion starts as an **empty slot** until an AI test kit / configured API s
 
 - Make a character and click around the four sheet pages
 - Add Class / Class Architect, then open Character Matrix
-- Open the SOT library (sidebar, or Ctrl+X). Drop an SRD page or paste text
+- Open the SOT library from the sidebar. Drop an SRD page or paste text
 - Cast a spell if you have slot bars. Confirm the Cast popup
 - Journal should say Spell Book once spell tables exist
 - Export JSON and load it back
