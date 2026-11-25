@@ -151,6 +151,22 @@ test('assigned ! stepper macros seed the CX6 store without clobbering an existin
   assert.deepEqual(binding?.bangIds, [`${spellSlotStepperScopeId(1)}::bang-1`]);
 });
 
+test('lowering a level removes generated spell-slot bars no longer granted by the progression row', () => {
+  const table = samplePerDay();
+  table.rows[1].values.spd_2 = '1';
+  const atSecondLevel = persistCollectedSpellTables(
+    { ...createBlankCharacter(), level: 2 },
+    { spellsPerDay: table },
+  );
+  assert.ok(atSecondLevel.resourceTrackers?.some((tracker) => tracker.id === spellSlotResourceId(2)));
+  assert.ok(atSecondLevel.characterActions?.some((action) => action.id === spellSlotActionId(2)));
+
+  const lowered = persistCollectedSpellTables({ ...atSecondLevel, level: 1 }, {});
+  assert.equal(lowered.resourceTrackers?.some((tracker) => tracker.id === spellSlotResourceId(2)), false);
+  assert.equal(lowered.characterActions?.some((action) => action.id === spellSlotActionId(2)), false);
+  assert.equal(lowered.spellSlots?.some((slot) => slot.level === 2), false);
+});
+
 test('CX7 collect output persists and Complete Sheet can read the current-level row', () => {
   const outputs = ingestSource({ name: 'example.html', content: html });
   const tables = collectSpellProgressionTables(outputs['table.json'].tables, outputs['table.json'].documentId);
