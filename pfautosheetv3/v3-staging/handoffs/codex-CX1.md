@@ -1,5 +1,9 @@
 # CX1 handoff — classified SRD class extraction
 
+AF7 promoted the adapter and its tests to `src/engine/classExtraction.ts` and
+`src/engine/classExtraction.test.ts`. The staging copies listed below were
+removed after comparison with the promoted files.
+
 ## Work done
 
 Created the staging adapter for the Phase 2 class-extraction fixes. It consumes CX2 tables only and never falls back to arbitrary tables or prose-generated grids.
