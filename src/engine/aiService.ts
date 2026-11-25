@@ -19,8 +19,10 @@ import {
   ClassGridRow,
   SOTCatalogueData,
   SOTCategory,
+  SOTRichTextPage,
   AbilityName,
 } from '../types/character';
+import { boundConversation, formatCompleteSheetOverridePages, formatOverridePages, retrievalQueryFromConversation } from '../../server/sotContext';
 import { generateProceduralPencilSketch } from './sketchRenderer';
 import { buildTapTestTurnInstruction, filterTapTestUpdates, getTapTestStep, type TapTestTurn } from './tapTest';
 import {
@@ -33,7 +35,9 @@ import {
   type SheetWriteContext,
 } from './sheetFieldWrites';
 import { formatSpellTablesForCompleteSheet } from '../storage/characterState';
+import { loadSrdPageIngestArtifacts } from '../storage/fsAdapter';
 import { parseClassSkills, parseProficiencies } from './classExtraction';
+import { getActiveHostSrdOwner } from './sotEngine';
 
 export const DEFAULT_AI_MODULE_SETTINGS: AIModuleSettings = {
   isInstalled: true,
@@ -227,19 +231,18 @@ export const DEFAULT_SOT_CATALOGUE: SOTCatalogueData = {
   macaroniSuggestions: [],
 };
 
+function getSotCatalogueForAI(character: PF1Character): SOTCatalogueData {
+  return character.installedModules?.aiSettings?.allowedModules?.sotCatalogue === false
+    ? DEFAULT_SOT_CATALOGUE
+    : character.sotCatalogue || DEFAULT_SOT_CATALOGUE;
+}
+
 // Helper to gather active SOT context from character
 export function buildSOTContextForAI(character: PF1Character): {
   overrideText: string;
   activeUrls: string[];
 } {
-  const sot = character.sotCatalogue || DEFAULT_SOT_CATALOGUE;
-  const isSotAllowed =
-    (character.installedModules?.aiSettings?.allowedModules?.sotCatalogue ?? true) !== false;
-
-  if (!isSotAllowed) {
-    return { overrideText: '', activeUrls: [] };
-  }
-
+  const sot = getSotCatalogueForAI(character);
   const activePages = (sot.overridePages || []).filter((p) => p.isOverride);
   const overrideText =
     activePages.length > 0
@@ -933,15 +936,18 @@ export async function lookupRulesWithSOT(
   // =========================================================================
   // STEP 2 & 3: CHECK SOT LINKS NEXT, THEN VERIFIED ONLINE SRD VIA OPENAI
   // =========================================================================
+  const lookupQuery = cleanQuery || modifierTerms.join(' ');
+  const aiSot = getSotCatalogueForAI(character);
+  const sotDocuments = await loadSotDocumentsForRequest(character, (aiSot.overridePages || []).filter((page) => page.isOverride));
   const response = await fetch('/api/openai/lookup', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      query: cleanQuery || modifierTerms.join(' '),
+      query: lookupQuery,
       category: categoryFilter,
       modifiers: modifiers || {},
-      sotDocuments: compactSotDocumentsForRequest((sot.overridePages || []).filter((p) => p.isOverride)),
-      sotWeblinks: (sot.weblinks || []).filter((l) => l.isActive),
+      sotEvidence: formatOverridePages(sotDocuments, lookupQuery),
+      sotWeblinks: (aiSot.weblinks || []).filter((l) => l.isActive),
       characterSummary: `${character.name || 'Character'} (Lvl ${character.level} ${character.characterClass})`,
     }),
   });
@@ -2853,6 +2859,24 @@ export function compactSotDocumentsForRequest(pages: unknown): Array<Record<stri
   });
 }
 
+async function loadSotDocumentsForRequest(character: PF1Character, pages: SOTRichTextPage[]): Promise<Array<Record<string, unknown>>> {
+  const documents = compactSotDocumentsForRequest(pages);
+  const characterId = getActiveHostSrdOwner() || character.name?.trim() || 'session-default';
+  await Promise.all(documents.map(async (document, index) => {
+    const page = pages[index];
+    if (document.ingest || typeof page?.id !== 'string' || !page.id) return;
+
+    const artifacts = await loadSrdPageIngestArtifacts({
+      characterId,
+      characterName: character.name,
+      player: character.player,
+      page,
+    });
+    if (artifacts) document.ingest = artifacts;
+  }));
+  return documents;
+}
+
 export async function completeSheetConverse(
   params: CompleteSheetConverseParams
 ): Promise<CompleteSheetConverseResult> {
@@ -2862,7 +2886,7 @@ export async function completeSheetConverse(
     throw new Error('Invalid tap test step or point-buy budget.');
   }
   const permissions = character.installedModules?.aiSettings?.allowedFields || DEFAULT_AI_MODULE_SETTINGS.allowedFields;
-  const sot = character.sotCatalogue || DEFAULT_SOT_CATALOGUE;
+  const sot = getSotCatalogueForAI(character);
 
   // Build a concise character snapshot for grounding. Blank identity stays blank; never invent "Unnamed".
   const identitySummary = character.name?.trim() ? `Name: ${character.name.trim()}\n` : '';
@@ -2994,6 +3018,9 @@ Active SOT Weblinks: ${(sot.weblinks || []).filter((w) => w.isActive).map((w) =>
   // -------------------------------------------------------------------------
   // STEP 2: Server-Side OpenAI Route (/api/openai/complete-sheet)
   // -------------------------------------------------------------------------
+  const sotDocuments = await loadSotDocumentsForRequest(character, sot.overridePages || []);
+  const history = boundConversation(messageHistory);
+  const retrievalQuery = userPrompt.trim() || retrievalQueryFromConversation(history);
   const res = await fetch('/api/openai/complete-sheet', {
     method: 'POST',
     signal: params.signal,
@@ -3002,7 +3029,7 @@ Active SOT Weblinks: ${(sot.weblinks || []).filter((w) => w.isActive).map((w) =>
       conversation: messageHistory,
       characterSummary,
       query: userPrompt,
-      sotDocuments: compactSotDocumentsForRequest(sot.overridePages || []),
+      sotEvidence: formatCompleteSheetOverridePages(sotDocuments, retrievalQuery, history),
       sotWeblinks: sot.weblinks || [],
       allowedFields: permissions,
       ...(tapTest ? { tapTest } : {}),

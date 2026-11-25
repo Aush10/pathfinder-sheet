@@ -9,6 +9,7 @@ import { createBlankCharacter } from '../data/defaultCharacter';
 import { connectSheetToFolder } from './connectFolder';
 import {
   createFsStorageAdapter,
+  loadSrdPageIngestArtifacts,
   persistSrdIngestArtifacts,
   type DirectoryHandleStore,
   type FsDirectoryHandleLike,
@@ -803,4 +804,30 @@ test('SRD ingest artifacts use document ids by default and require confirmation 
   assert.equal(replaced.ok, true);
   const srdDirectory = await memoryDirectory(root, 'AIgamesheet', 'pfmusers', 'Alice', 'Hero', 'SRD', 'fighter-core');
   assert.equal(await (await srdDirectory.getFileHandle('text.md')).getFile().then((file) => file.text()), 'replacement fighter');
+});
+
+test('saved SRD page references resolve only inside the current character’s authorized folder', async () => {
+  const root = new MemoryDirectoryHandle('root');
+  const handleStore = new MemoryHandleStore(root);
+  const adapter = createFsStorageAdapter({ handleStore });
+  const character = sampleCharacter('Hero', 'Alice');
+  const saved = await adapter.saveCharacter(character.player, character);
+  assert.ok(saved.ok);
+  const artifacts = {
+    'table.json': { documentId: 'classified-fighter', tables: [] },
+    'links.json': { links: [] },
+    'text.md': 'indexed fighter text',
+    'index.json': { document: { id: 'classified-fighter', title: 'Fighter' }, sections: [] },
+  };
+  const scope = { player: character.player, characterName: character.name, characterId: saved.characterId, handleStore };
+  const persisted = await persistSrdIngestArtifacts({ ...scope, artifacts });
+  assert.ok(persisted.ok);
+  const page = { id: 'legacy-page-id', title: 'Fighter', hostSavedKey: persisted.hostSavedKey };
+  assert.deepEqual(await loadSrdPageIngestArtifacts({ ...scope, page }), artifacts);
+  assert.equal(await loadSrdPageIngestArtifacts({ ...scope, characterId: 'another-character', page }), undefined);
+  assert.equal(await loadSrdPageIngestArtifacts({ ...scope, characterName: 'Missing Hero', page }), undefined);
+
+  const playerFolder = await memoryDirectory(root, 'AIgamesheet', 'pfmusers', 'Alice');
+  assert.equal(playerFolder.children.has('Missing Hero'), false);
+  assert.equal(root.permissionRequests, 0);
 });

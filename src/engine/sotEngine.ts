@@ -13,7 +13,8 @@ import {
   ClassGridRow,
   MacaroniCategory,
 } from '../types/character';
-import type { IngestTable } from '../../server/ingest/ingest';
+import type { IngestOutputs, IngestTable } from '../../server/ingest/ingest';
+import type { SrdIngestArtifacts } from '../storage/fsAdapter';
 import {
   extractClassFromClassifiedTables,
   type ClassColumn,
@@ -808,8 +809,31 @@ export function extractClassFromSrdDoc(
 export async function extractClassFromSrdDocWithIngest(
   doc: SOTRichTextPage,
   targetClassNameHint?: string,
+  savedArtifacts?: SrdIngestArtifacts,
 ): Promise<ExtractedSrdClassData & { tables: IngestTable[]; documentId?: string }> {
-  const ingested = await ingestClassifiedTablesFromSrdDoc(doc);
+  const savedTable = savedArtifacts?.['table.json'] as Partial<IngestOutputs['table.json']> | undefined;
+  const savedIndex = savedArtifacts?.['index.json'] as Partial<IngestOutputs['index.json']> | undefined;
+  const savedTables = savedTable?.tables;
+  const tableDocumentId = typeof savedTable?.documentId === 'string' ? savedTable.documentId : undefined;
+  const indexDocumentId = typeof savedIndex?.document?.id === 'string' ? savedIndex.document.id : undefined;
+  const matchesIndex = !tableDocumentId || !indexDocumentId || tableDocumentId === indexDocumentId;
+  const hasSavedTables = Array.isArray(savedTables) && savedTables.length > 0 && savedTables.every(
+    (table) => table && typeof table.id === 'string'
+      && ['class-grid', 'extended-grid', 'casting-subgrid', 'lookup-table'].includes(table.kind)
+      && Array.isArray(table.headers) && table.headers.every((header) => typeof header === 'string')
+      && table.headerMap && typeof table.headerMap === 'object' && !Array.isArray(table.headerMap)
+      && Object.values(table.headerMap).every((value) => typeof value === 'string')
+      && Array.isArray(table.rows) && table.rows.every(
+        (row) => Array.isArray(row) && row.every((value) => typeof value === 'string'),
+      ),
+  );
+  const ingested = savedArtifacts && matchesIndex && hasSavedTables
+    ? {
+        tables: savedTables,
+        documentId: tableDocumentId || indexDocumentId,
+        text: savedArtifacts['text.md'],
+      }
+    : await ingestClassifiedTablesFromSrdDoc(doc);
   const extracted = extractClassFromSrdDoc(doc, targetClassNameHint, ingested.tables, ingested.text);
   return { ...extracted, tables: ingested.tables, documentId: ingested.documentId };
 }

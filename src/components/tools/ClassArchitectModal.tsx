@@ -37,10 +37,7 @@ import {
   loadHostSrdDocsForCharacter,
 } from '../../engine/sotEngine';
 import { persistSpellTablesFromIngest } from '../../storage/characterState';
-import {
-  loadSrdIngestArtifacts,
-  srdDocFolderName,
-} from '../../storage/fsAdapter';
+import { loadSrdPageIngestArtifacts } from '../../storage/fsAdapter';
 import { AppleEyeIcon } from '../common/AppleEyeIcon';
 import { useCharacter, useOptionalCharacter } from '../../context/CharacterContext';
 import { DEFAULT_CHARACTER } from '../../data/defaultCharacter';
@@ -71,9 +68,9 @@ export function classifyIngestTablesForArchitect(
   const tables = Array.isArray(rawTableObj.tables) ? rawTableObj.tables : [];
   if (tables.length === 0) return { eligibleCount: 0, lookupOnly: false };
   const eligibleCount = tables.filter(
-    (t) => t.kind === 'class-grid' || t.kind === 'extended-grid' || t.kind === 'casting-subgrid'
+    (t) => t?.kind === 'class-grid' || t?.kind === 'extended-grid' || t?.kind === 'casting-subgrid'
   ).length;
-  const lookupCount = tables.filter((t) => t.kind === 'lookup-table').length;
+  const lookupCount = tables.filter((t) => t?.kind === 'lookup-table').length;
   return {
     eligibleCount,
     lookupOnly: eligibleCount === 0 && lookupCount > 0,
@@ -645,23 +642,27 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
     const doc = sotDocs.find((d) => d.id === docId);
     if (!doc) return;
 
-    const ownerId = getActiveHostSrdOwner() || character.name?.trim() || 'session-default';
-    const artifactCheck = await loadSrdIngestArtifacts({
+    const activeOwnerId = getActiveHostSrdOwner();
+    const ownerId = activeOwnerId || character.name?.trim() || 'session-default';
+    const savedArtifacts = await loadSrdPageIngestArtifacts({
       characterName: character.name,
       characterId: ownerId,
-      docFolder: srdDocFolderName(doc.title, doc.id),
+      player: character.player,
+      page: doc,
     });
-    if (artifactCheck.ok) {
-      const verdict = classifyIngestTablesForArchitect(artifactCheck.artifacts);
-      if (verdict.lookupOnly) {
-        setNoticeMessage(
-          `"${doc.title}" only contains auxiliary lookup-table tables (Reference Only) and cannot populate Class Architect progression grids. Open it in Journal / SOT Library instead.`
-        );
-        return;
-      }
+    const extracted = await extractClassFromSrdDocWithIngest(
+      doc,
+      currentClass.className,
+      savedArtifacts,
+    );
+    if (getActiveHostSrdOwner() !== activeOwnerId) return;
+    if (classifyIngestTablesForArchitect({ 'table.json': { tables: extracted.tables } }).lookupOnly) {
+      setNoticeMessage(
+        `"${doc.title}" only contains auxiliary lookup-table tables (Reference Only) and cannot populate Class Architect progression grids. Open it in Journal / SOT Library instead.`
+      );
+      return;
     }
 
-    const extracted = await extractClassFromSrdDocWithIngest(doc, currentClass.className);
     const parsedRows =
       extracted.rows.length > 0
         ? extracted.rows

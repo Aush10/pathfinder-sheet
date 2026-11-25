@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { ingestSource } from '../../server/ingest/ingest.ts';
 import { extractClassFromClassifiedTables, parseClassSkills, parseProficiencies } from './classExtraction.ts';
-import { extractClassFromSrdDoc } from './sotEngine.ts';
+import { collectSpellProgressionTables } from './spellTables.ts';
+import { extractClassFromSrdDoc, extractClassFromSrdDocWithIngest } from './sotEngine.ts';
 
 const armoristPath = join(process.cwd(), 'save tree test', 'armorist.srd.json');
 
@@ -57,4 +58,59 @@ test('never treats a lookup table or prose as a class grid', () => {
   const result = extractClassFromClassifiedTables({ title: 'Fighter', plainText: 'Table: Fighter\nClass Skills: Climb (Str)', tables });
   assert.equal(result.matched, false);
   assert.match(result.summaryMessage, /no classified class grid/);
+});
+
+test('reuses saved class and spell progression and falls back when document IDs differ', async (t) => {
+  const artifacts = ingestSource({
+    name: 'Battle Mage.html',
+    content: `<h1>Battle Mage</h1><p>Hit Die: d10</p>
+      <table>
+        <tr><th>Level</th><th>BAB</th><th>Fort</th><th>Ref</th><th>Will</th><th>Special</th></tr>
+        <tr><td>1</td><td>+0</td><td>+0</td><td>+0</td><td>+2</td><td>Cantrips</td></tr>
+      </table>
+      <table>
+        <tr><th rowspan="2">Level</th><th colspan="2">Spells per day</th></tr>
+        <tr><th>0</th><th>1</th></tr>
+        <tr><td>1</td><td>3</td><td>1</td></tr>
+      </table>`,
+  });
+  const doc = {
+    id: 'battle-mage',
+    title: 'Battle Mage',
+    category: 'Full Class SRD' as const,
+    htmlContent: '',
+    plainText: '',
+    isOverride: true,
+    tags: [],
+    updatedAt: 0,
+  };
+  const fetchMock = t.mock.method(globalThis, 'fetch', async () => Response.json({
+    documentId: artifacts['table.json'].documentId,
+    artifacts,
+  }));
+
+  const extracted = await extractClassFromSrdDocWithIngest(doc, 'Battle Mage', artifacts);
+
+  assert.equal(fetchMock.mock.callCount(), 0);
+  assert.equal(extracted.matched, true);
+  assert.equal(extracted.hitDie, 10);
+  assert.equal(extracted.rows[0]?.special, 'Cantrips');
+  const { spellsPerDay } = collectSpellProgressionTables(extracted.tables, extracted.documentId);
+  assert.equal(spellsPerDay?.rows[0].values.spd_1, '1');
+  assert.equal(spellsPerDay?.sourceDocumentId, artifacts['table.json'].documentId);
+
+  const fallback = await extractClassFromSrdDocWithIngest(
+    { ...doc, htmlContent: '<h1>Battle Mage</h1>' },
+    'Battle Mage',
+    {
+      ...artifacts,
+      'index.json': {
+        ...artifacts['index.json'],
+        document: { ...artifacts['index.json'].document, id: 'different-document' },
+      },
+    },
+  );
+  assert.equal(fetchMock.mock.callCount(), 1);
+  assert.equal(fallback.documentId, artifacts['table.json'].documentId);
+  assert.equal(fallback.rows[0]?.special, 'Cantrips');
 });
