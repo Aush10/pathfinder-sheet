@@ -218,6 +218,17 @@ function Start-PF1MWStaticServer {
           } else {
             $body = [System.Text.Encoding]::UTF8.GetBytes('Not found')
           }
+        } elseif ($requestLine -match '^(GET|HEAD) /(launch-warning\.html|PLAYTEST_GUIDE\.html|MACRONI_XDX_BIBLE\.html)(?:\?[^ ]*)? HTTP/1\.[01]$') {
+          $requestMethod = $Matches[1]
+          $docPath = Join-Path $appDirectory $Matches[2]
+          if (Test-Path -LiteralPath $docPath -PathType Leaf) {
+            $status = '200 OK'
+            $body = [System.IO.File]::ReadAllBytes($docPath)
+            $contentType = 'text/html; charset=utf-8'
+            $sendBody = $requestMethod -eq 'GET'
+          } else {
+            $body = [System.Text.Encoding]::UTF8.GetBytes('Not found')
+          }
         } elseif ($requestLine -match '^(GET|HEAD) /(?:index\.html)?(?:\?[^ ]*)? HTTP/1\.[01]$') {
           $status = '200 OK'
           $body = $htmlBytes

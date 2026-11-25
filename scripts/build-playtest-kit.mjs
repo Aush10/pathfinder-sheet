@@ -90,7 +90,9 @@ export function buildPlaytestKit() {
   }
 
   // Top-level Playtest Kit guides, README & Windows chirpy launcher
-  fs.writeFileSync(path.join(outDir, 'PLAYTEST_GUIDE.html'), buildPlaytestGuideHtml(), 'utf8');
+  const playtestGuideHtml = buildPlaytestGuideHtml();
+  fs.writeFileSync(path.join(outDir, 'PLAYTEST_GUIDE.html'), playtestGuideHtml, 'utf8');
+  fs.writeFileSync(path.join(repoRoot, 'public', 'launch-warning.html'), playtestGuideHtml, 'utf8');
   fs.writeFileSync(path.join(outDir, 'MACRONI_XDX_BIBLE.html'), buildMacroniBibleHtml(), 'utf8');
   fs.writeFileSync(path.join(outDir, 'README.md'), buildPlaytestReadmeMd(), 'utf8');
   fs.writeFileSync(path.join(outDir, 'Start-Autosheet-Playtest-Kit.ps1'), buildPlaytestLauncherPs1(), 'utf8');

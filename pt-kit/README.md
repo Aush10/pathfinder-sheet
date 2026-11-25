@@ -10,11 +10,17 @@ Expect rough edges. That is the point of a playtest.
 
 ## First launch
 
-The first time you open the kit, a warning page will show (Antigravity is
-building that page). Read it, then continue.
+The first time you open the kit (`#inits = 0` in the browser crash log / `playtest-state.json`),
+the launcher opens a private window to the **Wait it's dangerous out there. Read this o7** warning page
+(`PLAYTEST_GUIDE.html` / `launch-warning.html`), records `#inits = 1`, and instructs you to close and reopen
+the kit a second time (or click through). Subsequent launches open directly in a regular app window.
 
-Antigravity is also building a small API keyhole so you can paste a key in the
-app. Until that lands, AI is optional and uses a local file (see below).
+The exportable `dist-standalone/` Playtest Kit (`npm run build:standalone`) also includes:
+- Downloadable `kits/api-keyhole.zip` (`api-keyhole.json` + `.env.local` without an API key)
+- Downloadable `kits/openai-ai-kit.zip` and experimental `kits/gemini-ai-kit.zip`
+- Downloadable `kits/sot-ingest-kit.zip` alongside `pt-kit/ingest/`
+- Windows Defender Firewall & quick-start shortcuts under `shortcuts/`
+- `MACRONI_XDX_BIBLE.html` (updated Marconi = Macro Native Index XdX reference)
 
 ## What you need
 
@@ -63,7 +69,7 @@ If you want Complete Sheet / lookup:
 Do not put a key in the zip, in chat, or in a screenshot. The kit never
 packages `.env.local`.
 
-The keyhole UI is coming. Use the file until then.
+AI Companion starts as an **empty slot** until an AI test kit / configured API server is detected, and all AI listeners start **OFF by default** so you explicitly enable only the listeners you want in the AI Companion tool.
 
 ## What to try
 
