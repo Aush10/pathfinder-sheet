@@ -1,0 +1,284 @@
+{
+  "schemaVersion": "PF1E_SOT_INGEST_V1",
+  "documentId": "doc-5f644c13e96ef3d4",
+  "tables": [
+    {
+      "id": "table-6333baf83ea4ae1b",
+      "sectionId": "section-de0b5881bfd7f0ce",
+      "headers": [
+        "Level",
+        "BAB",
+        "Fort",
+        "Ref",
+        "Will",
+        "Special"
+      ],
+      "headerMap": {
+        "Level": "level",
+        "BAB": "bab",
+        "Fort": "fort",
+        "Ref": "ref",
+        "Will": "will",
+        "Special": "special"
+      },
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "text": "Level",
+          "rowspan": 1,
+          "colspan": 1,
+          "isHeader": true
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "text": "BAB",
+          "rowspan": 1,
+          "colspan": 1,
+          "isHeader": true
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "text": "Fort",
+          "rowspan": 1,
+          "colspan": 1,
+          "isHeader": true
+        },
+        {
+          "row": 0,
+          "col": 3,
+          "text": "Ref",
+          "rowspan": 1,
+          "colspan": 1,
+          "isHeader": true
+        },
+        {
+          "row": 0,
+          "col": 4,
+          "text": "Will",
+          "rowspan": 1,
+          "colspan": 1,
+          "isHeader": true
+        },
+        {
+          "row": 0,
+          "col": 5,
+          "text": "Special",
+          "rowspan": 1,
+          "colspan": 1,
+          "isHeader": true
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "text": "1",
+          "rowspan": 1,
+          "colspan": 1,
+          "isHeader": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "text": "+1",
+          "rowspan": 1,
+          "colspan": 1,
+          "isHeader": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "text": "+2",
+          "rowspan": 1,
+          "colspan": 1,
+          "isHeader": false
+        },
+        {
+          "row": 1,
+          "col": 3,
+          "text": "+0",
+          "rowspan": 1,
+          "colspan": 1,
+          "isHeader": false
+        },
+        {
+          "row": 1,
+          "col": 4,
+          "text": "+0",
+          "rowspan": 1,
+          "colspan": 1,
+          "isHeader": false
+        },
+        {
+          "row": 1,
+          "col": 5,
+          "text": "Bonus Feat",
+          "rowspan": 1,
+          "colspan": 1,
+          "isHeader": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "text": "2",
+          "rowspan": 1,
+          "colspan": 1,
+          "isHeader": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "text": "+2",
+          "rowspan": 1,
+          "colspan": 1,
+          "isHeader": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "text": "+3",
+          "rowspan": 1,
+          "colspan": 1,
+          "isHeader": false
+        },
+        {
+          "row": 2,
+          "col": 3,
+          "text": "+0",
+          "rowspan": 1,
+          "colspan": 1,
+          "isHeader": false
+        },
+        {
+          "row": 2,
+          "col": 4,
+          "text": "+0",
+          "rowspan": 1,
+          "colspan": 1,
+          "isHeader": false
+        },
+        {
+          "row": 2,
+          "col": 5,
+          "text": "Bonus Feat",
+          "rowspan": 1,
+          "colspan": 1,
+          "isHeader": false
+        }
+      ],
+      "headerGrid": [
+        [
+          "Level",
+          "BAB",
+          "Fort",
+          "Ref",
+          "Will",
+          "Special"
+        ]
+      ],
+      "rows": [
+        [
+          "1",
+          "+1",
+          "+2",
+          "+0",
+          "+0",
+          "Bonus Feat"
+        ],
+        [
+          "2",
+          "+2",
+          "+3",
+          "+0",
+          "+0",
+          "Bonus Feat"
+        ]
+      ],
+      "notes": [],
+      "kind": "class-grid",
+      "documentOrder": 0
+    },
+    {
+      "id": "table-c9c03617a8a33c60",
+      "sectionId": "section-3bc78c7880099d61",
+      "headers": [
+        "Result",
+        "Effect"
+      ],
+      "headerMap": {
+        "Result": "result",
+        "Effect": "effect"
+      },
+      "cells": [
+        {
+          "row": 0,
+          "col": 0,
+          "text": "Result",
+          "rowspan": 1,
+          "colspan": 1,
+          "isHeader": true
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "text": "Effect",
+          "rowspan": 1,
+          "colspan": 1,
+          "isHeader": true
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "text": "1",
+          "rowspan": 1,
+          "colspan": 1,
+          "isHeader": false
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "text": "Fine",
+          "rowspan": 1,
+          "colspan": 1,
+          "isHeader": false
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "text": "2",
+          "rowspan": 1,
+          "colspan": 1,
+          "isHeader": false
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "text": "Broken",
+          "rowspan": 1,
+          "colspan": 1,
+          "isHeader": false
+        }
+      ],
+      "headerGrid": [
+        [
+          "Result",
+          "Effect"
+        ]
+      ],
+      "rows": [
+        [
+          "1",
+          "Fine"
+        ],
+        [
+          "2",
+          "Broken"
+        ]
+      ],
+      "notes": [],
+      "kind": "lookup-table",
+      "documentOrder": 1
+    }
+  ]
+}

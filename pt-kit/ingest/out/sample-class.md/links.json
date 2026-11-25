@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "PF1E_SOT_INGEST_V1",
+  "documentId": "doc-5f644c13e96ef3d4",
+  "links": [
+    {
+      "id": "link-dd72fd13b89be282",
+      "sectionId": "section-3bc78c7880099d61",
+      "text": "d20pfsrd",
+      "href": "https://www.d20pfsrd.com/",
+      "external": true
+    }
+  ]
+}

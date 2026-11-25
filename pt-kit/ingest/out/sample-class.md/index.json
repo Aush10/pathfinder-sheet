@@ -1,0 +1,314 @@
+{
+  "schemaVersion": "PF1E_SOT_INGEST_V1",
+  "document": {
+    "id": "doc-5f644c13e96ef3d4",
+    "title": "sample class",
+    "sha256": "ca2228e5b7bd0f3aa8c38b1a70225530b77c6be544d497345d4801657416b91e",
+    "sourceType": "md"
+  },
+  "sections": [
+    {
+      "id": "section-50fb9da2dff6c507",
+      "headingPath": [
+        "sample class"
+      ],
+      "level": 1,
+      "text": "",
+      "tableIds": [],
+      "linkIds": [],
+      "keywords": [
+        "class",
+        "sample"
+      ]
+    },
+    {
+      "id": "section-4ff669a0f33558b8",
+      "headingPath": [
+        "Sample Fighter"
+      ],
+      "level": 1,
+      "text": "Hit Die: d10",
+      "tableIds": [],
+      "linkIds": [],
+      "keywords": [
+        "d10",
+        "die",
+        "fighter",
+        "hit",
+        "sample"
+      ]
+    },
+    {
+      "id": "section-de0b5881bfd7f0ce",
+      "headingPath": [
+        "Sample Fighter",
+        "Class Table"
+      ],
+      "level": 2,
+      "text": "[Table: Level, BAB, Fort, Ref, Will, Special; table_id=table-6333baf83ea4ae1b]",
+      "tableIds": [
+        "table-6333baf83ea4ae1b"
+      ],
+      "linkIds": [],
+      "keywords": [
+        "table",
+        "bab",
+        "class",
+        "fighter",
+        "fort",
+        "level",
+        "ref",
+        "sample",
+        "special",
+        "table-6333baf83ea4ae1b",
+        "will"
+      ]
+    },
+    {
+      "id": "section-3bc78c7880099d61",
+      "headingPath": [
+        "Sample Fighter",
+        "Weapon Qualities"
+      ],
+      "level": 2,
+      "text": "[Table: Result, Effect; table_id=table-c9c03617a8a33c60] \n\n See also d20pfsrd .",
+      "tableIds": [
+        "table-c9c03617a8a33c60"
+      ],
+      "linkIds": [
+        "link-dd72fd13b89be282"
+      ],
+      "keywords": [
+        "table",
+        "also",
+        "d20pfsrd",
+        "effect",
+        "fighter",
+        "qualities",
+        "result",
+        "sample",
+        "see",
+        "table-c9c03617a8a33c60",
+        "weapon"
+      ]
+    }
+  ],
+  "toc": [
+    {
+      "sectionId": "section-50fb9da2dff6c507",
+      "headingPath": [
+        "sample class"
+      ],
+      "level": 1
+    },
+    {
+      "sectionId": "section-4ff669a0f33558b8",
+      "headingPath": [
+        "Sample Fighter"
+      ],
+      "level": 1
+    },
+    {
+      "sectionId": "section-de0b5881bfd7f0ce",
+      "headingPath": [
+        "Sample Fighter",
+        "Class Table"
+      ],
+      "level": 2
+    },
+    {
+      "sectionId": "section-3bc78c7880099d61",
+      "headingPath": [
+        "Sample Fighter",
+        "Weapon Qualities"
+      ],
+      "level": 2
+    }
+  ],
+  "keywords": [
+    "table",
+    "class",
+    "sample",
+    "also",
+    "bab",
+    "d10",
+    "d20pfsrd",
+    "die",
+    "effect",
+    "fighter",
+    "fort",
+    "hit",
+    "level",
+    "qualities",
+    "ref",
+    "result",
+    "see",
+    "special",
+    "table-6333baf83ea4ae1b",
+    "table-c9c03617a8a33c60",
+    "weapon",
+    "will"
+  ],
+  "termIndex": {
+    "also": [
+      {
+        "sectionId": "section-3bc78c7880099d61",
+        "score": 0.13412
+      }
+    ],
+    "bab": [
+      {
+        "sectionId": "section-de0b5881bfd7f0ce",
+        "score": 0.123803
+      }
+    ],
+    "class": [
+      {
+        "sectionId": "section-50fb9da2dff6c507",
+        "score": 0.549306
+      },
+      {
+        "sectionId": "section-de0b5881bfd7f0ce",
+        "score": 0.084509
+      }
+    ],
+    "d10": [
+      {
+        "sectionId": "section-4ff669a0f33558b8",
+        "score": 0.321888
+      }
+    ],
+    "d20pfsrd": [
+      {
+        "sectionId": "section-3bc78c7880099d61",
+        "score": 0.13412
+      }
+    ],
+    "die": [
+      {
+        "sectionId": "section-4ff669a0f33558b8",
+        "score": 0.321888
+      }
+    ],
+    "effect": [
+      {
+        "sectionId": "section-3bc78c7880099d61",
+        "score": 0.13412
+      }
+    ],
+    "fighter": [
+      {
+        "sectionId": "section-3bc78c7880099d61",
+        "score": 0.070608
+      },
+      {
+        "sectionId": "section-4ff669a0f33558b8",
+        "score": 0.16946
+      },
+      {
+        "sectionId": "section-de0b5881bfd7f0ce",
+        "score": 0.065177
+      }
+    ],
+    "fort": [
+      {
+        "sectionId": "section-de0b5881bfd7f0ce",
+        "score": 0.123803
+      }
+    ],
+    "hit": [
+      {
+        "sectionId": "section-4ff669a0f33558b8",
+        "score": 0.321888
+      }
+    ],
+    "level": [
+      {
+        "sectionId": "section-de0b5881bfd7f0ce",
+        "score": 0.123803
+      }
+    ],
+    "qualities": [
+      {
+        "sectionId": "section-3bc78c7880099d61",
+        "score": 0.13412
+      }
+    ],
+    "ref": [
+      {
+        "sectionId": "section-de0b5881bfd7f0ce",
+        "score": 0.123803
+      }
+    ],
+    "result": [
+      {
+        "sectionId": "section-3bc78c7880099d61",
+        "score": 0.13412
+      }
+    ],
+    "sample": [
+      {
+        "sectionId": "section-3bc78c7880099d61",
+        "score": 0.057762
+      },
+      {
+        "sectionId": "section-4ff669a0f33558b8",
+        "score": 0.138629
+      },
+      {
+        "sectionId": "section-50fb9da2dff6c507",
+        "score": 0.346574
+      },
+      {
+        "sectionId": "section-de0b5881bfd7f0ce",
+        "score": 0.053319
+      }
+    ],
+    "see": [
+      {
+        "sectionId": "section-3bc78c7880099d61",
+        "score": 0.13412
+      }
+    ],
+    "special": [
+      {
+        "sectionId": "section-de0b5881bfd7f0ce",
+        "score": 0.123803
+      }
+    ],
+    "table": [
+      {
+        "sectionId": "section-3bc78c7880099d61",
+        "score": 0.183102
+      },
+      {
+        "sectionId": "section-de0b5881bfd7f0ce",
+        "score": 0.253526
+      }
+    ],
+    "table-6333baf83ea4ae1b": [
+      {
+        "sectionId": "section-de0b5881bfd7f0ce",
+        "score": 0.123803
+      }
+    ],
+    "table-c9c03617a8a33c60": [
+      {
+        "sectionId": "section-3bc78c7880099d61",
+        "score": 0.13412
+      }
+    ],
+    "weapon": [
+      {
+        "sectionId": "section-3bc78c7880099d61",
+        "score": 0.13412
+      }
+    ],
+    "will": [
+      {
+        "sectionId": "section-de0b5881bfd7f0ce",
+        "score": 0.123803
+      }
+    ]
+  }
+}
