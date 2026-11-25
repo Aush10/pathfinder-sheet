@@ -40,7 +40,7 @@ import { CMBTool } from './components/tools/CMBTool';
 import { NewSheetModal } from './components/tools/NewSheetModal';
 import { ImageFileBrowserModal } from './components/tools/ImageFileBrowserModal';
 import { JournalModal } from './components/tools/JournalModal';
-// AF7-PROMOTE: import { SOTPanel } from './components/tools/SOTPanel';
+import { SOTPanel } from './components/tools/SOTPanel';
 import { AICompanionModal } from './components/tools/AICompanionModal';
 import { FloatingAlertCard } from './components/common/FloatingAlertCard';
 import { InteractiveQueryModal } from './components/common/InteractiveQueryModal';
@@ -491,34 +491,11 @@ function WorkspaceShell({ isReadOnlyMode }: { isReadOnlyMode: boolean }) {
         theme={layout.theme}
       />
 
-      {/* AF7-PROMOTE: replace this staged fallback with:
-          <SOTPanel isOpen={isSotPanelOpen} onClose={() => setIsSotPanelOpen(false)} theme={layout.theme} /> */}
-      {isSotPanelOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/65"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Source of Truth Library"
-        >
-          <div className="max-w-lg w-full rounded-xl border-2 border-cyan-500/40 bg-slate-900 text-slate-100 p-5 shadow-2xl space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="font-bold text-base text-cyan-300">Source of Truth (SOT) Library</h2>
-              <button
-                onClick={() => setIsSotPanelOpen(false)}
-                className="px-2 py-0.5 text-xs font-mono rounded bg-slate-800 hover:bg-slate-700"
-              >
-                Close
-              </button>
-            </div>
-            <p className="text-xs text-slate-300">
-              Loaded per-character SOT documents:{' '}
-              <strong>{character.sotCatalogue?.overridePages?.length || 0}</strong>.
-              Full standalone SOTPanel is staged in{' '}
-              <code>pfautosheetv3/v3-staging/antigravity/AG1/SOTPanel.tsx</code> for AF7 promotion.
-            </p>
-          </div>
-        </div>
-      )}
+      <SOTPanel
+        isOpen={isSotPanelOpen}
+        onClose={() => setIsSotPanelOpen(false)}
+        theme={layout.theme}
+      />
 
       <AICompanionModal
         isOpen={isAIToolOpen}

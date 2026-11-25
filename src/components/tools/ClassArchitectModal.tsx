@@ -46,7 +46,7 @@ import { useCharacter, useOptionalCharacter } from '../../context/CharacterConte
 import { DEFAULT_CHARACTER } from '../../data/defaultCharacter';
 import { applyCareerProgressionToCharacter } from '../../engine/characterIntegration';
 import { syncCareerAbilitiesToDirectory } from '../../engine/actionDirectory';
-// AF7-PROMOTE: import { CharacterMatrixPanel } from './matrix/CharacterMatrixPanel';
+import { CharacterMatrixPanel } from './matrix/CharacterMatrixPanel';
 
 export function nextCollisionFreeClassId(existingGrids: Record<string, CustomClassGrid>): {
   id: string;
@@ -1097,20 +1097,14 @@ export const ClassArchitectModal: React.FC<ClassArchitectModalProps> = ({
         {/* MAIN BODY: Character Matrix, Career Timeline OR Class Grid + Kit          */}
         {/* ========================================================================= */}
         {viewMode === 'matrix' ? (
-          matrixPanelSlot ? (
-            <div className="flex-1 p-4 overflow-y-auto pf1-theme-scrollbar">{matrixPanelSlot}</div>
-          ) : (
-            <div className="flex-1 p-6 overflow-y-auto text-xs font-mono text-slate-300 space-y-2">
-              <div className="font-bold text-emerald-300 text-sm">
-                Character Matrix &amp; Career Index Workspace (Staged for AF7 Promotion)
-              </div>
-              <p className="text-slate-400">
-                Character Matrix UI components are staged at{' '}
-                <code>pfautosheetv3/v3-staging/antigravity/AG3/CharacterMatrixPanel.tsx</code> and bind directly to CX3{' '}
-                <code>matrixEngine.ts</code>. AF7 promotes them to <code>src/components/tools/matrix/</code> and wires <code>&lt;CharacterMatrixPanel /&gt;</code> here.
-              </p>
-            </div>
-          )
+          <div className="flex-1 p-4 overflow-y-auto pf1-theme-scrollbar">
+            {matrixPanelSlot ?? (
+              <CharacterMatrixPanel
+                character={character}
+                onUpdateCharacter={onUpdateCharacter}
+              />
+            )}
+          </div>
         ) : viewMode === 'career' ? (
           <div className="flex-1 p-4 overflow-y-auto space-y-4">
             {/* Live Calculated Stats Dashboard */}
